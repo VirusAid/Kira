@@ -20,7 +20,10 @@ import { execSync } from 'child_process'
 const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const res = join(root, 'resources')
 
-const PY_EMBED_URL = 'https://www.python.org/ftp/python/3.12.7/python-3.12.7-embed-amd64.zip'
+// ВАЖНО: версия embeddable Python должна совпадать с ABI пакетов в pyenv.
+// pyenv собран колёсами cp314 (torch/numpy/onnxruntime под 3.14) — значит и
+// встраиваемый Python обязан быть 3.14.x, иначе нативные модули не загрузятся.
+const PY_EMBED_URL = 'https://www.python.org/ftp/python/3.14.6/python-3.14.6-embed-amd64.zip'
 const MODEL_URL = 'https://huggingface.co/Derur/silero-models/resolve/main/tts/ru/ru_v4/v4_ru.pt'
 
 async function download(url, dest) {
@@ -63,13 +66,20 @@ async function main() {
     await download(PY_EMBED_URL, zip)
     console.log('• Распаковываю Python…')
     execSync(`powershell -NoProfile -Command "Expand-Archive -Force '${zip}' '${pyDir}'"`, { stdio: 'inherit' })
-    // включаем поиск модулей по PYTHONPATH (в embeddable по умолчанию отключён)
-    const pth = join(pyDir, 'python312._pth')
-    if (existsSync(pth)) {
-      const { readFileSync, writeFileSync } = await import('fs')
+    // embeddable Python при наличии ._pth-файла ИГНОРИРУЕТ переменную PYTHONPATH,
+    // поэтому прописываем путь к pyenv (../pyenv относительно python.exe) прямо в
+    // ._pth и включаем site — иначе `import torch` из pyenv не найдётся.
+    const { readdirSync, readFileSync, writeFileSync } = await import('fs')
+    const pthName = readdirSync(pyDir).find((f) => f.endsWith('._pth'))
+    if (pthName) {
+      const pth = join(pyDir, pthName)
       let c = readFileSync(pth, 'utf-8')
-      if (!c.includes('import site')) c += '\nimport site\n'
+      if (!c.includes('..\\pyenv')) c += '\r\n..\\pyenv\r\n'
+      if (!c.includes('import site')) c += 'import site\r\n'
       writeFileSync(pth, c)
+      console.log(`• ${pthName}: добавлен путь ..\\pyenv + import site`)
+    } else {
+      console.warn('⚠ ._pth не найден в embeddable Python — проверь распаковку')
     }
   } else console.log('• Python уже на месте')
 
