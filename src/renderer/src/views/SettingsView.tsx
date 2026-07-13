@@ -1,8 +1,8 @@
 /** Настройки: модели ИИ, личность, голос, интерфейс, поведение, экспорт. */
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import {
   Cpu, User, Mic, Palette, Sliders, Download, Upload, Check, Loader2,
-  ExternalLink, KeyRound, Zap, RefreshCw
+  ExternalLink, KeyRound, Zap, RefreshCw, ChevronDown
 } from 'lucide-react'
 import { useAppStore } from '@/state/appStore'
 import { kira } from '@/api'
@@ -185,22 +185,16 @@ function ModelsSection({ settings, update }: SectionProps) {
                   )}
                   <div>
                     <label className="muted" style={{ display: 'block', marginBottom: 5 }}>Модель</label>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <input list={`models-${p.id}`} style={{ flex: 1 }} placeholder="Начни печатать для поиска…"
-                        value={cfg.model} onChange={(e) => setProviderCfg(p.id, { model: e.target.value })} />
-                      <button className="btn btn-ghost press" title="Загрузить все модели провайдера"
-                        onClick={() => void fetchModels(p.id)} disabled={loadingModels === p.id}>
-                        {loadingModels === p.id
-                          ? <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} />
-                          : <RefreshCw size={14} />}
-                      </button>
-                    </div>
-                    <datalist id={`models-${p.id}`}>
-                      {(liveModels[p.id]?.length ? liveModels[p.id] : p.models).map((m) => <option key={m} value={m} />)}
-                    </datalist>
+                    <ModelPicker
+                      value={cfg.model}
+                      models={liveModels[p.id]?.length ? liveModels[p.id] : p.models}
+                      loading={loadingModels === p.id}
+                      onChange={(v) => setProviderCfg(p.id, { model: v })}
+                      onRefresh={() => void fetchModels(p.id)}
+                    />
                     <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
                       {liveModels[p.id]?.length
-                        ? `Доступно моделей: ${liveModels[p.id].length} — печатай для поиска в списке`
+                        ? `Доступно моделей: ${liveModels[p.id].length} — открой список или печатай для поиска`
                         : loadingModels === p.id ? 'Загружаю список моделей…' : 'Нажми ↻ чтобы подгрузить все модели провайдера'}
                     </div>
                   </div>
@@ -221,6 +215,83 @@ function ModelsSection({ settings, update }: SectionProps) {
           )
         })}
       </div>
+    </div>
+  )
+}
+
+function ModelPicker({ value, models, loading, onChange, onRefresh }: {
+  value: string
+  models: string[]
+  loading: boolean
+  onChange: (v: string) => void
+  onRefresh: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [q, setQ] = useState('')
+  const ref = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const onDoc = (e: MouseEvent): void => { if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false) }
+    document.addEventListener('mousedown', onDoc)
+    return () => document.removeEventListener('mousedown', onDoc)
+  }, [])
+
+  const filtered = q.trim()
+    ? models.filter((m) => m.toLowerCase().includes(q.toLowerCase()))
+    : models
+  const pick = (m: string): void => { onChange(m); setOpen(false); setQ('') }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ position: 'relative', flex: 1 }}>
+          <input
+            style={{ width: '100%', paddingRight: 30 }}
+            placeholder="Выбери или впиши модель…"
+            value={open ? q : value}
+            onFocus={() => { setOpen(true); setQ('') }}
+            onChange={(e) => { setQ(e.target.value); setOpen(true) }}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && q.trim()) { pick(q.trim()) }
+              if (e.key === 'Escape') setOpen(false)
+            }}
+          />
+          <button onClick={() => setOpen((o) => !o)} title="Открыть список"
+            style={{ position: 'absolute', right: 6, top: '50%', transform: 'translateY(-50%)', color: 'var(--text-2)' }}>
+            <ChevronDown size={16} />
+          </button>
+        </div>
+        <button className="btn btn-ghost press" title="Обновить список моделей" onClick={onRefresh} disabled={loading}>
+          {loading ? <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> : <RefreshCw size={14} />}
+        </button>
+      </div>
+
+      {open && (
+        <div style={{
+          position: 'absolute', zIndex: 30, top: 'calc(100% + 4px)', left: 0, right: 52,
+          maxHeight: 280, overflowY: 'auto', background: 'var(--panel)', border: '1px solid var(--border-strong)',
+          borderRadius: 10, boxShadow: '0 12px 34px rgba(0,0,0,0.45)'
+        }}>
+          {filtered.length === 0 && (
+            <div className="muted" style={{ padding: 12, fontSize: 12 }}>
+              Ничего не найдено{q.trim() && ' — нажми Enter, чтобы вписать вручную'}
+            </div>
+          )}
+          {filtered.slice(0, 200).map((m) => (
+            <button key={m} onClick={() => pick(m)}
+              style={{
+                display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', fontSize: 12.5,
+                background: m === value ? 'var(--accent-soft)' : 'transparent',
+                color: m === value ? 'var(--accent-text)' : 'var(--text-0)'
+              }}>
+              {m}
+            </button>
+          ))}
+          {filtered.length > 200 && (
+            <div className="muted" style={{ padding: 8, fontSize: 11 }}>…и ещё {filtered.length - 200}. Уточни запрос.</div>
+          )}
+        </div>
+      )}
     </div>
   )
 }
