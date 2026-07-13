@@ -144,6 +144,7 @@ app.on('before-quit', () => {
   shutdownDiscordMonitor()
   shutdownTelegram()
   void shutdownTelegramUser()
+  void import('./modules/ai/voskStt').then((m) => m.voskStt.shutdown())
   destroyTray()
   destroyOverlay()
   flushAllSync()

@@ -148,7 +148,21 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('ai:transcribe', async (_e, audioBase64: string, mimeType: string) => {
     const s = getSettings()
     const groqKey = s.providers.groq.apiKey
+
+    // офлайн-резерв: распознаём локально через Vosk (та же модель, что у wake-word)
+    const offlineFallback = async (): Promise<{ ok: boolean; text: string; error?: string } | null> => {
+      if (!mimeType.includes('wav')) return null
+      const { voskStt } = await import('./ai/voskStt')
+      if (!voskStt.hasModel()) return null
+      const r = await voskStt.transcribe(audioBase64)
+      if (!r.ok) return null
+      logger.info('vosk-stt', 'Распознано офлайн (Vosk)')
+      return { ok: true, text: r.text }
+    }
+
     if (!groqKey) {
+      const off = await offlineFallback()
+      if (off) return off
       return { ok: false, text: '', error: 'Для голосового ввода нужен бесплатный API-ключ Groq (настройки → Модели). Он также включает распознавание речи Whisper.' }
     }
     try {
@@ -169,7 +183,11 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
         headers: { Authorization: `Bearer ${groqKey}` },
         body: form
       })
-      if (!res.ok) return { ok: false, text: '', error: `Whisper: ошибка ${res.status}` }
+      if (!res.ok) {
+        const off = await offlineFallback()
+        if (off) return off
+        return { ok: false, text: '', error: `Whisper: ошибка ${res.status}` }
+      }
       const json = (await res.json()) as {
         text?: string
         segments?: { no_speech_prob?: number; avg_logprob?: number }[]
@@ -191,6 +209,9 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
 
       return { ok: true, text }
     } catch (err) {
+      // сеть недоступна — пробуем офлайн (Vosk)
+      const off = await offlineFallback()
+      if (off) return off
       return { ok: false, text: '', error: (err as Error).message }
     }
   })

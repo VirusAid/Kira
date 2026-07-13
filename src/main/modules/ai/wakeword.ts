@@ -12,13 +12,13 @@ import { join } from 'path'
 import { logger } from '../logger'
 import { getSettings } from '../settings'
 
-function resourcesRoot(): string {
+export function resourcesRoot(): string {
   return app.isPackaged ? process.resourcesPath : join(__dirname, '../../resources')
 }
-function pyenvDir(): string {
+export function pyenvDir(): string {
   return app.isPackaged ? join(process.resourcesPath, 'pyenv') : join(__dirname, '../../pyenv')
 }
-function pythonExe(): string {
+export function pythonExe(): string {
   const local = join(pyenvDir(), '..', 'python', 'python.exe')
   if (existsSync(local)) return local
   return process.platform === 'win32' ? 'python' : 'python3'
@@ -28,7 +28,7 @@ function voskDir(): string {
 }
 
 /** Путь к распакованной модели (папка vosk-model-*). Распаковывает zip при необходимости. */
-function resolveModelDir(): string | null {
+export function resolveModelDir(): string | null {
   const dir = voskDir()
   if (existsSync(dir)) {
     const sub = readdirSync(dir, { withFileTypes: true }).find(
