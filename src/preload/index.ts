@@ -88,7 +88,12 @@ const api = {
     discordTest: () => invoke('integrations:discord-test'),
     discordVerify: () => invoke('integrations:discord-verify'),
     telegramVerify: () => invoke('integrations:telegram-verify'),
-    telegramTest: () => invoke('integrations:telegram-test')
+    telegramTest: () => invoke('integrations:telegram-test'),
+    tgSendCode: (phone: string) => invoke('tg-user:send-code', phone),
+    tgSubmitCode: (code: string) => invoke('tg-user:submit-code', code),
+    tgSubmitPassword: (pw: string) => invoke('tg-user:submit-password', pw),
+    tgStatus: () => invoke('tg-user:status'),
+    tgLogout: () => invoke('tg-user:logout')
   },
 
   chats: {

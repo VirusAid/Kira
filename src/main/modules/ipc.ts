@@ -29,6 +29,7 @@ import { undoLast, historyLabels } from './undo'
 import { integrationStatus, connectGoogle, calendarToday, gmailList, discordSend } from './integrations'
 import { restartDiscordMonitor, verifyDiscordToken } from './discord'
 import { restartTelegram, verifyTelegramBot } from './telegram'
+import { startUserLogin, submitCode, submitPassword, telegramUserStatus, logoutTelegramUser } from './telegramUser'
 import type {
   AIRequest, Automation, Chat, ChatMessage, KiraSettings,
   MemoryEntry, Project, Protocol, Ability
@@ -542,6 +543,12 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     const { sendTelegram } = await import('./telegram')
     return sendTelegram('Проверка связи от Kira 👋')
   })
+  // личный аккаунт (MTProto)
+  ipcMain.handle('tg-user:send-code', (_e, phone: string) => startUserLogin(phone))
+  ipcMain.handle('tg-user:submit-code', (_e, code: string) => submitCode(code))
+  ipcMain.handle('tg-user:submit-password', (_e, pw: string) => submitPassword(pw))
+  ipcMain.handle('tg-user:status', () => telegramUserStatus())
+  ipcMain.handle('tg-user:logout', () => logoutTelegramUser())
 
   // ─── Оверлей голосового режима ────────────────────────────────────────────
   ipcMain.on('voice:update', (_e, p: { active: boolean; state: string; level: number }) => {

@@ -61,7 +61,11 @@ export const DEFAULT_SETTINGS: KiraSettings = {
   discordDmAlerts: false,
   telegramBotToken: '',
   telegramChatId: '',
-  telegramBotEnabled: false
+  telegramBotEnabled: false,
+  telegramApiId: '',
+  telegramApiHash: '',
+  telegramSession: '',
+  telegramUserMonitor: false
 }
 
 let cached: KiraSettings | null = null

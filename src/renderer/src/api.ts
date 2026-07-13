@@ -73,6 +73,11 @@ interface KiraBridge {
     discordVerify: () => Promise<{ ok: boolean; name?: string }>
     telegramVerify: () => Promise<{ ok: boolean; username?: string }>
     telegramTest: () => Promise<ActionResult>
+    tgSendCode: (phone: string) => Promise<{ ok: boolean; message: string }>
+    tgSubmitCode: (code: string) => Promise<{ ok: boolean }>
+    tgSubmitPassword: (pw: string) => Promise<{ ok: boolean }>
+    tgStatus: () => Promise<{ connected: boolean; name?: string }>
+    tgLogout: () => Promise<{ ok: boolean }>
   }
   chats: {
     list: () => Promise<Chat[]>

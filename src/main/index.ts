@@ -10,6 +10,7 @@ import { createOverlay, destroyOverlay } from './modules/overlay'
 import { initPulse, shutdownPulse } from './modules/pulse'
 import { initDiscordMonitor, shutdownDiscordMonitor } from './modules/discord'
 import { initTelegram, shutdownTelegram } from './modules/telegram'
+import { initTelegramUser, shutdownTelegramUser } from './modules/telegramUser'
 import { flushAllSync } from './modules/db'
 import { logger } from './modules/logger'
 import { getSettings } from './modules/settings'
@@ -115,6 +116,7 @@ if (!gotLock) {
     initPulse(() => mainWindow)
     initDiscordMonitor(() => mainWindow)
     initTelegram(() => mainWindow)
+    void initTelegramUser(() => mainWindow)
 
     const s = getSettings()
     logger.info('kira', `Kira запущена. Провайдер: ${s.provider}, модель: ${s.providers[s.provider].model}`)
@@ -141,6 +143,7 @@ app.on('before-quit', () => {
   shutdownPulse()
   shutdownDiscordMonitor()
   shutdownTelegram()
+  void shutdownTelegramUser()
   destroyTray()
   destroyOverlay()
   flushAllSync()

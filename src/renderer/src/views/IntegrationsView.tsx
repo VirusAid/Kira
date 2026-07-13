@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { Plug, FolderOpen, Check, ExternalLink, Loader2, FileText, StickyNote, Mail, MessageCircle, AlertTriangle, Send } from 'lucide-react'
 import { useAppStore } from '@/state/appStore'
 import { kira } from '@/api'
+import type { KiraSettings } from '@shared/types'
 
 export function IntegrationsView() {
   const { settings, saveSettings } = useAppStore()
@@ -149,6 +150,11 @@ export function IntegrationsView() {
             <li>Скопируй выданный токен, вставь сюда и включи бота.</li>
             <li>Открой своего бота и напиши ему <b>/start</b> — Kira привяжет тебя как владельца.</li>
           </ol>
+
+          {/* Личный аккаунт (MTProto) */}
+          <div style={{ marginTop: 16, paddingTop: 14, borderTop: '1px solid var(--border)' }}>
+            <TelegramUserSection settings={settings} upd={upd} setMsg={setMsg} />
+          </div>
         </Card>
       </div>
     </div>
@@ -189,6 +195,91 @@ function Toggle({ label, checked, onChange }: { label: string; checked: boolean;
       }}>
         <span style={{ position: 'absolute', top: 3, left: checked ? 23 : 3, width: 18, height: 18, borderRadius: '50%', background: '#fff', transition: 'left 0.2s' }} />
       </button>
+    </div>
+  )
+}
+
+function TelegramUserSection({ settings, upd, setMsg }: {
+  settings: KiraSettings
+  upd: (p: Partial<KiraSettings>) => void
+  setMsg: (m: string) => void
+}) {
+  const [phone, setPhone] = useState('')
+  const [code, setCode] = useState('')
+  const [password, setPassword] = useState('')
+  const [step, setStep] = useState<'idle' | 'code' | 'password' | 'connected'>('idle')
+  const [name, setName] = useState('')
+  const [busy, setBusy] = useState(false)
+
+  const refreshStatus = (): void => {
+    void kira.integrations.tgStatus().then((s) => {
+      if (s.connected) { setStep('connected'); setName(s.name || '') }
+    })
+  }
+  useEffect(() => {
+    refreshStatus()
+    return kira.on('telegram-user:event', (p) => {
+      const e = p as { type: string; message?: string }
+      if (e.type === 'needs-code') { setStep('code'); setBusy(false) }
+      else if (e.type === 'needs-password') { setStep('password'); setBusy(false) }
+      else if (e.type === 'logged-in') { setMsg('Личный аккаунт Telegram подключён ✓'); refreshStatus() }
+      else if (e.type === 'error') { setMsg('Telegram: ' + (e.message || 'ошибка')); setBusy(false) }
+    })
+  }, [])
+
+  const sendCode = async (): Promise<void> => {
+    setBusy(true)
+    const r = await kira.integrations.tgSendCode(phone)
+    setMsg(r.message)
+    if (r.ok) setStep('code')
+    setBusy(false)
+  }
+  const logout = async (): Promise<void> => {
+    await kira.integrations.tgLogout(); setStep('idle'); setName(''); setMsg('Вышли из личного аккаунта Telegram')
+  }
+
+  return (
+    <div>
+      <div style={{ fontSize: 12.5, fontWeight: 700, marginBottom: 8 }}>Личный аккаунт — полный доступ к чатам</div>
+      {step === 'connected' ? (
+        <div>
+          <div style={{ fontSize: 12.5, marginBottom: 10 }}>Подключён как <b>{name || 'ты'}</b> ✓</div>
+          <Toggle label="Следить за личными сообщениями"
+            checked={settings.telegramUserMonitor} onChange={(v) => upd({ telegramUserMonitor: v })} />
+          <button className="btn btn-ghost press" style={{ marginTop: 10 }} onClick={() => void logout()}>Выйти</button>
+        </div>
+      ) : (
+        <div>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 8 }}>
+            <input style={{ flex: 1 }} placeholder="api_id" value={settings.telegramApiId}
+              onChange={(e) => upd({ telegramApiId: e.target.value })} />
+            <input style={{ flex: 2 }} placeholder="api_hash" value={settings.telegramApiHash}
+              onChange={(e) => upd({ telegramApiHash: e.target.value })} />
+          </div>
+          {step === 'idle' && (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input style={{ flex: 1 }} placeholder="+7XXXXXXXXXX" value={phone} onChange={(e) => setPhone(e.target.value)} />
+              <button className="btn btn-primary press" disabled={busy || !phone.trim()} onClick={() => void sendCode()}>Получить код</button>
+            </div>
+          )}
+          {step === 'code' && (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input style={{ flex: 1 }} placeholder="Код из Telegram" value={code} onChange={(e) => setCode(e.target.value)} />
+              <button className="btn btn-primary press" disabled={!code.trim()} onClick={() => void kira.integrations.tgSubmitCode(code)}>Войти</button>
+            </div>
+          )}
+          {step === 'password' && (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input type="password" style={{ flex: 1 }} placeholder="Пароль 2FA (Telegram)" value={password} onChange={(e) => setPassword(e.target.value)} />
+              <button className="btn btn-primary press" disabled={!password.trim()} onClick={() => void kira.integrations.tgSubmitPassword(password)}>Подтвердить</button>
+            </div>
+          )}
+          <div className="muted" style={{ fontSize: 11, marginTop: 8, lineHeight: 1.6 }}>
+            api_id/api_hash — на <A href="https://my.telegram.org">my.telegram.org</A> → API development tools.
+            Telegram официально разрешает пользовательские клиенты. Код и пароль вводишь ты — Kira хранит только сессию входа.
+          </div>
+        </div>
+      )}
     </div>
   )
 }

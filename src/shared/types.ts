@@ -275,6 +275,10 @@ export interface KiraSettings {
   telegramBotToken: string // токен бота от @BotFather
   telegramChatId: string // chat id владельца (подхватывается при первом сообщении боту)
   telegramBotEnabled: boolean // бот: чат с Kira из Telegram + отправка сообщений
+  telegramApiId: string // api_id с my.telegram.org (личный аккаунт, MTProto)
+  telegramApiHash: string // api_hash с my.telegram.org
+  telegramSession: string // сохранённая сессия после входа (StringSession)
+  telegramUserMonitor: boolean // следить за личными сообщениями (личный аккаунт)
 }
 
 // ─── Система ────────────────────────────────────────────────────────────────
