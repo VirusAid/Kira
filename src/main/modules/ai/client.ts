@@ -157,6 +157,18 @@ export function streamChat(
 ): StreamHandle {
   const controller = new AbortController()
   const endpoint = resolveEndpoint(options?.providerId)
+  const providerId = options?.providerId ?? getSettings().provider
+
+  // провайдеры без «зрения» не понимают контент-массивы с картинками:
+  // при откате на них сплющиваем такие сообщения в чистый текст,
+  // иначе groq отвечает 400 «content must be a string»
+  const VISION_PROVIDERS = new Set<AIProviderId>(['gemini', 'openrouter'])
+  const outMessages = VISION_PROVIDERS.has(providerId)
+    ? messages
+    : messages.map((m) =>
+        Array.isArray(m.content)
+          ? { ...m, content: m.content.filter((c) => c.type === 'text').map((c) => c.text ?? '').join('\n') || '[изображение]' }
+          : m)
 
   void (async () => {
     let full = ''
@@ -167,9 +179,12 @@ export function streamChat(
         headers: { 'Content-Type': 'application/json', ...endpoint.headers },
         body: JSON.stringify({
           model: endpoint.model,
-          messages,
+          messages: outMessages,
           stream: true,
-          temperature: options?.temperature ?? 0.7
+          temperature: options?.temperature ?? 0.7,
+          // ограничиваем ответ: без max_tokens OpenRouter резервирует максимум
+          // модели (4096/16000) и на бесплатном балансе падает с 402
+          max_tokens: 1600
         })
       })
 
@@ -234,7 +249,7 @@ export async function completeChat(messages: AIMessage[]): Promise<string> {
   const res = await fetch(endpoint.url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...endpoint.headers },
-    body: JSON.stringify({ model: endpoint.model, messages, stream: false })
+    body: JSON.stringify({ model: endpoint.model, messages, stream: false, max_tokens: 1600 })
   })
   if (!res.ok) {
     throw new Error(humanizeApiError(res.status, await res.text().catch(() => '')))
