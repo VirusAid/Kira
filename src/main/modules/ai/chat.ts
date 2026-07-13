@@ -114,17 +114,21 @@ async function streamRound(
       } catch (err) {
         const e = err as StreamAttemptError
         lastError = e.message
-        // если пользователь уже увидел текст или ошибка не временная — не переключаемся
-        if (e.emittedAny || !e.retryable) throw new Error(lastError)
+        // пользователь уже увидел часть ответа — переключаться поздно
+        if (e.emittedAny) throw new Error(lastError)
+        // есть следующий провайдер — пробуем его при ЛЮБОЙ ошибке текущего
+        // (занят, лимит, неверный ключ 400/401/403, не та модель 404 …),
+        // чтобы одна кривая настройка не роняла весь ответ
         if (!isLast) {
-          logger.warn('chat', `«${provider}» недоступен, переключаюсь на «${candidates[i + 1]}»`)
+          logger.warn('chat', `«${provider}» недоступен (${e.message.slice(0, 70)}), переключаюсь на «${candidates[i + 1]}»`)
           send(win, 'ai:action', {
             requestId: req.requestId, name: 'fallback', ok: true,
-            message: `«${provider}» занят — пробую «${candidates[i + 1]}»`
+            message: `«${provider}» недоступен — пробую «${candidates[i + 1]}»`
           })
           break // к следующему провайдеру
         }
-        if (attempt < attempts - 1) {
+        // последний провайдер: повтор только если ошибка временная
+        if (e.retryable && attempt < attempts - 1) {
           send(win, 'ai:action', {
             requestId: req.requestId, name: 'retry', ok: true,
             message: 'Лимит запросов — жду 4 сек и пробую снова…'
