@@ -1,10 +1,10 @@
 {
   "name": "kira",
   "version": "1.0.0",
-  "description": "Kira — персональный ИИ-помощник уровня JARVIS",
+  "description": "Kira — персональный ИИ-ассистент нового поколения для Windows",
   "main": "./out/main/index.js",
-  "author": "Kira Project",
-  "license": "MIT",
+  "author": "VirusAid (D3F0LT)",
+  "license": "SEE LICENSE IN LICENSE",
   "private": true,
   "scripts": {
     "dev": "electron-vite dev",

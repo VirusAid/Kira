@@ -109,7 +109,7 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             </div>
             <h1 style={{ fontSize: 26, fontWeight: 750 }}>Привет, я Kira</h1>
             <p style={{ color: 'var(--text-1)', marginTop: 10, lineHeight: 1.6, maxWidth: 440, marginInline: 'auto' }}>
-              Я твой личный ассистент — как Джарвис. Чтобы стать по-настоящему твоей, я хочу немного тебя узнать.
+              Я твой личный ИИ-ассистент. Чтобы стать по-настоящему твоей, я хочу немного тебя узнать.
               Это займёт минуту, и я всё запомню.
             </p>
             <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 26 }}>
