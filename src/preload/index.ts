@@ -86,7 +86,9 @@ const api = {
     calendarToday: () => invoke('integrations:calendar-today'),
     gmailCheck: () => invoke('integrations:gmail-check'),
     discordTest: () => invoke('integrations:discord-test'),
-    discordVerify: () => invoke('integrations:discord-verify')
+    discordVerify: () => invoke('integrations:discord-verify'),
+    telegramVerify: () => invoke('integrations:telegram-verify'),
+    telegramTest: () => invoke('integrations:telegram-test')
   },
 
   chats: {

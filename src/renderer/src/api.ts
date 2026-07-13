@@ -71,6 +71,8 @@ interface KiraBridge {
     gmailCheck: () => Promise<ActionResult>
     discordTest: () => Promise<ActionResult>
     discordVerify: () => Promise<{ ok: boolean; name?: string }>
+    telegramVerify: () => Promise<{ ok: boolean; username?: string }>
+    telegramTest: () => Promise<ActionResult>
   }
   chats: {
     list: () => Promise<Chat[]>

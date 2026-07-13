@@ -9,6 +9,7 @@ import { createTray, destroyTray, isQuitting, setQuitting } from './modules/tray
 import { createOverlay, destroyOverlay } from './modules/overlay'
 import { initPulse, shutdownPulse } from './modules/pulse'
 import { initDiscordMonitor, shutdownDiscordMonitor } from './modules/discord'
+import { initTelegram, shutdownTelegram } from './modules/telegram'
 import { flushAllSync } from './modules/db'
 import { logger } from './modules/logger'
 import { getSettings } from './modules/settings'
@@ -113,6 +114,7 @@ if (!gotLock) {
     registerHotkey()
     initPulse(() => mainWindow)
     initDiscordMonitor(() => mainWindow)
+    initTelegram(() => mainWindow)
 
     const s = getSettings()
     logger.info('kira', `Kira запущена. Провайдер: ${s.provider}, модель: ${s.providers[s.provider].model}`)
@@ -138,6 +140,7 @@ app.on('before-quit', () => {
   shutdownReminders()
   shutdownPulse()
   shutdownDiscordMonitor()
+  shutdownTelegram()
   destroyTray()
   destroyOverlay()
   flushAllSync()

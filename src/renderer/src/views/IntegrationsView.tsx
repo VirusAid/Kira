@@ -1,6 +1,6 @@
 /** Интеграции — подключение внешних сервисов (Obsidian, Notion, Google). */
 import { useEffect, useState } from 'react'
-import { Plug, FolderOpen, Check, ExternalLink, Loader2, FileText, StickyNote, Mail, MessageCircle, AlertTriangle } from 'lucide-react'
+import { Plug, FolderOpen, Check, ExternalLink, Loader2, FileText, StickyNote, Mail, MessageCircle, AlertTriangle, Send } from 'lucide-react'
 import { useAppStore } from '@/state/appStore'
 import { kira } from '@/api'
 
@@ -124,6 +124,31 @@ export function IntegrationsView() {
               </div>
             )}
           </div>
+        </Card>
+
+        {/* Telegram */}
+        <Card icon={<Send size={19} />} title="Telegram" ok={!!settings.telegramBotToken && settings.telegramBotEnabled}
+          desc="Официальный бот: пиши Kira из Telegram, а она шлёт тебе ответы и уведомления. Личные чаты это не читает.">
+          <Toggle label="Включить Telegram-бота"
+            checked={settings.telegramBotEnabled} onChange={(v) => { upd({ telegramBotEnabled: v }); setTimeout(refresh, 300) }} />
+          <div style={{ marginTop: 10, display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input type="password" style={{ flex: 1 }} placeholder="Токен бота от @BotFather"
+              value={settings.telegramBotToken} onChange={(e) => upd({ telegramBotToken: e.target.value })} onBlur={refresh} />
+            <button className="btn btn-ghost press" onClick={() => void kira.integrations.telegramVerify().then((r) => setMsg(r.ok ? `Бот на связи: @${r.username}` : 'Токен неверный'))}>
+              Проверить
+            </button>
+          </div>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', marginTop: 8 }}>
+            {settings.telegramChatId
+              ? <span className="muted" style={{ fontSize: 11.5 }}>Владелец привязан ✓</span>
+              : <span className="muted" style={{ fontSize: 11.5 }}>Напиши боту /start в Telegram — привяжется автоматически.</span>}
+            {settings.telegramChatId && <button className="btn btn-ghost press" onClick={() => void kira.integrations.telegramTest().then((r) => setMsg(r.message))}>Отправить тест</button>}
+          </div>
+          <ol className="muted" style={{ fontSize: 11.5, paddingLeft: 18, lineHeight: 1.7, margin: '10px 0 0' }}>
+            <li>В Telegram напиши <b>@BotFather</b> → /newbot → задай имя.</li>
+            <li>Скопируй выданный токен, вставь сюда и включи бота.</li>
+            <li>Открой своего бота и напиши ему <b>/start</b> — Kira привяжет тебя как владельца.</li>
+          </ol>
         </Card>
       </div>
     </div>

@@ -42,6 +42,12 @@ const PROVIDERS: {
     note: 'Щедрый бесплатный лимит. Хорошо работает с изображениями (зрение Kira).'
   },
   {
+    id: 'deepseek', name: 'DeepSeek', free: 'Недорого · мощные модели', url: 'https://platform.deepseek.com/api_keys',
+    needsKey: true,
+    models: ['deepseek-chat', 'deepseek-reasoner'],
+    note: 'Официальный DeepSeek: deepseek-chat (V3) — быстрый и умный, deepseek-reasoner (R1) — глубокие рассуждения.'
+  },
+  {
     id: 'ollama', name: 'Ollama', free: 'Локально · полностью бесплатно', url: 'https://ollama.com/download',
     needsKey: false,
     models: ['llama3.1', 'llama3.2', 'qwen2.5', 'gemma2', 'mistral', 'phi4'],

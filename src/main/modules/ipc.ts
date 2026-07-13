@@ -28,6 +28,7 @@ import { updateVoice, requestOpenMain, requestToggleVoice, refreshVisibility } f
 import { undoLast, historyLabels } from './undo'
 import { integrationStatus, connectGoogle, calendarToday, gmailList, discordSend } from './integrations'
 import { restartDiscordMonitor, verifyDiscordToken } from './discord'
+import { restartTelegram, verifyTelegramBot } from './telegram'
 import type {
   AIRequest, Automation, Chat, ChatMessage, KiraSettings,
   MemoryEntry, Project, Protocol, Ability
@@ -455,6 +456,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     registerHotkey()
     refreshVisibility()
     restartDiscordMonitor()
+    restartTelegram()
     logger.info('settings', 'Настройки сохранены')
     return saved
   })
@@ -535,6 +537,11 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('integrations:gmail-check', () => gmailList())
   ipcMain.handle('integrations:discord-test', () => discordSend('Проверка связи от Kira 👋'))
   ipcMain.handle('integrations:discord-verify', () => verifyDiscordToken())
+  ipcMain.handle('integrations:telegram-verify', () => verifyTelegramBot())
+  ipcMain.handle('integrations:telegram-test', async () => {
+    const { sendTelegram } = await import('./telegram')
+    return sendTelegram('Проверка связи от Kira 👋')
+  })
 
   // ─── Оверлей голосового режима ────────────────────────────────────────────
   ipcMain.on('voice:update', (_e, p: { active: boolean; state: string; level: number }) => {

@@ -192,7 +192,7 @@ export interface LogEntry {
 
 // ─── Настройки ──────────────────────────────────────────────────────────────
 
-export type AIProviderId = 'ollama' | 'groq' | 'openrouter' | 'gemini'
+export type AIProviderId = 'ollama' | 'groq' | 'openrouter' | 'gemini' | 'deepseek'
 
 export interface AIProviderConfig {
   apiKey?: string
@@ -272,6 +272,9 @@ export interface KiraSettings {
   discordWebhook: string // URL вебхука Discord для отправки сообщений
   discordUserToken: string // пользовательский токен для слежения за ЛС (риск: против правил Discord)
   discordDmAlerts: boolean // предупреждать о новых личных сообщениях
+  telegramBotToken: string // токен бота от @BotFather
+  telegramChatId: string // chat id владельца (подхватывается при первом сообщении боту)
+  telegramBotEnabled: boolean // бот: чат с Kira из Telegram + отправка сообщений
 }
 
 // ─── Система ────────────────────────────────────────────────────────────────

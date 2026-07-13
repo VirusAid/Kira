@@ -13,7 +13,8 @@ export const DEFAULT_SETTINGS: KiraSettings = {
     ollama: { model: 'llama3.1', baseUrl: 'http://localhost:11434' },
     groq: { model: 'llama-3.3-70b-versatile', apiKey: '' },
     openrouter: { model: 'meta-llama/llama-3.3-70b-instruct:free', apiKey: '' },
-    gemini: { model: 'gemini-3.5-flash', apiKey: '' }
+    gemini: { model: 'gemini-3.5-flash', apiKey: '' },
+    deepseek: { model: 'deepseek-chat', apiKey: '' }
   },
   personality:
     'Ты — Kira, полноценный ИИ-ассистент нового поколения со своей ' +
@@ -57,7 +58,10 @@ export const DEFAULT_SETTINGS: KiraSettings = {
   googleRefreshToken: '',
   discordWebhook: '',
   discordUserToken: '',
-  discordDmAlerts: false
+  discordDmAlerts: false,
+  telegramBotToken: '',
+  telegramChatId: '',
+  telegramBotEnabled: false
 }
 
 let cached: KiraSettings | null = null

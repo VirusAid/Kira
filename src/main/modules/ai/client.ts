@@ -55,6 +55,12 @@ export function resolveEndpoint(providerId?: AIProviderId): ProviderEndpoint {
         headers: { Authorization: `Bearer ${cfg.apiKey ?? ''}` },
         model: cfg.model || 'gemini-3.5-flash'
       }
+    case 'deepseek':
+      return {
+        url: 'https://api.deepseek.com/v1/chat/completions',
+        headers: { Authorization: `Bearer ${cfg.apiKey ?? ''}` },
+        model: cfg.model || 'deepseek-chat'
+      }
   }
 }
 
@@ -82,7 +88,7 @@ export function candidateProviders(): AIProviderId[] {
   const s = getSettings()
   const order: AIProviderId[] = [s.provider]
   // добавляем облачных провайдеров, у которых задан ключ (ollama — только если выбран явно)
-  const rest: AIProviderId[] = ['groq', 'gemini', 'openrouter']
+  const rest: AIProviderId[] = ['groq', 'gemini', 'openrouter', 'deepseek']
   for (const p of rest) {
     if (p === s.provider) continue
     const cfg = s.providers[p]
