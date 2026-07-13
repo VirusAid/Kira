@@ -92,14 +92,14 @@ export function RightPanel() {
       {/* Быстрые действия */}
       <div style={styles.block}>
         <div style={styles.blockTitle}>Быстрые действия</div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 7 }}>
           <QuickBtn icon={<MessageSquarePlus size={14} />} label="Новый чат"
             onClick={() => { void newChat(); setView('chat') }} />
           <QuickBtn icon={<Camera size={14} />} label="Скриншот"
             onClick={() => void kira.system.screenshot()} />
           <QuickBtn icon={<Monitor size={14} />} label="Система"
             onClick={() => setSystemOpen(true)} />
-          <QuickBtn icon={<Minimize2 size={14} />} label="Свернуть всё"
+          <QuickBtn icon={<Minimize2 size={14} />} label="Свернуть"
             onClick={() => void kira.system.minimizeAll()} />
           <QuickBtn icon={<Lock size={14} />} label="Блокировка"
             onClick={() => void kira.system.power('lock')} />
@@ -155,7 +155,7 @@ export function RightPanel() {
         <div style={styles.blockTitle}>Последние действия</div>
         <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 7 }}>
           {recentActions.map((l) => (
-            <div key={l.id} style={{ fontSize: 11.5, color: 'var(--text-2)' }}>
+            <div key={l.id} style={{ fontSize: 11.5, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               <span style={{ color: 'var(--accent-text)' }}>
                 {new Date(l.createdAt).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}
               </span>{' '}
@@ -188,15 +188,21 @@ function Meter({ icon, label, percent }: { icon: React.ReactNode; label: string;
 
 function QuickBtn({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) {
   return (
-    <button className="btn-ghost btn" style={{ padding: '8px 10px', fontSize: 11.5, justifyContent: 'flex-start' }} onClick={onClick}>
-      {icon} {label}
+    <button
+      className="btn-ghost btn press"
+      style={{ padding: '8px 8px', fontSize: 11.5, justifyContent: 'flex-start', minWidth: 0, gap: 6 }}
+      onClick={onClick}
+      title={label}
+    >
+      <span style={{ display: 'flex', flexShrink: 0 }}>{icon}</span>
+      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{label}</span>
     </button>
   )
 }
 
 const styles: Record<string, React.CSSProperties> = {
   panel: {
-    width: 250,
+    width: 274,
     flexShrink: 0,
     display: 'flex',
     flexDirection: 'column',

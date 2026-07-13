@@ -1,6 +1,6 @@
 /** Главный экран: приветствие, статистика, активные задачи, быстрый доступ. */
 import { useEffect, useMemo } from 'react'
-import { MessageSquare, FolderKanban, Zap, Brain, ArrowRight, Play, Sparkles } from 'lucide-react'
+import { MessageSquare, FolderKanban, Zap, Brain, ArrowRight, Play, Sparkles, UserCircle } from 'lucide-react'
 import { useAppStore } from '@/state/appStore'
 import { useChatStore } from '@/state/chatStore'
 import { useProjectStore, useProtocolStore, useMemoryStore, useLogStore, useAbilityStore } from '@/state/dataStores'
@@ -28,6 +28,16 @@ export function HomeView() {
 
   const activeProjects = projects.filter((p) => p.status === 'active')
   const recentChanges = logs.slice(0, 5)
+
+  // профиль пользователя, который Kira дополняет со временем (update_profile)
+  const profileFacts = useMemo(() => {
+    const raw = settings?.userProfile || ''
+    return raw
+      .split(/\n|(?<=[.;])\s+/)
+      .map((s) => s.replace(/^[•\-*]\s*/, '').trim())
+      .filter((s) => s.length > 1)
+      .slice(0, 14)
+  }, [settings])
 
   return (
     <div className="view-container">
@@ -67,6 +77,35 @@ export function HomeView() {
           </div>
         )}
       </div>
+
+      {/* Профиль: то, что Kira узнала о тебе — растёт со временем */}
+      <section className="card anim-in" style={{ marginTop: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 9, marginBottom: profileFacts.length ? 12 : 0 }}>
+          <UserCircle size={17} style={{ color: 'var(--accent-text)' }} />
+          <h3 style={{ fontSize: 14.5, fontWeight: 700 }}>Что Kira о тебе знает</h3>
+          <span className="muted" style={{ fontSize: 11.5 }}>· растёт со временем</span>
+          <button className="muted" style={{ marginLeft: 'auto', fontSize: 12, display: 'flex', alignItems: 'center', gap: 4 }}
+            onClick={() => setView('settings')}>
+            Изменить <ArrowRight size={12} />
+          </button>
+        </div>
+        {profileFacts.length > 0 ? (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {profileFacts.map((f, i) => (
+              <span key={i} style={{
+                fontSize: 12.5, padding: '5px 11px', borderRadius: 8,
+                background: 'var(--accent-soft)', color: 'var(--text-0)',
+                border: '1px solid var(--border)'
+              }}>{f}</span>
+            ))}
+          </div>
+        ) : (
+          <p className="muted" style={{ fontSize: 12.5, marginTop: 8, lineHeight: 1.55 }}>
+            Kira ещё узнаёт тебя. Общайся с ней и рассказывай о себе — она будет запоминать
+            привычки, вкусы и стиль, и профиль начнёт расти сам.
+          </p>
+        )}
+      </section>
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginTop: 16 }}>
         {/* Последние проекты */}
