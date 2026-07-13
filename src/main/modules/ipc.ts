@@ -8,7 +8,7 @@ import { newId } from './ids'
 import { logger } from './logger'
 import { getSettings, saveSettings } from './settings'
 import { handleChatRequest, abortRequest, confirmAction, generateChatTitle } from './ai/chat'
-import { testProvider, completeChat } from './ai/client'
+import { testProvider, completeChat, listProviderModels } from './ai/client'
 import { synthesize, EDGE_VOICES } from './ai/tts'
 import { silero, SILERO_SPEAKERS } from './ai/silero'
 import { wakeWord } from './ai/wakeword'
@@ -67,6 +67,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     confirmAction(confirmId, approved)
   )
   ipcMain.handle('ai:test-provider', () => testProvider())
+  ipcMain.handle('ai:list-models', (_e, providerId: string) => listProviderModels(providerId as never))
   ipcMain.handle('ai:generate-title', (_e, firstMessage: string) => generateChatTitle(firstMessage))
   ipcMain.handle('ai:capture-screen', () => system.captureScreenBase64())
 

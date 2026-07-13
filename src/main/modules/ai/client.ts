@@ -97,6 +97,55 @@ export function candidateProviders(): AIProviderId[] {
   return order
 }
 
+/**
+ * Живой список всех доступных моделей провайдера (через его /models endpoint).
+ * Возвращает id моделей; при ошибке/без ключа — пустой массив (UI откатится на
+ * зашитый список).
+ */
+export async function listProviderModels(providerId: AIProviderId): Promise<string[]> {
+  const cfg = getSettings().providers[providerId]
+  const key = (cfg.apiKey ?? '').trim()
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const ids = (arr: any[], f: (m: any) => string): string[] =>
+    [...new Set((arr ?? []).map(f).filter(Boolean) as string[])].sort((a, b) => a.localeCompare(b))
+  try {
+    if (providerId === 'openrouter') {
+      const r = await fetch('https://openrouter.ai/api/v1/models')
+      const j = await r.json()
+      return ids(j.data, (m) => m.id)
+    }
+    if (providerId === 'groq') {
+      if (!key) return []
+      const r = await fetch('https://api.groq.com/openai/v1/models', { headers: { Authorization: `Bearer ${key}` } })
+      const j = await r.json()
+      return ids(j.data, (m) => m.id)
+    }
+    if (providerId === 'gemini') {
+      if (!key) return []
+      const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`)
+      const j = await r.json()
+      return ids(
+        (j.models ?? []).filter((m: { supportedGenerationMethods?: string[] }) =>
+          (m.supportedGenerationMethods ?? []).includes('generateContent')),
+        (m) => String(m.name).replace(/^models\//, '')
+      )
+    }
+    if (providerId === 'deepseek') {
+      if (!key) return []
+      const r = await fetch('https://api.deepseek.com/models', { headers: { Authorization: `Bearer ${key}` } })
+      const j = await r.json()
+      return ids(j.data, (m) => m.id)
+    }
+    if (providerId === 'ollama') {
+      const base = (cfg.baseUrl || 'http://localhost:11434').replace(/\/$/, '')
+      const r = await fetch(`${base}/api/tags`)
+      const j = await r.json()
+      return ids(j.models, (m) => m.name)
+    }
+  } catch { /* сеть/ключ недоступны */ }
+  return []
+}
+
 export function streamChat(
   messages: AIMessage[],
   callbacks: {

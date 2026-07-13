@@ -23,6 +23,7 @@ const api = {
     abort: (requestId: string) => invoke('ai:abort', requestId),
     confirm: (confirmId: string, approved: boolean) => invoke('ai:confirm-response', confirmId, approved),
     testProvider: () => invoke('ai:test-provider'),
+    listModels: (providerId: string) => invoke('ai:list-models', providerId),
     generateTitle: (msg: string) => invoke('ai:generate-title', msg),
     captureScreen: () => invoke('ai:capture-screen'),
     transcribe: (audioBase64: string, mimeType: string) => invoke('ai:transcribe', audioBase64, mimeType),

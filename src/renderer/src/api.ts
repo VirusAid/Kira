@@ -12,6 +12,7 @@ interface KiraBridge {
     abort: (requestId: string) => Promise<void>
     confirm: (confirmId: string, approved: boolean) => Promise<void>
     testProvider: () => Promise<{ ok: boolean; message: string }>
+    listModels: (providerId: string) => Promise<string[]>
     generateTitle: (msg: string) => Promise<string>
     captureScreen: () => Promise<string>
     transcribe: (audioBase64: string, mimeType: string) => Promise<{ ok: boolean; text: string; error?: string }>

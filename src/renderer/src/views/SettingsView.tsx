@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import {
   Cpu, User, Mic, Palette, Sliders, Download, Upload, Check, Loader2,
-  ExternalLink, KeyRound, Zap
+  ExternalLink, KeyRound, Zap, RefreshCw
 } from 'lucide-react'
 import { useAppStore } from '@/state/appStore'
 import { kira } from '@/api'
@@ -105,6 +105,17 @@ interface SectionProps {
 function ModelsSection({ settings, update }: SectionProps) {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
+  const [liveModels, setLiveModels] = useState<Record<string, string[]>>({})
+  const [loadingModels, setLoadingModels] = useState('')
+
+  const fetchModels = async (id: AIProviderId): Promise<void> => {
+    setLoadingModels(id)
+    const list = await kira.ai.listModels(id)
+    if (list.length) setLiveModels((m) => ({ ...m, [id]: list }))
+    setLoadingModels('')
+  }
+  // при выборе провайдера подгружаем его полный список моделей
+  useEffect(() => { if (settings.provider) void fetchModels(settings.provider) }, [settings.provider])
 
   const setProvider = (id: AIProviderId): void => update({ provider: id })
   const setProviderCfg = (id: AIProviderId, cfg: Partial<KiraSettings['providers'][AIProviderId]>): void => {
@@ -174,11 +185,24 @@ function ModelsSection({ settings, update }: SectionProps) {
                   )}
                   <div>
                     <label className="muted" style={{ display: 'block', marginBottom: 5 }}>Модель</label>
-                    <input list={`models-${p.id}`} style={{ width: '100%' }}
-                      value={cfg.model} onChange={(e) => setProviderCfg(p.id, { model: e.target.value })} />
+                    <div style={{ display: 'flex', gap: 8 }}>
+                      <input list={`models-${p.id}`} style={{ flex: 1 }} placeholder="Начни печатать для поиска…"
+                        value={cfg.model} onChange={(e) => setProviderCfg(p.id, { model: e.target.value })} />
+                      <button className="btn btn-ghost press" title="Загрузить все модели провайдера"
+                        onClick={() => void fetchModels(p.id)} disabled={loadingModels === p.id}>
+                        {loadingModels === p.id
+                          ? <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} />
+                          : <RefreshCw size={14} />}
+                      </button>
+                    </div>
                     <datalist id={`models-${p.id}`}>
-                      {p.models.map((m) => <option key={m} value={m} />)}
+                      {(liveModels[p.id]?.length ? liveModels[p.id] : p.models).map((m) => <option key={m} value={m} />)}
                     </datalist>
+                    <div className="muted" style={{ fontSize: 11, marginTop: 4 }}>
+                      {liveModels[p.id]?.length
+                        ? `Доступно моделей: ${liveModels[p.id].length} — печатай для поиска в списке`
+                        : loadingModels === p.id ? 'Загружаю список моделей…' : 'Нажми ↻ чтобы подгрузить все модели провайдера'}
+                    </div>
                   </div>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                     <button className="btn btn-primary" style={{ padding: '8px 16px' }} onClick={() => void test()} disabled={testing}>
