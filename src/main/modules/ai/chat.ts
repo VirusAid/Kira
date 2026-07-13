@@ -13,7 +13,10 @@ import { logger } from '../logger'
 import { getSettings } from '../settings'
 import type { AIProviderId, AIRequest, ChatRole } from '../../../shared/types'
 
-const MAX_TOOL_ROUNDS = 8
+// Kira работает как полноценный агент прямо в чате/голосе: многошаговые задачи
+// выполняются до конца в рамках одного запроса. Лимит раундов инструментов
+// поднят, чтобы длинные автономные задачи доходили до результата.
+const MAX_TOOL_ROUNDS = 16
 
 /**
  * Действия РЕАЛЬНОГО управления интерфейсом (мышь/клавиатура) — после них Kira
