@@ -7,11 +7,12 @@
  */
 import { db } from '../db'
 import { newId } from '../ids'
-import { getSettings } from '../settings'
+import { getSettings, saveSettings } from '../settings'
 import { logger } from '../logger'
 import * as system from '../system'
 import * as files from '../files'
 import { runProtocolByName } from '../protocols'
+import { runAbilityByName, saveAbility, activeAbilities, abilitiesPromptBlock } from '../abilities'
 import type { ActionResult, MemoryCategory } from '../../../shared/types'
 
 // ─── Системный промпт ───────────────────────────────────────────────────────
@@ -33,8 +34,10 @@ click_text|название(НАДЁЖНО кликнуть по кнопке/с
   Управление мышью: сначала пробуй click_text по названию элемента (точнее). Если не нашёл — see_screen, оцени позицию в %, потом click. После действия see_screen сам придёт — проверь результат и при ошибке повтори.
 undo(отменить последнее файловое действие — перемещение/переименование/создание/копирование/запись/удаление)
 run_protocol|название · remember|категория|заголовок|текст (категории: preference/project/note/contact/fact/setting)
+run_ability|название/фраза(выполнить установленный навык — его инструкция придёт следующим сообщением, выполни её) · create_ability|название|инструкция|триггеры-через-запятую(когда пользователь просит «научись/запомни как делать X» — создай навык) · list_abilities
+update_profile|факт(запомнить в ПОСТОЯННЫЙ профиль устойчивое о пользователе: как обращаться, где работает, вкусы в музыке/кино, стиль общения, важных людей — то, что делает тебя персональной)
 
-Правила: выполняй сразу, безопасное — без переспросов; опасное система сама подтвердит; результаты read_*/search_* приходят следующим сообщением — используй их; важный факт о пользователе сохраняй через remember; пути в Windows-формате.
+Правила: выполняй сразу, безопасное — без переспросов; опасное система сама подтвердит; результаты read_*/search_* приходят следующим сообщением — используй их; важный факт о пользователе сохраняй через remember; когда просят научиться повторяемому действию — create_ability; пути в Windows-формате.
 `
 
 const ADDRESS_MAP: Record<string, string> = {
@@ -90,7 +93,8 @@ export function buildSystemPrompt(options?: { withTools?: boolean; extraContext?
     'Выполнив действие, отвечай КОРОТКО: «Готово», «Сделала», «Открыла», «Включаю» — без описания процесса ' +
     '(не говори «открываю браузер и захожу на…»). Никаких списков и разметки в речи.\n' +
     'ЛИЧНОСТЬ: ты Джарвис-класса ассистент, а не «включалка ютуба». Веди диалог, думай, предлагай, шути в меру. ' +
-    'Запоминай важное о пользователе через remember (привычки, предпочтения, работа, люди, стиль) и используй в будущем.\n' +
+    'Запоминай важное: разовые факты — remember; устойчивое о личности пользователя (как обращаться, работа, ' +
+    'вкусы, стиль, близкие люди) — update_profile. Со временем становись всё более «своей», опираясь на профиль.\n' +
     'МЕДИА: «включи музыку/фильм/видео» → ТОЛЬКО play_music/play_video (сразу открывают ролик). ' +
     'НИКОГДА не открывай для этого Гугл/страницу поиска (open_search/search_web). ' +
     'search_web — только для фактов/новостей/«загугли»: результаты придут тебе, прочитай и ответь по сути.\n' +
@@ -98,6 +102,11 @@ export function buildSystemPrompt(options?: { withTools?: boolean; extraContext?
     'Конкретный сайт → open_url с точным адресом; программу → open_app точным именем. ' +
     'Не открывай случайное — если не уверена в адресе, уточни или используй search_web. ' +
     'После действий на экране приходит скриншот — проверь результат и при ошибке исправься.\n' +
+    'ДОВОДИ ДО КОНЦА (Agent Mode): если задача из нескольких шагов — выполняй их подряд в одном ходу, не останавливаясь ' +
+    'на полпути и не спрашивая «продолжать ли», пока цель не достигнута. После каждого действия проверяй результат; ' +
+    'если шаг не удался — попробуй другой способ (другое имя окна/элемента, иной путь), а не сдавайся. ' +
+    'Финальное короткое подтверждение давай ТОЛЬКО когда задача действительно выполнена целиком. ' +
+    'Переспрашивай лишь при реальной неоднозначности или перед необратимым/опасным.\n' +
     'Если в начале сообщения есть пометка [голос звучит …] — это тон пользователя; подстройся мягко, но её не упоминай.'
 
   const parts = [
@@ -109,6 +118,7 @@ export function buildSystemPrompt(options?: { withTools?: boolean; extraContext?
     profileBlock,
     integrationsBlock,
     memoryBlock,
+    abilitiesPromptBlock(),
     options?.withTools !== false ? TOOL_GUIDE : '',
     options?.extraContext ?? ''
   ]
@@ -353,6 +363,26 @@ export async function executeAction(a: ParsedAction): Promise<ActionResult> {
         return notionCreate(a.args[0] ?? '', a.args.slice(1).join('|'))
       }
       case 'run_protocol': return runProtocolByName(a.args[0] ?? '')
+      case 'run_ability': return runAbilityByName(a.args.join(' ').trim() || (a.args[0] ?? ''))
+      case 'create_ability': {
+        const name = a.args[0] ?? ''
+        const instructions = a.args[1] ?? ''
+        if (!name.trim() || !instructions.trim()) {
+          return { ok: false, message: 'Нужны название и инструкция навыка' }
+        }
+        const triggers = (a.args[2] ?? '').split(/[,;]+/).map((t) => t.trim()).filter(Boolean)
+        const created = saveAbility({ name, instructions, description: instructions.slice(0, 200), triggers, source: 'user' })
+        return { ok: true, message: `Навык «${created.name}» создан и готов к использованию` }
+      }
+      case 'list_abilities': {
+        const list = activeAbilities()
+        return {
+          ok: true,
+          message: list.length ? `Навыков: ${list.length}` : 'Навыков пока нет',
+          data: list.map((ab) => `• ${ab.name}: ${ab.description}`).join('\n')
+        }
+      }
+      case 'update_profile': return updateProfile(a.args.join(' ').trim() || (a.args[0] ?? ''))
       case 'remember': return remember(a.args[0] as MemoryCategory, a.args[1] ?? '', a.args.slice(2).join('|'))
       default:
         return { ok: false, message: `Неизвестное действие: ${a.name}` }
@@ -361,6 +391,25 @@ export async function executeAction(a: ParsedAction): Promise<ActionResult> {
     logger.error('kira', `Ошибка действия ${a.name}: ${(err as Error).message}`)
     return { ok: false, message: (err as Error).message }
   }
+}
+
+/**
+ * Дополнить постоянный профиль пользователя (личность, работа, вкусы, стиль) —
+ * то, что делает Kira по-настоящему персональной и хранится между сессиями.
+ */
+function updateProfile(fact: string): ActionResult {
+  const f = fact.trim().replace(/\s+/g, ' ')
+  if (!f) return { ok: false, message: 'Пустой факт для профиля' }
+  const s = getSettings()
+  const cur = (s.userProfile || '').trim()
+  if (cur.toLowerCase().includes(f.toLowerCase())) return { ok: true, message: 'Уже знаю это о тебе' }
+  const line = /^[•\-*]/.test(f) ? f.replace(/^[•\-*]\s*/, '• ') : `• ${f}`
+  let next = cur ? cur + '\n' + line : line
+  // держим профиль компактным — храним последние ~2500 символов
+  if (next.length > 2500) next = '…\n' + next.slice(next.length - 2400)
+  saveSettings({ ...s, userProfile: next })
+  logger.info('kira', 'Профиль пользователя дополнен')
+  return { ok: true, message: 'Запомнила о тебе' }
 }
 
 function remember(category: MemoryCategory, title: string, content: string): ActionResult {

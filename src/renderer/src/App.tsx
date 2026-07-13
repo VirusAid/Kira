@@ -8,10 +8,12 @@ import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { VoiceOverlay } from '@/components/VoiceOverlay'
 import { ImmersiveVoice } from '@/components/ImmersiveVoice'
 import { Onboarding } from '@/components/Onboarding'
+import { AiActions } from '@/components/AiActions'
 import { HomeView } from '@/views/HomeView'
 import { ChatView } from '@/views/ChatView'
 import { ProjectsView } from '@/views/ProjectsView'
 import { ProtocolsView } from '@/views/ProtocolsView'
+import { AbilitiesView } from '@/views/AbilitiesView'
 import { MemoryView } from '@/views/MemoryView'
 import { FilesView } from '@/views/FilesView'
 import { AutomationView } from '@/views/AutomationView'
@@ -21,7 +23,7 @@ import { SettingsView } from '@/views/SettingsView'
 import { LogsView } from '@/views/LogsView'
 import { useAppStore } from '@/state/appStore'
 import { useChatStore } from '@/state/chatStore'
-import { useLogStore, useMemoryStore, useProjectStore, useProtocolStore, useAutomationStore } from '@/state/dataStores'
+import { useLogStore, useMemoryStore, useProjectStore, useProtocolStore, useAutomationStore, useAbilityStore } from '@/state/dataStores'
 import { useVoice } from '@/voice/useVoice'
 import { speakOnce } from '@/voice/speaker'
 import { kira } from '@/api'
@@ -44,6 +46,7 @@ export default function App() {
     void useProjectStore.getState().load()
     void useProtocolStore.getState().load()
     void useAutomationStore.getState().load()
+    void useAbilityStore.getState().load()
 
     // подтверждения опасных действий от Kira
     const offConfirm = kira.on('ai:confirm', (payload) => {
@@ -148,6 +151,7 @@ export default function App() {
             {view === 'chat' && <ChatView />}
             {view === 'projects' && <ProjectsView />}
             {view === 'protocols' && <ProtocolsView />}
+            {view === 'abilities' && <AbilitiesView />}
             {view === 'memory' && <MemoryView />}
             {view === 'files' && <FilesView />}
             {view === 'automation' && <AutomationView />}
@@ -163,6 +167,7 @@ export default function App() {
       {!settings.onboarded && <Onboarding onDone={() => useAppStore.getState().loadSettings()} />}
       <GlobalSearch />
       <ConfirmDialog />
+      <AiActions />
       {voice.state !== 'off' && voiceImmersive ? (
         <ImmersiveVoice
           state={voice.state}

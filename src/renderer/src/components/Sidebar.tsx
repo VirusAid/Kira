@@ -1,7 +1,7 @@
 /** Левая навигационная панель. */
 import {
   Home, MessageSquare, FolderKanban, Zap, Brain,
-  HardDrive, Clock, Settings, ScrollText, Mic, MicOff, Activity, Plug
+  HardDrive, Clock, Settings, ScrollText, Mic, MicOff, Activity, Plug, Sparkles
 } from 'lucide-react'
 import { useAppStore, type ViewId } from '@/state/appStore'
 import type { VoiceState } from '@/voice/useVoice'
@@ -11,6 +11,7 @@ const NAV: { id: ViewId; label: string; icon: typeof Home }[] = [
   { id: 'chat', label: 'Чат', icon: MessageSquare },
   { id: 'projects', label: 'Проекты', icon: FolderKanban },
   { id: 'protocols', label: 'Протоколы', icon: Zap },
+  { id: 'abilities', label: 'Навыки', icon: Sparkles },
   { id: 'memory', label: 'Память', icon: Brain },
   { id: 'files', label: 'Файлы', icon: HardDrive },
   { id: 'automation', label: 'Автоматизация', icon: Clock },

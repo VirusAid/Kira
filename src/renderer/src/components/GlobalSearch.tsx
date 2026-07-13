@@ -1,6 +1,6 @@
 /** Глобальный поиск (Ctrl+K) — по чатам, проектам, памяти, протоколам, логам. */
 import { useEffect, useRef, useState } from 'react'
-import { Search, MessageSquare, FolderKanban, Brain, Zap, ScrollText, FileText } from 'lucide-react'
+import { Search, MessageSquare, FolderKanban, Brain, Zap, ScrollText, FileText, Sparkles } from 'lucide-react'
 import { kira } from '@/api'
 import { useAppStore } from '@/state/appStore'
 import { useChatStore } from '@/state/chatStore'
@@ -12,6 +12,7 @@ const TYPE_ICON: Record<SearchResult['type'], typeof Search> = {
   project: FolderKanban,
   memory: Brain,
   protocol: Zap,
+  ability: Sparkles,
   log: ScrollText,
   file: FileText
 }
@@ -22,6 +23,7 @@ const TYPE_LABEL: Record<SearchResult['type'], string> = {
   project: 'Проект',
   memory: 'Память',
   protocol: 'Протокол',
+  ability: 'Навык',
   log: 'Лог',
   file: 'Файл'
 }
@@ -74,6 +76,8 @@ export function GlobalSearch() {
         setView('memory'); break
       case 'protocol':
         setView('protocols'); break
+      case 'ability':
+        setView('abilities'); break
       case 'log':
         setView('logs'); break
       case 'file':

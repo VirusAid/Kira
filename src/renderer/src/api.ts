@@ -1,7 +1,7 @@
 /** Типизированный доступ к мосту window.kira (preload). */
 import type {
   ActionResult, AIRequest, Automation, Chat, ChatMessage, FileItem, KiraSettings,
-  LogEntry, MemoryEntry, ProcessInfo, Project, Protocol, SearchResult, SystemStats
+  LogEntry, MemoryEntry, ProcessInfo, Project, Protocol, Ability, SearchResult, SystemStats
 } from '@shared/types'
 
 interface KiraBridge {
@@ -15,6 +15,11 @@ interface KiraBridge {
     generateTitle: (msg: string) => Promise<string>
     captureScreen: () => Promise<string>
     transcribe: (audioBase64: string, mimeType: string) => Promise<{ ok: boolean; text: string; error?: string }>
+    quick: (instruction: string, text: string) => Promise<{ ok: boolean; result: string; error?: string }>
+    replaceSelection: (text: string) => Promise<ActionResult>
+    menuStatus: () => Promise<boolean>
+    menuInstall: () => Promise<ActionResult>
+    menuRemove: () => Promise<ActionResult>
   }
   tts: {
     voices: () => Promise<{
@@ -103,6 +108,15 @@ interface KiraBridge {
     list: () => Promise<Automation[]>
     save: (automation: Partial<Automation>) => Promise<Automation>
     delete: (id: string) => Promise<boolean>
+  }
+  abilities: {
+    list: () => Promise<Ability[]>
+    save: (ability: Partial<Ability>) => Promise<Ability>
+    delete: (id: string) => Promise<boolean>
+    run: (name: string) => Promise<ActionResult>
+    draft: (text: string) => Promise<Partial<Ability>>
+    export: (id: string) => Promise<ActionResult>
+    import: () => Promise<Ability | null>
   }
   logs: {
     list: (limit?: number) => Promise<LogEntry[]>

@@ -12,8 +12,21 @@ import { initDiscordMonitor, shutdownDiscordMonitor } from './modules/discord'
 import { flushAllSync } from './modules/db'
 import { logger } from './modules/logger'
 import { getSettings } from './modules/settings'
+import { extractAiFile, extractFileText } from './modules/shellIntegration'
 
 let mainWindow: BrowserWindow | null = null
+let pendingAiFile: string | null = extractAiFile(process.argv)
+
+/** Открыть меню AI Actions для файла из контекстного меню Проводника. */
+async function openAiFile(path: string): Promise<void> {
+  if (!mainWindow) return
+  if (mainWindow.isMinimized()) mainWindow.restore()
+  if (!mainWindow.isVisible()) mainWindow.show()
+  mainWindow.focus()
+  const text = await extractFileText(path)
+  mainWindow.webContents.send('ai-actions:open',
+    text || `Файл: ${path}\n(не удалось прочитать содержимое)`)
+}
 
 function createWindow(): void {
   mainWindow = new BrowserWindow({
@@ -59,17 +72,25 @@ function createWindow(): void {
   } else {
     void mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  // если Kira запущена из контекстного меню файла — открыть AI Actions
+  mainWindow.webContents.once('did-finish-load', () => {
+    if (pendingAiFile) { void openAiFile(pendingAiFile); pendingAiFile = null }
+  })
 }
 
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
 } else {
-  app.on('second-instance', () => {
+  app.on('second-instance', (_e, argv) => {
     if (mainWindow) {
       if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
       mainWindow.focus()
     }
+    const filePath = extractAiFile(argv)
+    if (filePath) void openAiFile(filePath)
   })
 
   app.whenReady().then(() => {

@@ -38,6 +38,7 @@ export const DEFAULT_SETTINGS: KiraSettings = {
   launchOnStartup: false,
   memoryAutoSave: true,
   summonHotkey: 'Control+Shift+K',
+  aiActionsHotkey: 'Control+Shift+A',
   wakeWordEnabled: false,
   wakeWord: 'кира',
   proactiveEnabled: true,

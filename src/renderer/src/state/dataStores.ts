@@ -2,7 +2,7 @@
 import { create } from 'zustand'
 import { kira } from '@/api'
 import type {
-  Automation, LogEntry, MemoryEntry, Project, Protocol, ProtocolRunState
+  Automation, LogEntry, MemoryEntry, Project, Protocol, ProtocolRunState, Ability
 } from '@shared/types'
 
 // ─── Память ─────────────────────────────────────────────────────────────────
@@ -119,6 +119,29 @@ export const useAutomationStore = create<AutomationState>((set) => ({
   remove: async (id) => {
     await kira.automations.delete(id)
     set((s) => ({ automations: s.automations.filter((a) => a.id !== id) }))
+  }
+}))
+
+// ─── Навыки (Abilities) ─────────────────────────────────────────────────────
+
+interface AbilityState {
+  abilities: Ability[]
+  load: () => Promise<void>
+  save: (ability: Partial<Ability>) => Promise<Ability>
+  remove: (id: string) => Promise<void>
+}
+
+export const useAbilityStore = create<AbilityState>((set) => ({
+  abilities: [],
+  load: async () => set({ abilities: await kira.abilities.list() }),
+  save: async (ability) => {
+    const saved = await kira.abilities.save(ability)
+    set({ abilities: await kira.abilities.list() })
+    return saved
+  },
+  remove: async (id) => {
+    await kira.abilities.delete(id)
+    set((s) => ({ abilities: s.abilities.filter((a) => a.id !== id) }))
   }
 }))
 

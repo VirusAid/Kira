@@ -99,6 +99,26 @@ function checkMemory(): void {
   }
 }
 
+/** Долгий аптайм — мягко предлагаем перезагрузку (раз в день). */
+function checkUptime(): void {
+  const days = os.uptime() / 86400
+  const key = 'uptime-' + today()
+  if (days >= 3 && !notifiedToday.has(key)) {
+    notifiedToday.add(key)
+    say(`Компьютер работает без перезагрузки уже ${Math.floor(days)} дня. Перезагрузка может ускорить систему — сделать, когда будет удобно?`)
+  }
+}
+
+/** Поздняя ночь — заботливое напоминание отдохнуть (раз в сутки). */
+function checkLateNight(): void {
+  const h = new Date().getHours()
+  const key = 'night-' + today()
+  if (h >= 1 && h < 5 && !notifiedToday.has(key)) {
+    notifiedToday.add(key)
+    say('Уже глубокая ночь. Может, пора отдохнуть? Я никуда не денусь и буду ждать.', false)
+  }
+}
+
 async function tick(): Promise<void> {
   const s = getSettings()
   if (!s.proactiveEnabled) return
@@ -116,6 +136,8 @@ async function tick(): Promise<void> {
 
   await checkDisk()
   checkMemory()
+  checkUptime()
+  checkLateNight()
 }
 
 export function initPulse(getWindow: () => BrowserWindow | null): void {

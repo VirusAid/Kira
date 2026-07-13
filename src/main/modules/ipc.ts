@@ -8,7 +8,7 @@ import { newId } from './ids'
 import { logger } from './logger'
 import { getSettings, saveSettings } from './settings'
 import { handleChatRequest, abortRequest, confirmAction, generateChatTitle } from './ai/chat'
-import { testProvider } from './ai/client'
+import { testProvider, completeChat } from './ai/client'
 import { synthesize, EDGE_VOICES } from './ai/tts'
 import { silero, SILERO_SPEAKERS } from './ai/silero'
 import { wakeWord } from './ai/wakeword'
@@ -18,6 +18,8 @@ import { emotion } from './ai/emotion'
 import * as system from './system'
 import * as files from './files'
 import { runProtocol, stopProtocol, duplicateProtocol } from './protocols'
+import { listAbilities, saveAbility, deleteAbility, runAbilityByName, draftFromDescription } from './abilities'
+import { isFileMenuInstalled, installFileMenu, removeFileMenu } from './shellIntegration'
 import { rearmAutomation, removeAutomationTrigger } from './automation'
 import { registerHotkey } from './window'
 import { addReminder, listReminders, deleteReminder } from './reminders'
@@ -28,7 +30,7 @@ import { integrationStatus, connectGoogle, calendarToday, gmailList, discordSend
 import { restartDiscordMonitor, verifyDiscordToken } from './discord'
 import type {
   AIRequest, Automation, Chat, ChatMessage, KiraSettings,
-  MemoryEntry, Project, Protocol
+  MemoryEntry, Project, Protocol, Ability
 } from '../../shared/types'
 
 /**
@@ -337,6 +339,78 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
       return null
     }
   })
+
+  // ── Навыки (Abilities / Skills) ──
+  ipcMain.handle('abilities:list', () => listAbilities())
+  ipcMain.handle('abilities:save', (_e, ability: Partial<Ability> & { id?: string }) => saveAbility(ability))
+  ipcMain.handle('abilities:delete', (_e, id: string) => deleteAbility(id))
+  ipcMain.handle('abilities:run', (_e, name: string) => runAbilityByName(name))
+  ipcMain.handle('abilities:draft', (_e, text: string) => draftFromDescription(text))
+  ipcMain.handle('abilities:export', async (_e, id: string) => {
+    const ability = db().abilities.get(id)
+    if (!ability) return { ok: false, message: 'Навык не найден' }
+    const win = getWindow()
+    if (!win) return { ok: false, message: 'Нет окна' }
+    const result = await dialog.showSaveDialog(win, {
+      defaultPath: `${ability.name}.kira-skill.json`,
+      filters: [{ name: 'Kira Skill', extensions: ['json'] }]
+    })
+    if (result.canceled || !result.filePath) return { ok: false, message: 'Отменено' }
+    await files.writeTextFile(result.filePath, JSON.stringify(ability, null, 2))
+    return { ok: true, message: `Экспортировано: ${result.filePath}` }
+  })
+  ipcMain.handle('abilities:import', async () => {
+    const win = getWindow()
+    if (!win) return null
+    const result = await dialog.showOpenDialog(win, {
+      filters: [{ name: 'Kira Skill', extensions: ['json'] }],
+      properties: ['openFile']
+    })
+    if (result.canceled || !result.filePaths[0]) return null
+    try {
+      const raw = JSON.parse(await files.readTextFile(result.filePaths[0]))
+      return saveAbility({
+        name: raw.name,
+        description: raw.description,
+        instructions: raw.instructions,
+        triggers: raw.triggers,
+        icon: raw.icon,
+        enabled: true,
+        source: 'imported'
+      })
+    } catch {
+      return null
+    }
+  })
+
+  // ── AI Actions (действия по выделенному тексту) ──
+  ipcMain.handle('ai:quick', async (_e, instruction: string, text: string) => {
+    try {
+      const answer = await completeChat([
+        {
+          role: 'system',
+          content:
+            'Ты — быстрый ассистент. Выполни ОДНО действие над текстом пользователя и верни ТОЛЬКО результат — ' +
+            'без пояснений, без вступлений, без кавычек вокруг ответа. Сохраняй смысл и, если не сказано иначе, ' +
+            'отвечай на языке исходного текста.'
+        },
+        { role: 'user', content: `${instruction}\n\nТекст:\n${text}` }
+      ])
+      return { ok: true, result: answer.trim() }
+    } catch (err) {
+      return { ok: false, result: '', error: (err as Error).message }
+    }
+  })
+  ipcMain.handle('ai-actions:replace', async (_e, text: string) => {
+    system.clipboardWrite(text)
+    await new Promise((r) => setTimeout(r, 80))
+    return system.pressKeys('^v')
+  })
+
+  // ── Интеграция с Проводником (контекстное меню файлов) ──
+  ipcMain.handle('shell:menu-status', () => isFileMenuInstalled())
+  ipcMain.handle('shell:menu-install', () => installFileMenu())
+  ipcMain.handle('shell:menu-remove', () => removeFileMenu())
 
   // ─── Автоматизация ────────────────────────────────────────────────────────
   ipcMain.handle('automations:list', () => db().automations.all())

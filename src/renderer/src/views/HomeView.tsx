@@ -1,9 +1,9 @@
 /** Главный экран: приветствие, статистика, активные задачи, быстрый доступ. */
 import { useEffect, useMemo } from 'react'
-import { MessageSquare, FolderKanban, Zap, Brain, ArrowRight, Play } from 'lucide-react'
+import { MessageSquare, FolderKanban, Zap, Brain, ArrowRight, Play, Sparkles } from 'lucide-react'
 import { useAppStore } from '@/state/appStore'
 import { useChatStore } from '@/state/chatStore'
-import { useProjectStore, useProtocolStore, useMemoryStore, useLogStore } from '@/state/dataStores'
+import { useProjectStore, useProtocolStore, useMemoryStore, useLogStore, useAbilityStore } from '@/state/dataStores'
 import { KiraEmblem } from '@/components/KiraEmblem'
 
 export function HomeView() {
@@ -11,6 +11,7 @@ export function HomeView() {
   const { chats, openChat, newChat } = useChatStore()
   const projects = useProjectStore((s) => s.projects)
   const { protocols, run } = useProtocolStore()
+  const abilities = useAbilityStore((s) => s.abilities)
   const memory = useMemoryStore((s) => s.entries)
   const logs = useLogStore((s) => s.logs)
 
@@ -53,6 +54,8 @@ export function HomeView() {
           onClick={() => setView('projects')} />
         <StatCard icon={<Zap size={18} />} value={protocols.length} label="протоколов"
           onClick={() => setView('protocols')} />
+        <StatCard icon={<Sparkles size={18} />} value={abilities.length} label="навыков"
+          onClick={() => setView('abilities')} />
         <StatCard icon={<Brain size={18} />} value={memory.length} label="записей памяти"
           onClick={() => setView('memory')} />
         {stats && (

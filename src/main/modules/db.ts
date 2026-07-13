@@ -7,6 +7,7 @@ import type {
   Project,
   Protocol,
   Automation,
+  Ability,
   LogEntry
 } from '../../shared/types'
 
@@ -17,6 +18,7 @@ let _db: {
   projects: Collection<Project>
   protocols: Collection<Protocol>
   automations: Collection<Automation>
+  abilities: Collection<Ability>
   logs: Collection<LogEntry>
 } | null = null
 
@@ -29,6 +31,7 @@ export function db() {
       projects: new Collection<Project>('projects'),
       protocols: new Collection<Protocol>('protocols'),
       automations: new Collection<Automation>('automations'),
+      abilities: new Collection<Ability>('abilities'),
       logs: new Collection<LogEntry>('logs')
     }
   }
@@ -44,5 +47,6 @@ export function flushAllSync(): void {
   _db.projects.flushSync()
   _db.protocols.flushSync()
   _db.automations.flushSync()
+  _db.abilities.flushSync()
   _db.logs.flushSync()
 }

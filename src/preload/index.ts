@@ -25,7 +25,12 @@ const api = {
     testProvider: () => invoke('ai:test-provider'),
     generateTitle: (msg: string) => invoke('ai:generate-title', msg),
     captureScreen: () => invoke('ai:capture-screen'),
-    transcribe: (audioBase64: string, mimeType: string) => invoke('ai:transcribe', audioBase64, mimeType)
+    transcribe: (audioBase64: string, mimeType: string) => invoke('ai:transcribe', audioBase64, mimeType),
+    quick: (instruction: string, text: string) => invoke('ai:quick', instruction, text),
+    replaceSelection: (text: string) => invoke('ai-actions:replace', text),
+    menuStatus: () => invoke('shell:menu-status'),
+    menuInstall: () => invoke('shell:menu-install'),
+    menuRemove: () => invoke('shell:menu-remove')
   },
 
   tts: {
@@ -125,6 +130,16 @@ const api = {
     list: () => invoke('automations:list'),
     save: (automation: unknown) => invoke('automations:save', automation),
     delete: (id: string) => invoke('automations:delete', id)
+  },
+
+  abilities: {
+    list: () => invoke('abilities:list'),
+    save: (ability: unknown) => invoke('abilities:save', ability),
+    delete: (id: string) => invoke('abilities:delete', id),
+    run: (name: string) => invoke('abilities:run', name),
+    draft: (text: string) => invoke('abilities:draft', text),
+    export: (id: string) => invoke('abilities:export', id),
+    import: () => invoke('abilities:import')
   },
 
   logs: {

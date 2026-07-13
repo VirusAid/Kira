@@ -4,7 +4,7 @@ import { kira } from '@/api'
 import type { KiraSettings, SystemStats } from '@shared/types'
 
 export type ViewId =
-  | 'home' | 'chat' | 'projects' | 'protocols' | 'memory'
+  | 'home' | 'chat' | 'projects' | 'protocols' | 'abilities' | 'memory'
   | 'files' | 'automation' | 'integrations' | 'systems' | 'settings' | 'logs'
 
 interface PendingConfirm {

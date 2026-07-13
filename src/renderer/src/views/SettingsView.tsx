@@ -664,7 +664,51 @@ function BehaviorSection({ settings, update }: SectionProps) {
             </span>
           </div>
         </Field>
+
+        <Field label="AI Actions по выделенному тексту">
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <input style={{ width: 220 }} value={settings.aiActionsHotkey}
+              onChange={(e) => update({ aiActionsHotkey: e.target.value })}
+              placeholder="Control+Shift+A" />
+            <span className="muted" style={{ fontSize: 11.5 }}>
+              Выдели текст в любом окне и нажми — меню Kira (перевести/объяснить/переписать…). Пусто — выключить.
+            </span>
+          </div>
+        </Field>
+
+        <Field label="AI Actions в Проводнике">
+          <ShellMenuControl />
+        </Field>
       </div>
+    </div>
+  )
+}
+
+function ShellMenuControl() {
+  const [installed, setInstalled] = useState<boolean | null>(null)
+  const [busy, setBusy] = useState(false)
+  const [msg, setMsg] = useState('')
+
+  useEffect(() => { void kira.ai.menuStatus().then(setInstalled) }, [])
+
+  const toggle = async (): Promise<void> => {
+    setBusy(true)
+    const r = installed ? await kira.ai.menuRemove() : await kira.ai.menuInstall()
+    setBusy(false)
+    setMsg(r.message)
+    setInstalled(await kira.ai.menuStatus())
+  }
+
+  return (
+    <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+      <button className={installed ? 'btn btn-ghost' : 'btn btn-primary'} onClick={() => void toggle()} disabled={busy}>
+        {busy ? <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> : null}
+        {installed ? 'Убрать из меню Проводника' : 'Добавить в меню Проводника'}
+      </button>
+      <span className="muted" style={{ fontSize: 11.5, maxWidth: 420 }}>
+        Пункт «Kira: действия» в контекстном меню файлов (ПКМ по файлу) — открывает меню
+        AI Actions по содержимому. {msg && `· ${msg}`}
+      </span>
     </div>
   )
 }
@@ -680,7 +724,8 @@ function DataSection() {
       memory: await kira.memory.list(),
       projects: await kira.projects.list(),
       protocols: await kira.protocols.list(),
-      automations: await kira.automations.list()
+      automations: await kira.automations.list(),
+      abilities: await kira.abilities.list()
     }
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
     const url = URL.createObjectURL(blob)
@@ -706,6 +751,7 @@ function DataSection() {
         for (const p of data.projects ?? []) await kira.projects.save(p)
         for (const p of data.protocols ?? []) await kira.protocols.save(p)
         for (const a of data.automations ?? []) await kira.automations.save(a)
+        for (const ab of data.abilities ?? []) await kira.abilities.save(ab)
         setStatus('Импорт завершён. Перезапусти Kira для применения.')
       } catch {
         setStatus('Ошибка импорта: неверный формат файла')

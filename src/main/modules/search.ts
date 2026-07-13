@@ -63,6 +63,13 @@ export async function globalSearch(query: string, limit = 40): Promise<SearchRes
     }
   }
 
+  for (const ab of store.abilities.all()) {
+    if (results.length >= limit) break
+    if (`${ab.name} ${ab.description} ${ab.triggers.join(' ')}`.toLowerCase().includes(q)) {
+      results.push({ type: 'ability', id: ab.id, title: ab.name, snippet: snippet(ab.description || ab.name, q) })
+    }
+  }
+
   for (const l of store.logs.all().slice(-500)) {
     if (results.length >= limit) break
     if (l.message.toLowerCase().includes(q)) {

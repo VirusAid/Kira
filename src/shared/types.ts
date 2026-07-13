@@ -135,6 +135,32 @@ export interface ProtocolRunState {
   error?: string
 }
 
+// ─── Навыки (Abilities / Skills) ────────────────────────────────────────────
+//
+// Навык — переиспользуемая способность Kira, описанная обычным языком.
+// Инструкции навыка инжектятся в системный промпт, поэтому Kira выполняет их
+// своим обычным агентным циклом (всеми инструментами) — отдельный движок не
+// нужен. «Skills» = экспорт/импорт навыков файлом (.kira-skill.json).
+
+export interface Ability {
+  id: string
+  name: string
+  /** Что делает навык — понятным языком (видит пользователь). */
+  description: string
+  /** Как именно Kira должна это выполнять — инструкция для модели. */
+  instructions: string
+  /** Фразы, по которым Kira распознаёт запрос навыка. */
+  triggers: string[]
+  icon: string
+  enabled: boolean
+  /** user — создан пользователем/Kira; imported — установлен из файла. */
+  source: 'user' | 'imported'
+  createdAt: number
+  updatedAt: number
+  lastRunAt?: number
+  runCount: number
+}
+
 // ─── Автоматизация ──────────────────────────────────────────────────────────
 
 export type AutomationTriggerType = 'schedule' | 'app_start' | 'file_watch'
@@ -213,6 +239,8 @@ export interface KiraSettings {
   memoryAutoSave: boolean
   /** Глобальная горячая клавиша вызова Kira (Electron accelerator), '' — выкл */
   summonHotkey: string
+  /** Горячая клавиша AI Actions по выделенному тексту, '' — выкл */
+  aiActionsHotkey: string
   /** Режим слова-активатора: реагировать только на фразы со словом «Кира» */
   wakeWordEnabled: boolean
   /** Само слово активации */
@@ -275,7 +303,7 @@ export interface SystemStats {
 // ─── Поиск ──────────────────────────────────────────────────────────────────
 
 export interface SearchResult {
-  type: 'chat' | 'message' | 'project' | 'memory' | 'protocol' | 'log' | 'file'
+  type: 'chat' | 'message' | 'project' | 'memory' | 'protocol' | 'ability' | 'log' | 'file'
   id: string
   title: string
   snippet: string
