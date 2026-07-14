@@ -140,6 +140,12 @@ const api = {
     delete: (id: string) => invoke('automations:delete', id)
   },
 
+  core: {
+    commands: () => invoke('core:commands'),
+    execute: (id: string, args?: Record<string, string>) => invoke('core:execute', id, args),
+    history: (limit?: number) => invoke('core:history', limit)
+  },
+
   abilities: {
     list: () => invoke('abilities:list'),
     save: (ability: unknown) => invoke('abilities:save', ability),

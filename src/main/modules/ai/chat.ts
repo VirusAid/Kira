@@ -168,10 +168,10 @@ function send(win: BrowserWindow, channel: string, payload: unknown): void {
   if (!win.isDestroyed()) win.webContents.send(channel, payload)
 }
 
-async function askConfirmation(win: BrowserWindow, requestId: string, action: ParsedAction): Promise<boolean> {
+async function askConfirmation(win: BrowserWindow, requestId: string, description: string): Promise<boolean> {
   if (!getSettings().confirmDangerous) return true
   const confirmId = `${requestId}:${Math.random().toString(36).slice(2)}`
-  send(win, 'ai:confirm', { confirmId, requestId, description: describeAction(action) })
+  send(win, 'ai:confirm', { confirmId, requestId, description })
   return new Promise<boolean>((resolve) => {
     pendingConfirms.set(confirmId, resolve)
     // авто-отказ через 2 минуты
@@ -194,6 +194,33 @@ async function askConfirmation(win: BrowserWindow, requestId: string, action: Pa
 export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Promise<void> {
   const settings = getSettings()
   const endpoint = resolveEndpoint()
+
+  // ── KIRA CORE: Local First ──
+  // Запрос сперва идёт в Command Engine: локальные команды («открой браузер»,
+  // «громче», «скриншот»…) выполняются мгновенно и БЕЗ LLM. LLM — только
+  // AI Router для того, что ядро не смогло обработать само.
+  const lastUser = [...req.messages].reverse().find((m) => m.role === 'user')
+  if (!req.imageBase64 && req.withTools !== false && typeof lastUser?.content === 'string') {
+    try {
+      const { commandEngine, initKiraCore } = await import('../../core')
+      initKiraCore()
+      const local = await commandEngine.tryHandle(lastUser.content, {
+        source: 'chat',
+        confirm: (description) => askConfirmation(win, req.requestId, description)
+      })
+      if (local.handled && local.result) {
+        send(win, 'ai:action', {
+          requestId: req.requestId, name: local.actionId ?? 'core',
+          ok: local.result.ok, message: local.result.message
+        })
+        send(win, 'ai:done', { requestId: req.requestId, content: local.reply || 'Готово.', model: 'kira-core' })
+        logger.ai('core', `Локально (без LLM): ${local.actionId}`)
+        return
+      }
+    } catch (err) {
+      logger.warn('core', `Ядро пропустило запрос: ${(err as Error).message}`)
+    }
+  }
 
   const history: AIMessage[] = [
     { role: 'system', content: buildSystemPrompt({ withTools: req.withTools !== false }) },
@@ -254,7 +281,7 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
 
         let approved = true
         if (isDangerous(action)) {
-          approved = await askConfirmation(win, req.requestId, action)
+          approved = await askConfirmation(win, req.requestId, describeAction(action))
         }
         if (!approved) {
           results.push(`${action.name}: пользователь ОТКЛОНИЛ действие`)

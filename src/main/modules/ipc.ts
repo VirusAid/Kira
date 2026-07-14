@@ -431,6 +431,23 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     return system.pressKeys('^v')
   })
 
+  // ── Kira Core: реестр команд, прямой вызов, история действий ──
+  ipcMain.handle('core:commands', async () => {
+    const { registry, initKiraCore } = await import('../core')
+    initKiraCore()
+    return registry.list()
+  })
+  ipcMain.handle('core:execute', async (_e, id: string, args?: Record<string, string>) => {
+    const { commandEngine, initKiraCore } = await import('../core')
+    initKiraCore()
+    const res = await commandEngine.executeById(id, args ?? {}, { source: 'ui' })
+    return res ?? { ok: false, message: `Команда не найдена: ${id}` }
+  })
+  ipcMain.handle('core:history', async (_e, limit?: number) => {
+    const { actionHistory } = await import('../core')
+    return actionHistory.list(limit ?? 100)
+  })
+
   // ── Интеграция с Проводником (контекстное меню файлов) ──
   ipcMain.handle('shell:menu-status', () => isFileMenuInstalled())
   ipcMain.handle('shell:menu-install', () => installFileMenu())

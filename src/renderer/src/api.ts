@@ -117,6 +117,17 @@ interface KiraBridge {
     save: (automation: Partial<Automation>) => Promise<Automation>
     delete: (id: string) => Promise<boolean>
   }
+  core: {
+    commands: () => Promise<Array<{
+      id: string; title: string; description: string; category: string
+      aliases: string[]; examples: string[]; dangerous: boolean
+      args: Array<{ name: string; description: string; required?: boolean }>
+    }>>
+    execute: (id: string, args?: Record<string, string>) => Promise<ActionResult>
+    history: (limit?: number) => Promise<Array<{
+      id: string; actionId: string; title: string; ok: boolean; message: string; source: string; at: number
+    }>>
+  }
   abilities: {
     list: () => Promise<Ability[]>
     save: (ability: Partial<Ability>) => Promise<Ability>

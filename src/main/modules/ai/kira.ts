@@ -420,8 +420,21 @@ export async function executeAction(a: ParsedAction): Promise<ActionResult> {
       }
       case 'update_profile': return updateProfile(a.args.join(' ').trim() || (a.args[0] ?? ''))
       case 'remember': return remember(a.args[0] as MemoryCategory, a.args[1] ?? '', a.args.slice(2).join('|'))
-      default:
+      default: {
+        // AI Router → Action API: неизвестные протоколу команды ищем в реестре
+        // Kira Core. Новый Action становится доступен LLM без правки этого кода;
+        // LLM никогда не трогает систему напрямую — только через ядро.
+        const { commandEngine, registry, initKiraCore } = await import('../../core')
+        initKiraCore()
+        const coreAction = registry.resolve(a.name)
+        if (coreAction) {
+          const named: Record<string, string> = {}
+          coreAction.args.forEach((spec, i) => { if (a.args[i] != null) named[spec.name] = a.args[i] })
+          const res = await commandEngine.executeById(a.name, named, { source: 'llm' })
+          if (res) return res
+        }
         return { ok: false, message: `Неизвестное действие: ${a.name}` }
+      }
     }
   } catch (err) {
     logger.error('kira', `Ошибка действия ${a.name}: ${(err as Error).message}`)

@@ -11,6 +11,7 @@ import { initPulse, shutdownPulse } from './modules/pulse'
 import { initDiscordMonitor, shutdownDiscordMonitor } from './modules/discord'
 import { initTelegram, shutdownTelegram } from './modules/telegram'
 import { initTelegramUser, shutdownTelegramUser } from './modules/telegramUser'
+import { initKiraCore, coreFlushSync } from './core'
 import { flushAllSync } from './modules/db'
 import { logger } from './modules/logger'
 import { getSettings } from './modules/settings'
@@ -102,6 +103,7 @@ if (!gotLock) {
       callback(permission === 'media' || permission === 'clipboard-read')
     })
 
+    initKiraCore()
     registerIpc(() => mainWindow)
     createWindow()
     createTray(() => mainWindow)
@@ -145,6 +147,7 @@ app.on('before-quit', () => {
   shutdownTelegram()
   void shutdownTelegramUser()
   void import('./modules/ai/voskStt').then((m) => m.voskStt.shutdown())
+  coreFlushSync()
   destroyTray()
   destroyOverlay()
   flushAllSync()
