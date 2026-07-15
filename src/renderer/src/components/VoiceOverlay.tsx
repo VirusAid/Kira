@@ -1,7 +1,7 @@
 /** Плавающий индикатор голосового режима с живым анимированным ядром Kira. */
 import { Maximize2 } from 'lucide-react'
 import { KiraEmblem } from './KiraEmblem'
-import type { AvatarState } from './KiraAvatar'
+import type { AvatarState } from './KiraEmblem'
 import type { VoiceState } from '@/voice/useVoice'
 
 interface Props {

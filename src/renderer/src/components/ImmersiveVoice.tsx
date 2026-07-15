@@ -8,7 +8,7 @@ import { Minimize2, X } from 'lucide-react'
 import { KiraEmblem } from './KiraEmblem'
 import { useChatStore } from '@/state/chatStore'
 import type { VoiceState } from '@/voice/useVoice'
-import type { AvatarState } from './KiraAvatar'
+import type { AvatarState } from './KiraEmblem'
 
 interface Props {
   state: VoiceState

@@ -4,7 +4,7 @@
  * Заменяет прежний орб как основной символ ассистента.
  */
 import { useId } from 'react'
-import type { AvatarState } from './KiraAvatar'
+export type AvatarState = 'idle' | 'listening' | 'thinking' | 'speaking'
 
 interface Props {
   size?: number

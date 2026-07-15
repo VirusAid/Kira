@@ -25,6 +25,7 @@ const cases: Array<[string, string]> = [
   ['открой youtube.com', 'open_url'], ['зайди на github.com', 'open_url'],
   ['включи музыку', 'play_music'], ['поставь трек Believer', 'play_music'],
   ['включи фильм Интерстеллар', 'play_video'], ['пауза', 'media_pause'],
+  ['выключи музыку', 'media_pause'], ['поставь музыку на паузу', 'media_pause'],
   ['следующий трек', 'media_next'], ['переключи трек', 'media_next'],
   ['предыдущий трек', 'media_prev'], ['громче', 'volume_up'],
   ['сделай потише', 'volume_down'], ['громкость 50', 'set_volume'],

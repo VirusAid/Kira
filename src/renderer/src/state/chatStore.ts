@@ -252,6 +252,10 @@ function bindListeners(): void {
     if (s.onAssistantSentence && s.streamText) {
       const tail = s.streamText.slice(ttsCursor).trim()
       if (tail.replace(/[^a-zа-яё0-9]/gi, '').length > 1) s.onAssistantSentence(tail)
+    } else if (s.onAssistantSentence && content && content !== '…') {
+      // ответ пришёл целиком без стрима (локальные команды Kira Core) — озвучиваем его
+      const brief = content.slice(0, 400).trim()
+      if (brief.replace(/[^a-zа-яё0-9]/gi, '').length > 1) s.onAssistantSentence(brief)
     }
     ttsCursor = 0
     store.setState((st) => ({

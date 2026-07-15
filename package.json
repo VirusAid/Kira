@@ -12,7 +12,7 @@
     "start": "electron-vite preview",
     "postinstall": "electron-builder install-app-deps",
     "dist": "electron-vite build && electron-builder --win",
-    "test:core": "esbuild tests/core.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=out/test-core.cjs && node out/test-core.cjs",
+    "test:core": "esbuild tests/core.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-core.cjs && node tests/.build/test-core.cjs",
     "prepare:standalone": "node scripts/prepare-standalone.mjs",
     "dist:standalone": "node scripts/prepare-standalone.mjs && electron-vite build && electron-builder --win"
   },

@@ -22,3 +22,6 @@ resources/*.zip
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+
+# Артефакты тестов
+tests/.build/

@@ -6,7 +6,7 @@
 import { useEffect, useState } from 'react'
 import { KiraEmblem } from './components/KiraEmblem'
 import { kira } from './api'
-import type { AvatarState } from './components/KiraAvatar'
+import type { AvatarState } from './components/KiraEmblem'
 
 type VoiceState = 'off' | 'listening' | 'recording' | 'transcribing' | 'thinking' | 'speaking'
 

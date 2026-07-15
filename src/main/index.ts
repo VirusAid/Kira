@@ -82,6 +82,15 @@ function createWindow(): void {
   })
 }
 
+// Защитная сетка: единичный сбой модуля (сеть, сайдкар, интеграция) не должен
+// ронять всё приложение — фиксируем в журнал и продолжаем работать.
+process.on('uncaughtException', (err) => {
+  try { logger.error('kira', `Неперехваченная ошибка: ${err.message}`) } catch { /* журнал недоступен */ }
+})
+process.on('unhandledRejection', (reason) => {
+  try { logger.error('kira', `Необработанный промис: ${String((reason as Error)?.message ?? reason).slice(0, 200)}`) } catch { /* ignore */ }
+})
+
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
