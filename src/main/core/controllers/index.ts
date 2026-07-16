@@ -75,6 +75,10 @@ export const FileController = {
     const err = await shell.openPath(resolved)
     return err ? { ok: false, message: err } : { ok: true, message: `Открыла ${resolved}` }
   },
+  openFile: async (path: string): Promise<ExecResult> => {
+    const err = await shell.openPath(path)
+    return err ? { ok: false, message: err } : { ok: true, message: `Открыла ${path}` }
+  },
   desktopPath: (name: string): string => join(app.getPath('desktop'), name)
 }
 
@@ -98,6 +102,7 @@ export const GitController = {
 
 export const SystemController = {
   screenshot: (): Promise<ExecResult> => sys.takeScreenshot(),
+  setBrightness: (percent: number): Promise<ExecResult> => sys.setBrightness(percent),
   weather: (): Promise<{ ok: boolean; temp?: number; desc?: string; city?: string }> =>
     sys.getWeather() as never,
   openSettings: async (): Promise<ExecResult> => {

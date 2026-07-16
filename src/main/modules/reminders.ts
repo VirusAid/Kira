@@ -44,6 +44,20 @@ export function parseWhen(spec: string): number | null {
     return now + ms
   }
 
+  // словесные формы без числа: «через час», «через полчаса», «через минуту»…
+  const word = s.match(/через\s+(полчаса|полтора часа|час|минуту|пару минут|пару часов)/)
+  if (word) {
+    const map: Record<string, number> = {
+      'полчаса': 30 * 60_000,
+      'полтора часа': 90 * 60_000,
+      'час': 3_600_000,
+      'минуту': 60_000,
+      'пару минут': 2 * 60_000,
+      'пару часов': 2 * 3_600_000
+    }
+    return now + map[word[1]]
+  }
+
   // «в HH:MM» (сегодня или завтра, если время уже прошло)
   const at = s.match(/(?:в|к)\s+(\d{1,2})[:.\s](\d{2})/)
   if (at) {
@@ -53,6 +67,19 @@ export function parseWhen(spec: string): number | null {
     d.setHours(h, m, 0, 0)
     if (s.includes('завтра') || d.getTime() <= now) d.setDate(d.getDate() + 1)
     return d.getTime()
+  }
+
+  // «в 9» / «завтра в 9 вечера» — час без минут
+  const atHour = s.match(/(?:в|к)\s+(\d{1,2})(?![:.\d])/)
+  if (atHour) {
+    let h = Number(atHour[1])
+    if (h >= 0 && h <= 23) {
+      if (s.includes('вечера') && h < 12) h += 12
+      const d = new Date()
+      d.setHours(h, 0, 0, 0)
+      if (s.includes('завтра') || d.getTime() <= now) d.setDate(d.getDate() + 1)
+      return d.getTime()
+    }
   }
 
   // «завтра» без времени → завтра 9:00

@@ -118,6 +118,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       createdAt: Date.now()
     }
     await kira.messages.append(userMsg)
+    ttsCursor = 0 // страховка: прошлый запрос мог умереть без done/error
     set((s) => ({ messages: [...s.messages, userMsg], streaming: true, streamText: '', actionEvents: [] }))
 
     // скриншот для «зрения»
@@ -188,6 +189,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       .slice(-16)
       .map((m) => ({ role: m.role, content: m.content }))
     if (!history.length) return
+    ttsCursor = 0
     set({ streaming: true, streamText: '', actionEvents: [] })
     currentRequestId = newLocalId()
     void kira.ai.chat({ requestId: currentRequestId, chatId: activeChatId, messages: history, withTools: true })

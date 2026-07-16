@@ -17,6 +17,14 @@ import type { KiraAction } from '../types'
 
 const APP_STOPWORDS = /(^| )(сайт|страницу|файл|папку|музыку|песню|трек|фильм|видео|звук|громкость|свет|окно|его|ее|это|мой|моя|мое)( |$)/
 
+/** Путь папки для create_folder — ЕДИНАЯ логика для execute и undo. */
+function folderPath(a: Record<string, string>): string {
+  const base = a.place?.includes('загрузк') ? knownFolder('загрузки')
+    : a.place?.includes('документ') ? knownFolder('документы')
+    : knownFolder('рабочий стол')
+  return /^[a-z]:\\/i.test(a.name ?? '') ? (a.name ?? '') : `${base}\\${a.name ?? ''}`
+}
+
 export const actions: KiraAction[] = [
   // ─── Браузер и веб ────────────────────────────────────────────────────────
   {
@@ -139,12 +147,24 @@ export const actions: KiraAction[] = [
     description: 'Ставит громкость в процентах (0–100)',
     category: 'media',
     aliases: ['громкость', 'volume'],
-    patterns: [/^(?:громкость|звук)\s+(?:на\s+)?(?<level>\d{1,3})(?:\s*%|\s+процентов)?$/],
-    examples: ['громкость 50'],
-    args: [{ name: 'level', description: 'Процент 0–100', required: true }],
-    validate: (a) => (Number(a.level) >= 0 && Number(a.level) <= 100 ? null : 'Громкость — число 0–100'),
-    execute: (a) => MediaController.setVolume(Number(a.level)),
-    confirmText: (a) => `Громкость ${a.level}%`
+    patterns: [
+      /^(?:громкость|звук)\s+(?:на\s+)?(?<level>\d{1,3})(?:\s*%|\s+процентов)?$/,
+      /^(?:громкость|звук)\s+на\s+(?<preset>максимум|полную|всю|минимум)$/
+    ],
+    examples: ['громкость 50', 'звук на максимум'],
+    args: [
+      { name: 'level', description: 'Процент 0–100' },
+      { name: 'preset', description: 'максимум/минимум' }
+    ],
+    validate: (a) => {
+      if (a.preset) return null
+      return Number(a.level) >= 0 && Number(a.level) <= 100 ? null : 'Громкость — число 0–100'
+    },
+    execute: (a) => {
+      const level = a.preset ? (a.preset === 'минимум' ? 0 : 100) : Number(a.level)
+      return MediaController.setVolume(level)
+    },
+    confirmText: (a) => (a.preset ? `Громкость на ${a.preset}` : `Громкость ${a.level}%`)
   },
   {
     id: 'mute',
@@ -315,14 +335,9 @@ export const actions: KiraAction[] = [
       { name: 'name', description: 'Имя папки', required: true },
       { name: 'place', description: 'Где создать' }
     ],
-    execute: (a) => {
-      const base = a.place?.includes('загрузк') ? knownFolder('загрузки')
-        : a.place?.includes('документ') ? knownFolder('документы')
-        : knownFolder('рабочий стол')
-      const path = /^[a-z]:\\/i.test(a.name) ? a.name : `${base}\\${a.name}`
-      return FileController.createFolder(path)
-    },
-    undo: (a) => FileController.deleteToTrash(FileController.desktopPath(a.name ?? '')),
+    execute: (a) => FileController.createFolder(folderPath(a)),
+    // отменяем ИМЕННО созданный путь (раньше undo всегда целил в рабочий стол)
+    undo: (a) => FileController.deleteToTrash(folderPath(a)),
     confirmText: () => 'Папка создана'
   },
   {
@@ -470,7 +485,71 @@ export const actions: KiraAction[] = [
     args: [{ name: 'app', description: 'Имя приложения', required: true }],
     softFail: true,
     validate: (a) => (APP_STOPWORDS.test(` ${a.app ?? ''} `) ? 'не похоже на имя приложения' : null),
-    execute: (a) => ApplicationController.launch(a.app ?? ''),
+    execute: async (a) => {
+      const r = await ApplicationController.launch(a.app ?? '')
+      if (r.ok) return r
+      // «открой ютуб»: не приложение, но известный сайт — открываем его
+      const site = await BrowserController.openUrl(a.app ?? '')
+      return site.ok ? site : r
+    },
     confirmText: () => 'Открываю'
+  },
+
+  // ─── Дополнительно: яркость, буфер, файл, отмена ──────────────────────────
+  {
+    id: 'set_brightness',
+    title: 'Яркость экрана',
+    description: 'Ставит яркость экрана в процентах (0–100)',
+    category: 'system',
+    aliases: ['яркость', 'brightness'],
+    patterns: [/^(?:яркость|поставь яркость|сделай яркость)\s+(?:на\s+)?(?<level>\d{1,3})(?:\s*%|\s+процентов)?$/],
+    examples: ['яркость 70'],
+    args: [{ name: 'level', description: 'Процент 0–100', required: true }],
+    validate: (a) => (Number(a.level) >= 0 && Number(a.level) <= 100 ? null : 'Яркость — число 0–100'),
+    execute: (a) => SystemController.setBrightness(Number(a.level)),
+    confirmText: (a) => `Яркость ${a.level}%`
+  },
+  {
+    id: 'clipboard_read',
+    title: 'Прочитать буфер обмена',
+    description: 'Показывает текущее содержимое буфера обмена',
+    category: 'clipboard',
+    aliases: ['буфер', 'clipboard'],
+    patterns: [/^(?:что(?:\s+сейчас)?\s+в\s+буфере(?:\s+обмена)?|прочитай\s+буфер(?:\s+обмена)?|покажи\s+буфер(?:\s+обмена)?)$/],
+    examples: ['что в буфере обмена'],
+    args: [],
+    execute: async () => {
+      const text = ClipboardController.read().trim()
+      return text
+        ? { ok: true, message: `В буфере: ${text.slice(0, 300)}`, data: text }
+        : { ok: true, message: 'Буфер обмена пуст' }
+    }
+  },
+  {
+    id: 'open_file',
+    title: 'Открыть файл',
+    description: 'Открывает файл программой по умолчанию',
+    category: 'files',
+    aliases: ['файл'],
+    patterns: [/^открой\s+файл\s+(?<path>.+)$/],
+    examples: ['открой файл C:\\doc.pdf'],
+    args: [{ name: 'path', description: 'Путь к файлу', required: true }],
+    softFail: true,
+    execute: (a) => FileController.openFile(a.path ?? ''),
+    confirmText: () => 'Открываю'
+  },
+  {
+    id: 'undo_last',
+    title: 'Отменить последнее действие',
+    description: 'Отменяет последнее отменяемое действие (папка, звук, файловые операции)',
+    category: 'system',
+    aliases: ['отмена', 'undo'],
+    patterns: [/^(?:отмени(?:\s+(?:последнее|это))?(?:\s+действие)?|отмена|верни\s+(?:как\s+было|обратно|назад))$/],
+    examples: ['отмени', 'верни как было'],
+    args: [],
+    execute: async (_a, ctx) => {
+      const { commandEngine } = await import('../engine')
+      return commandEngine.undoLast(ctx)
+    }
   }
 ]

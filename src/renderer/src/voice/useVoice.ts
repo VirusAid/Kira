@@ -52,6 +52,7 @@ export function useVoice() {
   const ttsQueueRef = useRef<string[]>([]) // очередь фраз на озвучку (потоковый голос)
   const ttsPlayingRef = useRef(false)
   const streamedRef = useRef(false) // озвучивали ли ответ по предложениям в этом стриме
+  const fillerSpokenRef = useRef(false) // «секунду…» — не чаще одного раза на запрос
 
   const setVoiceState = useCallback((s: VoiceState) => {
     stateRef.current = s
@@ -118,13 +119,19 @@ export function useVoice() {
         audio.playbackRate = settings.voiceRate
         audioRef.current = audio
         audio.onplay = () => { if (currentState() !== 'off') setVoiceState('speaking') }
+        let done = false
         const finish = (): void => {
+          if (done) return
+          done = true
           URL.revokeObjectURL(audio.src)
           if (audioRef.current === audio) audioRef.current = null
           resolve()
         }
         audio.onended = finish
         audio.onerror = finish
+        // перебивание: stopSpeaking() ставит паузу — завершаем promise, иначе
+        // конвейер озвучки зависал навсегда на прерванной фразе
+        audio.onpause = () => { if (!audio.ended) finish() }
         void audio.play().catch(finish)
       })
 
@@ -181,6 +188,10 @@ export function useVoice() {
 
   /** Начать накопление команды: включаем в неё пред-буфер (чтобы не терять начало). */
   const beginRecording = useCallback(() => {
+    // пользователь говорит новую команду — старая генерация больше не нужна:
+    // обрываем её, иначе она продолжит стримить и ГОВОРИТЬ поверх новой
+    if (useChatStore.getState().streaming) useChatStore.getState().stopGeneration()
+    fillerSpokenRef.current = false
     cmdBufferRef.current = preBufferRef.current.slice()
     speechStartRef.current = Date.now()
     lastSoundRef.current = Date.now()
@@ -287,7 +298,10 @@ export function useVoice() {
       setLevel(Math.min(1, rms * 12))
     }
 
-    if (s0 === 'listening' || s0 === 'speaking') {
+    // адаптация шумового пола — ТОЛЬКО в тишине прослушивания. Во время речи
+    // Kira её собственный голос из динамиков задирал пол → порог перебивания
+    // становился недостижимым, и перебить её было невозможно
+    if (s0 === 'listening') {
       noiseFloorRef.current = noiseFloorRef.current * 0.96 + rms * 0.04
     }
     const threshold = Math.max(SPEECH_THRESHOLD, noiseFloorRef.current * 2.6 + 0.006)
@@ -394,6 +408,8 @@ export function useVoice() {
       streamedRef.current = false
       useChatStore.getState().setOnAssistantSentence((sentence) => {
         if (stateRef.current === 'off') return
+        // пользователь диктует новую команду — «хвосты» старого ответа молчат
+        if (stateRef.current === 'recording' || stateRef.current === 'transcribing') return
         streamedRef.current = true
         speak(sentence)
       })
@@ -454,12 +470,16 @@ export function useVoice() {
 
   useEffect(() => () => stop(), [stop])
 
-  // живые реакции: если Kira долго думает — короткая реплика «секунду…»
+  // живые реакции: если Kira долго думает — короткая реплика «секунду…».
+  // СТРОГО один раз на запрос: в многораундовом поиске состояние «думаю»
+  // наступает после каждой озвученной фразы, и без ограничителя Kira
+  // бесконечно бормотала «секунду… минутку… момент…»
   useEffect(() => {
     if (state !== 'thinking') return
     const fillers = ['Секунду…', 'Минутку…', 'Так, сейчас посмотрю…', 'Момент…']
     const id = setTimeout(() => {
-      if (stateRef.current === 'thinking' && !ttsPlayingRef.current) {
+      if (stateRef.current === 'thinking' && !ttsPlayingRef.current && !fillerSpokenRef.current) {
+        fillerSpokenRef.current = true
         speak(fillers[Math.floor(Math.random() * fillers.length)])
       }
     }, 2800)
