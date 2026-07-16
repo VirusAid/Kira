@@ -202,6 +202,15 @@ function pct(v: string | undefined): number {
   return isNaN(n) ? 0 : n > 1 ? n / 100 : n
 }
 
+/**
+ * Число из аргумента модели, устойчиво к мусору: «50%», «50 процентов»,
+ * «уровень 50». Иначе Number('50%')=NaN уезжал в PowerShell и ломал команду.
+ */
+function num(v: string | undefined, fallback = 0): number {
+  const m = String(v ?? '').match(/-?\d+/)
+  return m ? Number(m[0]) : fallback
+}
+
 /** Выполнить действие управления только если это разрешено в настройках. */
 async function controlGuard(fn: () => Promise<ActionResult>): Promise<ActionResult> {
   if (!getSettings().allowControl) {
@@ -280,9 +289,9 @@ export async function executeAction(a: ParsedAction): Promise<ActionResult> {
           data: found.map((f) => `${f.isDirectory ? '📁' : '📄'} ${f.path}`).join('\n') || 'Ничего не найдено'
         }
       }
-      case 'set_volume': return system.setVolume(Number(a.args[0]))
+      case 'set_volume': return system.setVolume(num(a.args[0], 50))
       case 'mute': return system.setMute(a.args[0] !== 'off')
-      case 'set_brightness': return system.setBrightness(Number(a.args[0]))
+      case 'set_brightness': return system.setBrightness(num(a.args[0], 70))
       case 'media': return system.mediaControl((a.args[0] ?? 'playpause') as never)
       case 'focus_window': return system.windowAction(a.args[0] ?? '', 'focus')
       case 'minimize_all': return system.minimizeAll()

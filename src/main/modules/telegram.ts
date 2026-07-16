@@ -19,6 +19,7 @@ import { logger } from './logger'
 
 let running = false
 let offset = 0
+let generation = 0 // защита от наложения циклов при рестарте настроек
 let getWin: (() => BrowserWindow | null) | null = null
 
 function token(): string {
@@ -93,10 +94,10 @@ async function handleUpdate(u: TgUpdate): Promise<void> {
   }
 }
 
-async function loop(): Promise<void> {
-  while (running) {
+async function loop(myGeneration: number): Promise<void> {
+  while (running && myGeneration === generation) {
     const updates = await tg<TgUpdate[]>('getUpdates', { offset, timeout: 25 })
-    if (!running) break
+    if (!running || myGeneration !== generation) break
     if (!updates) { await new Promise((r) => setTimeout(r, 3000)); continue }
     for (const u of updates) {
       offset = u.update_id + 1
@@ -113,13 +114,14 @@ export function initTelegram(getWindow: () => BrowserWindow | null): void {
 /** Перезапуск при смене настроек. */
 export function restartTelegram(): void {
   running = false
+  generation++ // старый цикл (даже в ожидании long-poll) больше не наш
   const s = getSettings()
   if (s.telegramBotEnabled && s.telegramBotToken.trim()) {
     // небольшая пауза, чтобы предыдущий long-poll завершился
     setTimeout(() => {
       running = true
       offset = 0
-      void loop()
+      void loop(generation)
       logger.info('telegram', 'Telegram-бот активен')
     }, 500)
   }

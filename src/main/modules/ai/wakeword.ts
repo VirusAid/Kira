@@ -58,6 +58,8 @@ class WakeWordManager {
   private lastDetect = 0
   private getWin: (() => BrowserWindow | null) | null = null
   private available: boolean | null = null
+  private restartAttempts = 0
+  private stopped = false
 
   setWindowGetter(fn: () => BrowserWindow | null): void {
     this.getWin = fn
@@ -76,6 +78,7 @@ class WakeWordManager {
   }
 
   start(): void {
+    this.stopped = false
     if (this.ready || this.starting) return
     const modelDir = resolveModelDir()
     if (!modelDir) { logger.warn('wake', 'Модель Vosk не найдена — офлайн-активатор недоступен'); return }
@@ -95,7 +98,19 @@ class WakeWordManager {
         if (line) this.handle(line)
       }
     })
-    proc.on('exit', () => { this.ready = false; this.starting = false; this.proc = null })
+    proc.on('exit', () => {
+      const wasReady = this.ready
+      this.ready = false
+      this.starting = false
+      this.proc = null
+      // сайдкар упал во время работы — тихо воскрешаем (не чаще раза в 5 сек,
+      // максимум 5 попыток подряд), иначе офлайн-активация молча умирала
+      if (wasReady && !this.stopped && this.restartAttempts < 5) {
+        this.restartAttempts++
+        logger.warn('wake', `Vosk упал — перезапускаю (попытка ${this.restartAttempts})`)
+        setTimeout(() => { if (!this.stopped) this.start() }, 5000)
+      }
+    })
     proc.on('error', (e) => { this.starting = false; logger.warn('wake', `Vosk: ${e.message}`) })
   }
 
@@ -105,6 +120,8 @@ class WakeWordManager {
     if (msg.type === 'ready') {
       this.ready = true
       this.starting = false
+      this.stopped = false
+      this.restartAttempts = 0
       logger.info('wake', 'Офлайн-активатор «Кира» активен (Vosk)')
     } else if (msg.type === 'error') {
       this.starting = false
@@ -130,6 +147,7 @@ class WakeWordManager {
   }
 
   stop(): void {
+    this.stopped = true // штатная остановка — авто-перезапуск не нужен
     this.ready = false
     this.starting = false
     if (this.proc) { try { this.proc.kill() } catch { /* ignore */ } this.proc = null }
