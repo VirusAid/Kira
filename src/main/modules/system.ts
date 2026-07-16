@@ -669,6 +669,7 @@ export async function searchYouTube(query: string): Promise<YouTubeResult | null
     const res = await fetch(
       `https://www.youtube.com/results?search_query=${encodeURIComponent(query)}&hl=ru`,
       {
+        signal: AbortSignal.timeout(15_000),
         headers: {
           'Accept-Language': 'ru-RU,ru;q=0.9,en;q=0.8',
           'User-Agent':
@@ -746,6 +747,7 @@ export async function searchWeb(query: string, limit = 6): Promise<ActionResult>
   try {
     const res = await fetch('https://html.duckduckgo.com/html/', {
       method: 'POST',
+      signal: AbortSignal.timeout(15_000),
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'User-Agent':
@@ -791,6 +793,7 @@ export async function readWebPage(url: string): Promise<ActionResult> {
   logger.action('web', `Читаю страницу: ${normalized}`)
   try {
     const res = await fetch(normalized, {
+      signal: AbortSignal.timeout(20_000),
       headers: {
         'User-Agent':
           'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0 Safari/537.36',
@@ -836,10 +839,11 @@ const WMO: Record<number, string> = {
 /** Погода по геолокации (по IP). Бесплатно, без ключей. */
 export async function getWeather(): Promise<{ ok: boolean; city?: string; temp?: number; desc?: string; wind?: number }> {
   try {
-    const geo = await (await fetch('http://ip-api.com/json/?fields=city,lat,lon')).json() as { city?: string; lat?: number; lon?: number }
+    const geo = await (await fetch('http://ip-api.com/json/?fields=city,lat,lon', { signal: AbortSignal.timeout(10_000) })).json() as { city?: string; lat?: number; lon?: number }
     if (geo.lat == null) return { ok: false }
     const w = await (await fetch(
-      `https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}&current=temperature_2m,weather_code,wind_speed_10m`
+      `https://api.open-meteo.com/v1/forecast?latitude=${geo.lat}&longitude=${geo.lon}&current=temperature_2m,weather_code,wind_speed_10m`,
+      { signal: AbortSignal.timeout(10_000) }
     )).json() as { current?: { temperature_2m?: number; weather_code?: number; wind_speed_10m?: number } }
     const c = w.current
     if (!c) return { ok: false }

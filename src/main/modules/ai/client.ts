@@ -175,7 +175,9 @@ export function streamChat(
     try {
       const res = await fetch(endpoint.url, {
         method: 'POST',
-        signal: controller.signal,
+        // отмена пользователем ИЛИ общий таймаут — зависший провайдер не
+        // должен вешать ответ навсегда
+        signal: AbortSignal.any([controller.signal, AbortSignal.timeout(120_000)]),
         headers: { 'Content-Type': 'application/json', ...endpoint.headers },
         body: JSON.stringify({
           model: endpoint.model,
@@ -248,6 +250,7 @@ export async function completeChat(messages: AIMessage[]): Promise<string> {
   const endpoint = resolveEndpoint()
   const res = await fetch(endpoint.url, {
     method: 'POST',
+    signal: AbortSignal.timeout(90_000),
     headers: { 'Content-Type': 'application/json', ...endpoint.headers },
     body: JSON.stringify({ model: endpoint.model, messages, stream: false, max_tokens: 1600 })
   })
