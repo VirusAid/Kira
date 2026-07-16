@@ -27,6 +27,14 @@ const CONTROL_ACTIONS = new Set([
   'click', 'click_text', 'right_click', 'double_click', 'scroll', 'press_keys', 'type_text'
 ])
 
+/**
+ * «Поисковые» действия — слабые бесплатные модели склонны вызывать их по кругу,
+ * теряясь и повторяя «сейчас поищу…». Держим бюджет на запрос: после лимита
+ * возвращаем модели указание отвечать по уже собранному.
+ */
+const SEARCH_ACTIONS = new Set(['search_web', 'read_page', 'open_search', 'search_files', 'find_files', 'search_content'])
+const SEARCH_BUDGET = 3
+
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
 interface StreamAttemptError extends Error {
@@ -245,6 +253,14 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
   const state: ActiveRequest = { abort: () => {}, aborted: false }
   active.set(req.requestId, state)
 
+  // антизацикливание: не выполняем одно и то же действие дважды и держим
+  // бюджет на «поисковые» вызовы — иначе слабые модели ходят по кругу
+  const executedSignatures = new Set<string>()
+  let searchCalls = 0
+  let idleRounds = 0
+  const lastUserMsg = [...req.messages].reverse().find((m) => m.role === 'user')
+  const userGoal = typeof lastUserMsg?.content === 'string' ? lastUserMsg.content.slice(0, 300) : ''
+
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
       const rawText = await streamRound(win, req, history, state)
@@ -263,6 +279,7 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
       const results: string[] = []
       let screenToAttach: string | null = null
       let controlActed = false
+      let executedInRound = false
       for (const action of actions) {
         if (state.aborted) break
 
@@ -273,10 +290,30 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
             screenToAttach = await captureScreenBase64()
             send(win, 'ai:action', { requestId: req.requestId, name: 'see_screen', ok: true, message: 'Смотрю на экран' })
             results.push('see_screen: экран захвачен, изображение приложено ниже — опиши/проанализируй то, что видишь')
+            executedInRound = true
           } catch (err) {
             results.push(`see_screen: не удалось захватить экран — ${(err as Error).message}`)
           }
           continue
+        }
+
+        // дубль того же действия с теми же аргументами — не выполняем повторно
+        const signature = `${action.name}|${action.args.join('|')}`
+        if (executedSignatures.has(signature)) {
+          results.push(`${action.name}: УЖЕ ВЫПОЛНЯЛОСЬ в этом запросе — НЕ повторяй его. Используй полученный выше результат и дай финальный ответ.`)
+          logger.warn('kira', `Пропущен дубль действия: ${action.name}`)
+          continue
+        }
+        executedSignatures.add(signature)
+
+        // бюджет поисков: после лимита — только ответ по собранному
+        if (SEARCH_ACTIONS.has(action.name)) {
+          searchCalls++
+          if (searchCalls > SEARCH_BUDGET) {
+            results.push(`${action.name}: ЛИМИТ ПОИСКОВ ИСЧЕРПАН (${SEARCH_BUDGET}). Больше не ищи — сформулируй лучший ответ из уже полученных результатов. Если данных мало, честно скажи об этом.`)
+            logger.warn('kira', 'Лимит поисковых действий исчерпан — принуждаю к ответу')
+            continue
+          }
         }
 
         let approved = true
@@ -290,6 +327,7 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
           continue
         }
         const result = await executeAction(action)
+        executedInRound = true
         send(win, 'ai:action', {
           requestId: req.requestId,
           name: action.name,
@@ -305,6 +343,18 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
 
       if (state.aborted) break
 
+      // предохранитель: два раунда подряд без единого реального действия
+      // (одни дубли/превышения бюджета) — модель зациклилась, завершаем
+      if (!executedInRound) {
+        idleRounds++
+        if (idleRounds >= 2) {
+          logger.warn('kira', 'Два холостых раунда подряд — принудительно завершаю ответ')
+          break
+        }
+      } else {
+        idleRounds = 0
+      }
+
       // после действий управления — даём Kira «увидеть» результат
       if (controlActed && !screenToAttach) {
         try {
@@ -316,12 +366,14 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
 
       const followupText =
         `[СИСТЕМА: результаты выполнения действий]\n${results.join('\n')}\n\n` +
+        (userGoal ? `НАПОМИНАНИЕ — запрос пользователя: «${userGoal}». Не отклоняйся от него.\n` : '') +
         (controlActed
           ? 'Ниже — свежий скриншот экрана после твоих действий. Проверь, получилось ли задуманное. '
             + 'Если элемент не нажался или результат не тот — исправься (попробуй click_text с другим названием или другие координаты). '
           : '') +
-        'Продолжи ответ пользователю с учётом результатов. Если всё сделано — коротко подтверди. ' +
-        'Не повторяй уже выполненные команды.'
+        'Продолжи ответ с учётом результатов. Если поиск дал данные — ответь по ним ПРЯМО СЕЙЧАС, без новых поисков. ' +
+        'ЗАПРЕЩЕНО: повторять уже выполненные команды, снова писать «сейчас поищу/проверю/посмотрю» и озвучивать одно и то же. ' +
+        'Если всё сделано — одно короткое подтверждение.'
 
       if (screenToAttach) {
         history.push({

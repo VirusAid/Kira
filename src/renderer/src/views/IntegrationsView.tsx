@@ -161,11 +161,11 @@ export function IntegrationsView() {
   )
 }
 
-function Card({ icon, title, desc, ok, soon, children }: {
-  icon: React.ReactNode; title: string; desc: string; ok: boolean; soon?: boolean; children: React.ReactNode
+function Card({ icon, title, desc, ok, children }: {
+  icon: React.ReactNode; title: string; desc: string; ok: boolean; children: React.ReactNode
 }) {
   return (
-    <div className="card" style={{ opacity: soon ? 0.7 : 1 }}>
+    <div className="card">
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
         <div style={{ width: 40, height: 40, borderRadius: 11, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: ok ? 'rgba(52,211,153,0.13)' : 'var(--bg-2)', color: ok ? 'var(--ok)' : 'var(--accent-text)' }}>{icon}</div>
         <div style={{ flex: 1 }}>
@@ -173,7 +173,6 @@ function Card({ icon, title, desc, ok, soon, children }: {
           <div className="muted" style={{ fontSize: 12 }}>{desc}</div>
         </div>
         {ok ? <span className="badge" style={{ color: 'var(--ok)', borderColor: 'rgba(52,211,153,0.3)' }}><Check size={11} /> Подключено</span>
-          : soon ? <span className="badge" style={{ fontSize: 10 }}>скоро</span>
           : <span className="badge" style={{ fontSize: 10, opacity: 0.7 }}>не подключено</span>}
       </div>
       {children}
