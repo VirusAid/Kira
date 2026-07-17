@@ -155,7 +155,13 @@ app.on('before-quit', () => {
   shutdownDiscordMonitor()
   shutdownTelegram()
   void shutdownTelegramUser()
+  // гасим ВСЕ python-сайдкары, иначе процессы осиротеют и повиснут в памяти
   void import('./modules/ai/voskStt').then((m) => m.voskStt.shutdown())
+  void import('./modules/ai/silero').then((m) => m.silero.kill())
+  void import('./modules/ai/semantic').then((m) => m.semantic.kill())
+  void import('./modules/ai/speaker').then((m) => m.speaker.kill())
+  void import('./modules/ai/emotion').then((m) => m.emotion.kill())
+  void import('./modules/ai/wakeword').then((m) => m.wakeWord.stop())
   coreFlushSync()
   destroyTray()
   destroyOverlay()

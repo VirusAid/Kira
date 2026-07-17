@@ -139,6 +139,13 @@ class SpeakerManager {
     try { if (existsSync(this.refFile())) writeFileSync(this.refFile(), 'null') } catch { /* ignore */ }
   }
 
+  /** Погасить python-сайдкар при выходе (иначе процесс осиротеет). */
+  kill(): void {
+    if (this.proc) { try { this.proc.kill() } catch { /* ignore */ } this.proc = null }
+    this.ready = false
+    this.starting = null
+  }
+
   install(onProgress: (line: string) => void): Promise<{ ok: boolean; message: string }> {
     return new Promise((resolve) => {
       const target = pyenvDir()

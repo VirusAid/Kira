@@ -208,7 +208,10 @@ function bindListeners(): void {
   const store = useChatStore
 
   kira.on('ai:chunk', (payload) => {
-    const { delta } = payload as { requestId: string; delta: string }
+    const { requestId, delta } = payload as { requestId: string; delta: string }
+    // событие от УЖЕ ПРЕРВАННОГО запроса — игнорируем, иначе его текст
+    // примешивается к новому ответу (гонка при быстрых перебиваниях)
+    if (requestId !== currentRequestId) return
     const s = store.getState()
     const streamText = s.streamText + delta
     store.setState({ streamText })
@@ -229,12 +232,14 @@ function bindListeners(): void {
   })
 
   kira.on('ai:action', (payload) => {
-    const event = payload as { name: string; ok: boolean; message: string }
+    const event = payload as { requestId?: string; name: string; ok: boolean; message: string }
+    if (event.requestId && event.requestId !== currentRequestId) return
     store.setState((s) => ({ actionEvents: [...s.actionEvents, event] }))
   })
 
   kira.on('ai:done', (payload) => {
-    const { content, model } = payload as { requestId: string; content: string; model: string }
+    const { requestId, content, model } = payload as { requestId: string; content: string; model: string }
+    if (requestId !== currentRequestId) return // финал прерванного запроса — не пишем
     const s = store.getState()
     const chatId = s.activeChatId
     if (!chatId) {
@@ -269,7 +274,8 @@ function bindListeners(): void {
   })
 
   kira.on('ai:error', (payload) => {
-    const { error } = payload as { requestId: string; error: string }
+    const { requestId, error } = payload as { requestId: string; error: string }
+    if (requestId !== currentRequestId) return // ошибка прерванного запроса — молчим
     const s = store.getState()
     const chatId = s.activeChatId
     if (chatId) {

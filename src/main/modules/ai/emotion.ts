@@ -93,6 +93,13 @@ class EmotionManager {
       return null
     }
   }
+
+  /** Погасить python-сайдкар при выходе (иначе процесс осиротеет). */
+  kill(): void {
+    if (this.proc) { try { this.proc.kill() } catch { /* ignore */ } this.proc = null }
+    this.ready = false
+    this.starting = null
+  }
 }
 
 export const emotion = new EmotionManager()
