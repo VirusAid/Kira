@@ -17,7 +17,7 @@
 ![React](https://img.shields.io/badge/React-18-61dafb?style=for-the-badge&logo=react&logoColor=black)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178c6?style=for-the-badge&logo=typescript&logoColor=white)
 
-**Local First** · Офлайн-ядро · Собственный характер · 39 команд без LLM
+**Local First** · Офлайн-ядро · Собственный характер 
 
 </div>
 
