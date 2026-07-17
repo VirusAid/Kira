@@ -10,8 +10,8 @@
  */
 import {
   ApplicationController, BrowserController, ClipboardController, FileController,
-  GitController, MediaController, NotificationController, PowerController,
-  SystemController, WindowController, knownFolder
+  GitController, InputController, MediaController, NotificationController, PowerController,
+  SearchController, SystemController, WindowController, knownFolder
 } from '../controllers'
 import type { KiraAction } from '../types'
 
@@ -489,6 +489,329 @@ export const actions: KiraAction[] = [
     dangerous: true,
     describe: (a) => `Git commit в ${a.path}: «${a.message}»`,
     execute: (a) => GitController.commit(a.path ?? '', a.message ?? 'update')
+  },
+
+  // ─── Быстрый запуск приложений (специфичные — до универсального) ─────────
+  {
+    id: 'open_calculator',
+    title: 'Калькулятор',
+    description: 'Открывает калькулятор Windows',
+    category: 'apps',
+    aliases: ['калькулятор', 'calc'],
+    patterns: [/^(?:открой|запусти|включи)\s+(?:калькулятор|calc)$/],
+    examples: ['открой калькулятор'],
+    phrases: ['посчитать на калькуляторе', 'запусти калькулятор', 'нужен калькулятор'],
+    args: [],
+    execute: () => ApplicationController.launch('калькулятор'),
+    confirmText: () => 'Открываю калькулятор'
+  },
+  {
+    id: 'open_notepad',
+    title: 'Блокнот',
+    description: 'Открывает блокнот',
+    category: 'apps',
+    aliases: ['блокнот', 'notepad'],
+    patterns: [/^(?:открой|запусти|включи)\s+(?:блокнот|notepad)$/],
+    examples: ['открой блокнот'],
+    phrases: ['запусти блокнот', 'открой notepad', 'нужен блокнот записать'],
+    args: [],
+    execute: () => ApplicationController.launch('блокнот'),
+    confirmText: () => 'Открываю блокнот'
+  },
+  {
+    id: 'open_explorer',
+    title: 'Проводник',
+    description: 'Открывает проводник Windows',
+    category: 'apps',
+    aliases: ['проводник', 'explorer', 'этот компьютер'],
+    patterns: [/^(?:открой|запусти)\s+(?:проводник|explorer|мой компьютер|этот компьютер)$/],
+    examples: ['открой проводник'],
+    phrases: ['открой этот компьютер', 'открой файлы', 'покажи мой компьютер'],
+    args: [],
+    execute: () => ApplicationController.launch('проводник'),
+    confirmText: () => 'Открываю проводник'
+  },
+  {
+    id: 'open_terminal',
+    title: 'Терминал',
+    description: 'Открывает терминал / командную строку',
+    category: 'dev',
+    aliases: ['терминал', 'консоль', 'cmd', 'командная строка'],
+    patterns: [/^(?:открой|запусти)\s+(?:терминал|консоль|командную строку|cmd|powershell|терминал windows)$/],
+    examples: ['открой терминал'],
+    phrases: ['открой командную строку', 'запусти консоль', 'нужен терминал'],
+    args: [],
+    execute: () => ApplicationController.launch('терминал'),
+    confirmText: () => 'Открываю терминал'
+  },
+  {
+    id: 'open_paint',
+    title: 'Paint',
+    description: 'Открывает графический редактор Paint',
+    category: 'apps',
+    aliases: ['paint', 'пейнт'],
+    patterns: [/^(?:открой|запусти)\s+(?:paint|пейнт|паинт)$/],
+    examples: ['открой paint'],
+    phrases: ['запусти пейнт', 'открой рисовалку', 'хочу порисовать'],
+    args: [],
+    execute: () => ApplicationController.launch('paint'),
+    confirmText: () => 'Открываю Paint'
+  },
+
+  // ─── Информация о системе ────────────────────────────────────────────────
+  {
+    id: 'current_time',
+    title: 'Текущее время',
+    description: 'Говорит, который сейчас час',
+    category: 'info',
+    aliases: ['время', 'который час'],
+    patterns: [/^(?:сколько (?:сейчас )?времени|который (?:сейчас )?час|время сейчас|текущее время)$/],
+    examples: ['сколько времени'],
+    phrases: ['который час', 'сколько сейчас времени', 'подскажи время', 'time'],
+    args: [],
+    execute: async () => {
+      const t = new Date().toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+      return { ok: true, message: `Сейчас ${t}`, data: t }
+    }
+  },
+  {
+    id: 'current_date',
+    title: 'Сегодняшняя дата',
+    description: 'Говорит сегодняшнюю дату и день недели',
+    category: 'info',
+    aliases: ['дата', 'какое число', 'какой день'],
+    patterns: [/^(?:какое (?:сегодня )?число|какой (?:сегодня )?день(?: недели)?|какая (?:сегодня )?дата|дата сегодня|сегодняшняя дата)$/],
+    examples: ['какое сегодня число'],
+    phrases: ['какой сегодня день', 'какое число', 'дата сегодня', 'какой день недели'],
+    args: [],
+    execute: async () => {
+      const d = new Date().toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })
+      return { ok: true, message: `Сегодня ${d}`, data: d }
+    }
+  },
+  {
+    id: 'system_info',
+    title: 'Загрузка системы',
+    description: 'Показывает загрузку процессора, память и аптайм',
+    category: 'system',
+    aliases: ['загрузка', 'состояние системы', 'нагрузка'],
+    patterns: [/^(?:загрузка (?:системы|компьютера|пк)|(?:нагрузка|состояние) системы|сколько (?:оперативки|памяти|озу)(?:\s+(?:занято|свободно))?|нагрузка на процессор)$/],
+    examples: ['загрузка системы'],
+    phrases: ['сколько оперативки занято', 'нагрузка на процессор', 'как загружен компьютер', 'состояние системы', 'сколько памяти свободно'],
+    args: [],
+    execute: async () => SystemController.stats()
+  },
+  {
+    id: 'disk_space',
+    title: 'Место на диске',
+    description: 'Показывает свободное место на дисках',
+    category: 'system',
+    aliases: ['диск', 'место на диске'],
+    patterns: [/^(?:сколько (?:свободного )?места на диске|(?:свободное )?место на диске|проверь диск|сколько места осталось)$/],
+    examples: ['сколько места на диске'],
+    phrases: ['сколько свободного места', 'место на диске', 'проверь диск', 'сколько осталось на диске'],
+    args: [],
+    execute: async () => SystemController.diskInfo()
+  },
+  {
+    id: 'battery',
+    title: 'Заряд батареи',
+    description: 'Показывает уровень заряда батареи',
+    category: 'system',
+    aliases: ['батарея', 'заряд'],
+    patterns: [/^(?:сколько заряда(?:\s+(?:батареи|осталось))?|уровень (?:заряда|батареи)|заряд батареи|сколько батареи)$/],
+    examples: ['сколько заряда'],
+    phrases: ['уровень батареи', 'сколько заряда осталось', 'заряд батареи', 'на сколько заряжен ноут'],
+    args: [],
+    execute: async () => SystemController.batteryInfo()
+  },
+  {
+    id: 'ip_address',
+    title: 'IP-адрес',
+    description: 'Показывает локальный IP-адрес',
+    category: 'info',
+    aliases: ['ip', 'ip адрес', 'айпи'],
+    patterns: [/^(?:мой ip(?:\s+адрес)?|какой у меня ip(?:\s+адрес)?|ip адрес|мой айпи|какой айпи)$/],
+    examples: ['мой ip адрес'],
+    phrases: ['какой у меня айпи', 'мой ip адрес', 'узнай мой ip', 'локальный адрес'],
+    args: [],
+    execute: async () => SystemController.networkInfo()
+  },
+
+  // ─── Управление активным окном ───────────────────────────────────────────
+  {
+    id: 'close_window',
+    title: 'Закрыть окно',
+    description: 'Закрывает активное окно',
+    category: 'system',
+    aliases: ['закрой окно'],
+    patterns: [/^закрой (?:активное |текущее )?окно$/],
+    examples: ['закрой окно'],
+    phrases: ['закрой активное окно', 'закрой текущее окно', 'убери это окно'],
+    args: [],
+    execute: () => WindowController.active('close'),
+    confirmText: () => 'Закрыла окно'
+  },
+  {
+    id: 'minimize_window',
+    title: 'Свернуть окно',
+    description: 'Сворачивает активное окно',
+    category: 'system',
+    aliases: ['сверни окно'],
+    patterns: [/^сверни (?:активное |текущее |это )?окно$/],
+    examples: ['сверни окно'],
+    noSemantic: true, // свернуть↔развернуть путаются в эмбеддингах — только regex
+    args: [],
+    execute: () => WindowController.active('minimize'),
+    confirmText: () => 'Свернула'
+  },
+  {
+    id: 'maximize_window',
+    title: 'Развернуть окно',
+    description: 'Разворачивает активное окно на весь экран',
+    category: 'system',
+    aliases: ['разверни окно'],
+    patterns: [/^(?:разверни (?:активное |текущее |это )?окно(?:\s+на весь экран)?|разверни на весь экран|на весь экран)$/],
+    examples: ['разверни окно'],
+    noSemantic: true, // свернуть↔развернуть путаются в эмбеддингах — только regex
+    args: [],
+    execute: () => WindowController.active('maximize'),
+    confirmText: () => 'Развернула'
+  },
+
+  // ─── Правка (клавиатурные команды в активное окно) ───────────────────────
+  {
+    id: 'copy_selection',
+    title: 'Скопировать',
+    description: 'Копирует выделенное (Ctrl+C)',
+    category: 'clipboard',
+    aliases: ['скопируй', 'копировать'],
+    patterns: [/^(?:скопируй(?:\s+(?:выделенное|это|текст))?|копировать)$/],
+    examples: ['скопируй'],
+    phrases: ['скопируй выделенное', 'копировать текст', 'скопируй это'],
+    args: [],
+    execute: () => InputController.copy(),
+    confirmText: () => 'Скопировала'
+  },
+  {
+    id: 'paste_clipboard',
+    title: 'Вставить',
+    description: 'Вставляет из буфера обмена (Ctrl+V)',
+    category: 'clipboard',
+    aliases: ['вставь', 'вставить'],
+    patterns: [/^(?:вставь(?:\s+(?:из буфера|текст|сюда))?|вставить)$/],
+    examples: ['вставь'],
+    phrases: ['вставь из буфера', 'вставить текст', 'вставь сюда'],
+    args: [],
+    execute: () => InputController.paste(),
+    confirmText: () => 'Вставила'
+  },
+  {
+    id: 'select_all',
+    title: 'Выделить всё',
+    description: 'Выделяет всё (Ctrl+A)',
+    category: 'clipboard',
+    aliases: ['выдели всё', 'выделить всё'],
+    patterns: [/^(?:выдели(?:ть)? (?:всё|все|весь текст))$/],
+    examples: ['выдели всё'],
+    phrases: ['выделить весь текст', 'выдели всё', 'выделить всё целиком'],
+    args: [],
+    execute: () => InputController.selectAll(),
+    confirmText: () => 'Выделила всё'
+  },
+  {
+    id: 'cut_selection',
+    title: 'Вырезать',
+    description: 'Вырезает выделенное (Ctrl+X)',
+    category: 'clipboard',
+    aliases: ['вырежи', 'вырезать'],
+    patterns: [/^(?:вырежи(?:\s+(?:выделенное|это|текст))?|вырезать)$/],
+    examples: ['вырежи'],
+    phrases: ['вырежи выделенное', 'вырезать текст'],
+    args: [],
+    execute: () => InputController.cut(),
+    confirmText: () => 'Вырезала'
+  },
+  {
+    id: 'save_file',
+    title: 'Сохранить',
+    description: 'Сохраняет в активном окне (Ctrl+S)',
+    category: 'system',
+    aliases: ['сохрани', 'сохранить'],
+    patterns: [/^(?:сохрани(?:ть)?(?:\s+(?:файл|документ|это))?)$/],
+    examples: ['сохрани файл'],
+    phrases: ['сохрани документ', 'сохранить файл', 'сохрани изменения'],
+    args: [],
+    execute: () => InputController.save(),
+    confirmText: () => 'Сохранила'
+  },
+
+  // ─── Веб-поиск ────────────────────────────────────────────────────────────
+  {
+    id: 'web_search',
+    title: 'Поиск в интернете',
+    description: 'Открывает поисковую выдачу Google по запросу',
+    category: 'browser',
+    aliases: ['загугли', 'погугли', 'поиск в интернете'],
+    patterns: [/^(?:загугли|погугли|найди в (?:интернете|гугле)|поищи в (?:интернете|гугле)|поиск)\s+(?<query>.+)$/],
+    examples: ['загугли рецепт борща'],
+    args: [{ name: 'query', description: 'Что искать', required: true }],
+    execute: (a) => SearchController.web(a.query ?? ''),
+    confirmText: (a) => `Ищу: ${a.query}`
+  },
+  {
+    id: 'youtube_search',
+    title: 'Поиск на YouTube',
+    description: 'Открывает поиск YouTube по запросу',
+    category: 'browser',
+    aliases: ['найди на ютубе'],
+    patterns: [/^(?:найди|поищи|покажи)\s+на\s+(?:ютубе|youtube|ютюбе)\s+(?<query>.+)$/],
+    examples: ['найди на ютубе обзор ноутбука'],
+    args: [{ name: 'query', description: 'Что искать', required: true }],
+    execute: (a) => SearchController.youtube(a.query ?? ''),
+    confirmText: (a) => `Ищу на YouTube: ${a.query}`
+  },
+
+  // ─── Корзина и гибернация ─────────────────────────────────────────────────
+  {
+    id: 'open_recycle_bin',
+    title: 'Открыть корзину',
+    description: 'Открывает корзину Windows',
+    category: 'system',
+    aliases: ['корзина', 'открой корзину'],
+    patterns: [/^открой корзину$/],
+    examples: ['открой корзину'],
+    phrases: ['покажи корзину', 'открой корзину', 'зайди в корзину'],
+    args: [],
+    execute: () => SystemController.openRecycleBin(),
+    confirmText: () => 'Открываю корзину'
+  },
+  {
+    id: 'empty_recycle_bin',
+    title: 'Очистить корзину',
+    description: 'Очищает корзину (необратимо)',
+    category: 'system',
+    aliases: ['очисти корзину'],
+    patterns: [/^(?:очисти(?:ть)?|опустоши)\s+корзину$/],
+    examples: ['очисти корзину'],
+    args: [],
+    dangerous: true,
+    describe: () => 'Очистить корзину — файлы удалятся безвозвратно',
+    execute: () => SystemController.emptyRecycleBin()
+  },
+  {
+    id: 'hibernate',
+    title: 'Гибернация',
+    description: 'Переводит компьютер в гибернацию',
+    category: 'power',
+    aliases: ['гибернация', 'гибернуй'],
+    patterns: [/^(?:гибернация|гибернуй|переведи в гибернацию|уйти в гибернацию)$/],
+    examples: ['гибернация'],
+    args: [],
+    dangerous: true,
+    describe: () => 'Перевести компьютер в гибернацию',
+    execute: () => PowerController.hibernate(),
+    confirmText: () => 'Перевожу в гибернацию'
   },
 
   // ─── Приложения (универсальный — ПОСЛЕДНИМ) ──────────────────────────────

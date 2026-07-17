@@ -41,12 +41,31 @@ export const PowerController = {
   shutdown: (): Promise<ExecResult> => sys.powerAction('shutdown'),
   restart: (): Promise<ExecResult> => sys.powerAction('restart'),
   sleep: (): Promise<ExecResult> => sys.powerAction('sleep'),
+  hibernate: (): Promise<ExecResult> => sys.powerAction('hibernate'),
   lock: (): Promise<ExecResult> => sys.powerAction('lock')
 }
 
 export const WindowController = {
   focus: (name: string): Promise<ExecResult> => sys.windowAction(name, 'focus'),
-  minimizeAll: (): Promise<ExecResult> => sys.minimizeAll()
+  minimizeAll: (): Promise<ExecResult> => sys.minimizeAll(),
+  active: (action: 'minimize' | 'maximize' | 'restore' | 'close'): Promise<ExecResult> =>
+    sys.activeWindowControl(action)
+}
+
+/** Ввод: клавиатурные комбинации в активное окно (копировать/вставить/…). */
+export const InputController = {
+  press: (keys: string): Promise<ExecResult> => sys.pressKeys(keys),
+  copy: (): Promise<ExecResult> => sys.pressKeys('^c'),
+  cut: (): Promise<ExecResult> => sys.pressKeys('^x'),
+  paste: (): Promise<ExecResult> => sys.pressKeys('^v'),
+  selectAll: (): Promise<ExecResult> => sys.pressKeys('^a'),
+  save: (): Promise<ExecResult> => sys.pressKeys('^s')
+}
+
+/** Веб-поиск: открывает поисковую выдачу (без LLM). */
+export const SearchController = {
+  web: (query: string): Promise<ExecResult> => sys.openSearch(query, 'google'),
+  youtube: (query: string): Promise<ExecResult> => sys.openSearch(query, 'youtube')
 }
 
 /** Известные пользовательские папки — чтобы «в загрузках» решалось локально. */
@@ -104,6 +123,20 @@ export const SystemController = {
   screenshot: (): Promise<ExecResult> => sys.takeScreenshot(),
   setBrightness: (percent: number): Promise<ExecResult> => sys.setBrightness(percent),
   processes: (filter?: string): Promise<ExecResult> => sys.processReport(filter),
+  diskInfo: (): Promise<ExecResult> => sys.diskInfo(),
+  batteryInfo: (): Promise<ExecResult> => sys.batteryInfo(),
+  networkInfo: (): ExecResult => sys.networkInfo(),
+  openRecycleBin: (): Promise<ExecResult> => sys.openRecycleBin(),
+  emptyRecycleBin: (): Promise<ExecResult> => sys.emptyRecycleBin(),
+  /** Сводка загрузки: CPU, память, аптайм. */
+  stats: (): ExecResult => {
+    const s = sys.systemStats()
+    return {
+      ok: true,
+      message: `Процессор ${s.cpuPercent}%, память ${s.memUsedGB} из ${s.memTotalGB} ГБ, аптайм ${s.uptimeHours} ч`,
+      data: s
+    }
+  },
   weather: (): Promise<{ ok: boolean; temp?: number; desc?: string; city?: string }> =>
     sys.getWeather() as never,
   openSettings: async (): Promise<ExecResult> => {

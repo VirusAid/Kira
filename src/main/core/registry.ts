@@ -44,7 +44,7 @@ class CommandRegistry {
   semanticDocs(): { id: string; text: string; label: string }[] {
     const docs: { id: string; text: string; label: string }[] = []
     for (const a of this.ordered) {
-      if (a.dangerous) continue
+      if (a.dangerous || a.noSemantic) continue
       if (a.args.some((arg) => arg.required)) continue
       const phrases = [...new Set([
         a.title.toLowerCase(), ...a.aliases, ...a.examples, ...(a.phrases ?? [])

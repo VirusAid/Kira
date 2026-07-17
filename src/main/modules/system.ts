@@ -389,7 +389,7 @@ export async function killProcess(pidOrName: string): Promise<ActionResult> {
 
 // ─── Питание ────────────────────────────────────────────────────────────────
 
-export async function powerAction(action: 'shutdown' | 'restart' | 'sleep' | 'lock'): Promise<ActionResult> {
+export async function powerAction(action: 'shutdown' | 'restart' | 'sleep' | 'lock' | 'hibernate'): Promise<ActionResult> {
   logger.action('system', `Питание: ${action}`)
   switch (action) {
     case 'shutdown':
@@ -401,6 +401,9 @@ export async function powerAction(action: 'shutdown' | 'restart' | 'sleep' | 'lo
     case 'sleep':
       await runPowerShell('Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState("Suspend", $false, $false)')
       return { ok: true, message: 'Перевожу в спящий режим' }
+    case 'hibernate':
+      execFile('shutdown', ['/h'])
+      return { ok: true, message: 'Перевожу в гибернацию' }
     case 'lock':
       execFile('rundll32.exe', ['user32.dll,LockWorkStation'])
       return { ok: true, message: 'Блокирую экран' }
@@ -922,4 +925,94 @@ export async function openSearch(query: string, engine: 'google' | 'youtube' = '
       : `https://www.google.com/search?q=${encodeURIComponent(query)}`
   await shell.openExternal(url)
   return { ok: true, message: `Открываю ${engine === 'youtube' ? 'YouTube' : 'Google'}: ${query}` }
+}
+
+// ─── Информация о системе (диск, батарея, сеть) ─────────────────────────────
+
+/** Свободное/полное место на всех фиксированных дисках. */
+export async function diskInfo(): Promise<ActionResult> {
+  const r = await runPowerShell(
+    `Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | ` +
+    `Select-Object DeviceID, @{n='free';e={[math]::Round($_.FreeSpace/1GB,1)}}, ` +
+    `@{n='total';e={[math]::Round($_.Size/1GB,1)}} | ConvertTo-Json -Compress`,
+    15_000
+  )
+  try {
+    const raw = JSON.parse(r.stdout)
+    const arr = Array.isArray(raw) ? raw : [raw]
+    const parts = arr
+      .filter((d) => d && d.total)
+      .map((d) => `${d.DeviceID} ${d.free} из ${d.total} ГБ свободно`)
+    return parts.length
+      ? { ok: true, message: parts.join('; '), data: arr }
+      : { ok: false, message: 'Не удалось прочитать диски' }
+  } catch {
+    return { ok: false, message: 'Не удалось прочитать диски' }
+  }
+}
+
+/** Уровень заряда батареи (или сообщение, что её нет — стационарный ПК). */
+export async function batteryInfo(): Promise<ActionResult> {
+  const r = await runPowerShell(
+    `$b = Get-CimInstance Win32_Battery | Select-Object -First 1; ` +
+    `if ($b) { @{ pct = $b.EstimatedChargeRemaining; status = $b.BatteryStatus } | ConvertTo-Json -Compress } else { 'NONE' }`,
+    15_000
+  )
+  const out = r.stdout.trim()
+  if (out === 'NONE' || !out) return { ok: true, message: 'Батареи нет — это стационарный компьютер', data: null }
+  try {
+    const b = JSON.parse(out) as { pct?: number; status?: number }
+    const charging = b.status === 2 ? ' (заряжается)' : ''
+    return { ok: true, message: `Заряд батареи: ${b.pct ?? '?'}%${charging}`, data: b }
+  } catch {
+    return { ok: false, message: 'Не удалось прочитать батарею' }
+  }
+}
+
+/** Локальный IPv4-адрес(а) в сети. */
+export function networkInfo(): ActionResult {
+  const ifaces = os.networkInterfaces()
+  const ips: string[] = []
+  for (const list of Object.values(ifaces)) {
+    for (const i of list ?? []) {
+      if (i.family === 'IPv4' && !i.internal) ips.push(i.address)
+    }
+  }
+  return ips.length
+    ? { ok: true, message: `Локальный IP: ${ips.join(', ')}`, data: ips }
+    : { ok: false, message: 'Сетевой адрес не найден — нет активного подключения' }
+}
+
+// ─── Управление активным окном и корзиной ───────────────────────────────────
+
+/** Действие над АКТИВНЫМ (переднего плана) окном без указания имени процесса. */
+export async function activeWindowControl(action: 'minimize' | 'maximize' | 'restore' | 'close'): Promise<ActionResult> {
+  logger.action('control', `Активное окно: ${action}`)
+  if (action === 'close') {
+    const r = await runPowerShell(
+      `Add-Type -AssemblyName System.Windows.Forms; Start-Sleep -Milliseconds 120; [System.Windows.Forms.SendKeys]::SendWait('%{F4}')`
+    )
+    return r.code === 0 ? { ok: true, message: 'Закрыла активное окно' } : { ok: false, message: 'Не удалось закрыть окно' }
+  }
+  const SW = { minimize: 6, maximize: 3, restore: 9 } as const
+  const script =
+    `Add-Type -Name W -Namespace Api -MemberDefinition '` +
+    `[DllImport("user32.dll")] public static extern System.IntPtr GetForegroundWindow(); ` +
+    `[DllImport("user32.dll")] public static extern bool ShowWindow(System.IntPtr h, int c);'; ` +
+    `$h = [Api.W]::GetForegroundWindow(); if ($h -ne 0) { [Api.W]::ShowWindow($h, ${SW[action]}); 'ok' }`
+  const r = await runPowerShell(script)
+  const labels = { minimize: 'Свернула окно', maximize: 'Развернула окно', restore: 'Восстановила окно' }
+  return r.stdout.includes('ok') ? { ok: true, message: labels[action] } : { ok: false, message: 'Нет активного окна' }
+}
+
+/** Открыть Корзину в проводнике. */
+export async function openRecycleBin(): Promise<ActionResult> {
+  const r = await runPowerShell(`Start-Process explorer.exe 'shell:RecycleBinFolder'`)
+  return r.code === 0 ? { ok: true, message: 'Открываю Корзину' } : { ok: false, message: 'Не удалось открыть Корзину' }
+}
+
+/** Очистить Корзину (необратимо). */
+export async function emptyRecycleBin(): Promise<ActionResult> {
+  const r = await runPowerShell(`Clear-RecycleBin -Force -ErrorAction SilentlyContinue; 'ok'`, 20_000)
+  return r.stdout.includes('ok') ? { ok: true, message: 'Корзина очищена' } : { ok: false, message: 'Не удалось очистить Корзину' }
 }
