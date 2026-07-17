@@ -39,6 +39,8 @@ const cases: Array<[string, string]> = [
   ['открой vscode', 'open_vscode'], ['запусти docker', 'run_docker'],
   ['открой discord', 'launch_app'], ['запусти steam', 'launch_app'],
   ['закрой telegram', 'close_app'],
+  ['какие процессы запущены', 'list_processes'], ['запущен ли discord', 'list_processes'],
+  ['покажи список процессов', 'list_processes'],
   ['яркость 70', 'set_brightness'], ['звук на максимум', 'set_volume'],
   ['что в буфере обмена', 'clipboard_read'], ['открой файл C:\\doc.pdf', 'open_file'],
   ['отмени', 'undo_last'], ['отмени последнее действие', 'undo_last'], ['верни как было', 'undo_last'],
@@ -145,6 +147,13 @@ async function level2(): Promise<void> {
 
   const clip = await commandEngine.executeById('clipboard_write', { text: 'kira' }, { source: 'agent' })
   t('clipboard_write через Action API', clip !== null && clip.ok === true)
+
+  // процессы: реальный PowerShell — общий список
+  const procs = await commandEngine.tryHandle('какие процессы запущены', { source: 'chat' })
+  t('процессы: реальный список системы', !!(procs.handled && procs.result && procs.result.ok && String(procs.result.data ?? '').includes('МБ')), '-> ' + (procs.reply ?? '').slice(0, 40))
+  // процессы: проверка конкретного (svchost точно есть в Windows)
+  const svc = await commandEngine.tryHandle('запущен ли svchost', { source: 'chat' })
+  t('процессы: «запущен ли svchost» -> да', !!(svc.result && svc.result.ok && String(svc.reply ?? '').includes('запущен')))
 
   const hist = actionHistory.list(20)
   t('история фиксирует действия', hist.length >= 4, 'записей: ' + hist.length)

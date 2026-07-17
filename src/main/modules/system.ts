@@ -272,40 +272,95 @@ export async function setBrightness(percent: number): Promise<ActionResult> {
 
 export async function takeScreenshot(): Promise<ActionResult> {
   const display = screen.getPrimaryDisplay()
-  const sources = await desktopCapturer.getSources({
-    types: ['screen'],
-    thumbnailSize: { width: display.size.width, height: display.size.height }
-  })
+  let sources: Electron.DesktopCapturerSource[]
+  try {
+    sources = await captureSources(display.size.width, display.size.height)
+  } catch (err) {
+    return { ok: false, message: (err as Error).message }
+  }
   if (!sources.length) return { ok: false, message: 'Не удалось получить изображение экрана' }
+  const src = sources.find((s) => !s.thumbnail.isEmpty()) ?? sources[0]
 
   const dir = join(app.getPath('pictures'), 'Kira Screenshots')
   await fsp.mkdir(dir, { recursive: true })
   const file = join(dir, `screenshot-${new Date().toISOString().replace(/[:.]/g, '-')}.png`)
-  await fsp.writeFile(file, sources[0].thumbnail.toPNG())
+  await fsp.writeFile(file, src.thumbnail.toPNG())
   logger.action('system', `Скриншот сохранён: ${file}`)
   return { ok: true, message: `Скриншот сохранён: ${file}`, data: file }
 }
 
 /** Снимок экрана в base64 (для «зрения» Kira). */
+/** Захват источников экрана с таймаутом — desktopCapturer иногда виснет. */
+async function captureSources(width: number, height: number): Promise<Electron.DesktopCapturerSource[]> {
+  const timeout = new Promise<never>((_, reject) =>
+    setTimeout(() => reject(new Error('Таймаут захвата экрана')), 8000))
+  return Promise.race([
+    desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width, height } }),
+    timeout
+  ])
+}
+
 export async function captureScreenBase64(): Promise<string> {
   const display = screen.getPrimaryDisplay()
   const scale = Math.min(1, 1440 / display.size.width)
-  const sources = await desktopCapturer.getSources({
-    types: ['screen'],
-    thumbnailSize: {
-      width: Math.round(display.size.width * scale),
-      height: Math.round(display.size.height * scale)
-    }
-  })
+  const sources = await captureSources(
+    Math.round(display.size.width * scale),
+    Math.round(display.size.height * scale)
+  )
   if (!sources.length) throw new Error('Экран недоступен')
-  return sources[0].thumbnail.toJPEG(80).toString('base64')
+  // берём НЕпустой источник (у пустого thumbnail зрение видит чёрный экран)
+  const src = sources.find((s) => !s.thumbnail.isEmpty()) ?? sources[0]
+  return src.thumbnail.toJPEG(80).toString('base64')
 }
 
 // ─── Процессы ───────────────────────────────────────────────────────────────
 
+/**
+ * Отчёт о процессах для Kira (LLM/голос). Без фильтра — сгруппированный по
+ * имени список ВСЕХ запущенных программ (компактно: имя × число, память),
+ * поэтому Kira видит всё, а не только топ-60. С фильтром — точный ответ
+ * «запущен ли X», проверяя ПОЛНЫЙ список системы.
+ */
+export async function processReport(filter?: string): Promise<ActionResult> {
+  const f = (filter ?? '').trim().replace(/\.exe$/i, '')
+  if (f) {
+    const r = await runPowerShell(
+      `$p = Get-Process -Name ${ps('*' + f + '*')} -ErrorAction SilentlyContinue; ` +
+      `if ($p) { $mb = [int]((@($p) | Measure-Object WS -Sum).Sum / 1MB); "$(@($p)[0].ProcessName)|$(@($p).Count)|$mb" } else { 'none' }`
+    )
+    const out = r.stdout.trim()
+    if (out === 'none' || !out) return { ok: true, message: `«${f}» не запущен`, data: `${f}: не запущен` }
+    const [name, count, mb] = out.split('|')
+    return {
+      ok: true,
+      message: `«${name}» запущен (${count} ${Number(count) === 1 ? 'процесс' : 'процессов'}, ${mb} МБ)`,
+      data: `${name}: запущен, процессов ${count}, память ${mb} МБ`
+    }
+  }
+  // общий отчёт: все процессы, сгруппированные по имени
+  const r = await runPowerShell(
+    `Get-Process | Group-Object ProcessName | ` +
+    `Sort-Object @{e={($_.Group | Measure-Object WS -Sum).Sum}} -Descending | ` +
+    `Select-Object -First 45 Name, Count, @{n='MB';e={[int](($_.Group|Measure-Object WS -Sum).Sum/1MB)}} | ConvertTo-Json -Compress`
+  )
+  try {
+    const raw = JSON.parse(r.stdout)
+    const arr = (Array.isArray(raw) ? raw : [raw]) as { Name: string; Count: number; MB: number }[]
+    const total = arr.reduce((s, g) => s + g.Count, 0)
+    const lines = arr.map((g) => `${g.Name}${g.Count > 1 ? ` ×${g.Count}` : ''} — ${g.MB} МБ`)
+    return {
+      ok: true,
+      message: `Запущено программ: ${arr.length} (процессов всего ~${total})`,
+      data: `Запущенные процессы (по памяти):\n${lines.join('\n')}`
+    }
+  } catch {
+    return { ok: false, message: 'Не удалось получить список процессов' }
+  }
+}
+
 export async function listProcesses(): Promise<ProcessInfo[]> {
   const r = await runPowerShell(
-    `Get-Process | Sort-Object WS -Descending | Select-Object -First 60 Id, ProcessName, WS | ConvertTo-Json -Compress`
+    `Get-Process | Sort-Object WS -Descending | Select-Object -First 120 Id, ProcessName, WS | ConvertTo-Json -Compress`
   )
   try {
     const raw = JSON.parse(r.stdout)

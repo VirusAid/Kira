@@ -103,6 +103,7 @@ export const GitController = {
 export const SystemController = {
   screenshot: (): Promise<ExecResult> => sys.takeScreenshot(),
   setBrightness: (percent: number): Promise<ExecResult> => sys.setBrightness(percent),
+  processes: (filter?: string): Promise<ExecResult> => sys.processReport(filter),
   weather: (): Promise<{ ok: boolean; temp?: number; desc?: string; city?: string }> =>
     sys.getWeather() as never,
   openSettings: async (): Promise<ExecResult> => {
