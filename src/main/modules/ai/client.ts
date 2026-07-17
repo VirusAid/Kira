@@ -111,21 +111,21 @@ export async function listProviderModels(providerId: AIProviderId): Promise<stri
   try {
     if (providerId === 'openrouter') {
       const r = await fetch('https://openrouter.ai/api/v1/models')
-      const j = await r.json()
-      return ids(j.data, (m) => m.id)
+      const j = (await r.json()) as { data?: unknown[] }
+      return ids(j.data ?? [], (m) => m.id)
     }
     if (providerId === 'groq') {
       if (!key) return []
       const r = await fetch('https://api.groq.com/openai/v1/models', { headers: { Authorization: `Bearer ${key}` } })
-      const j = await r.json()
-      return ids(j.data, (m) => m.id)
+      const j = (await r.json()) as { data?: unknown[] }
+      return ids(j.data ?? [], (m) => m.id)
     }
     if (providerId === 'gemini') {
       if (!key) return []
       const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${encodeURIComponent(key)}`)
-      const j = await r.json()
+      const j = (await r.json()) as { models?: { name?: string; supportedGenerationMethods?: string[] }[] }
       return ids(
-        (j.models ?? []).filter((m: { supportedGenerationMethods?: string[] }) =>
+        (j.models ?? []).filter((m) =>
           (m.supportedGenerationMethods ?? []).includes('generateContent')),
         (m) => String(m.name).replace(/^models\//, '')
       )
@@ -133,14 +133,14 @@ export async function listProviderModels(providerId: AIProviderId): Promise<stri
     if (providerId === 'deepseek') {
       if (!key) return []
       const r = await fetch('https://api.deepseek.com/models', { headers: { Authorization: `Bearer ${key}` } })
-      const j = await r.json()
-      return ids(j.data, (m) => m.id)
+      const j = (await r.json()) as { data?: unknown[] }
+      return ids(j.data ?? [], (m) => m.id)
     }
     if (providerId === 'ollama') {
       const base = (cfg.baseUrl || 'http://localhost:11434').replace(/\/$/, '')
       const r = await fetch(`${base}/api/tags`)
-      const j = await r.json()
-      return ids(j.models, (m) => m.name)
+      const j = (await r.json()) as { models?: unknown[] }
+      return ids(j.models ?? [], (m) => m.name)
     }
   } catch { /* сеть/ключ недоступны */ }
   return []

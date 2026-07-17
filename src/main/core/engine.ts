@@ -11,6 +11,7 @@ import { bus } from './bus'
 import { actionHistory } from './history'
 import { parseIntent } from './intent'
 import { registry } from './registry'
+import { semanticIntent } from './semanticIntent'
 import type { ActionContext, ExecResult, Intent, KiraAction } from './types'
 
 export interface HandleOutcome {
@@ -38,19 +39,36 @@ class CommandEngine {
   /** Локальная обработка свободного текста (chat/voice). */
   async tryHandle(text: string, ctx: ActionContext): Promise<HandleOutcome> {
     const intent = parseIntent(text, registry.intentSpecs())
-    if (intent.kind !== 'local') return { handled: false, intent: intent.kind }
+    if (intent.kind === 'local') {
+      const action = registry.get(intent.actionId)
+      if (!action) return { handled: false, intent: 'ai' }
 
-    const action = registry.get(intent.actionId)
-    if (!action) return { handled: false, intent: 'ai' }
-
-    const outcome = await this.run(action, intent.args, ctx)
-    // мягкий отказ: эвристика не подтвердилась — пусть решает AI
-    // (но отказ ПОЛЬЗОВАТЕЛЯ от опасного — окончателен, в AI не уходит)
-    if (!outcome.result?.ok && action.softFail && !outcome.denied) {
-      logger.info('core', `«${action.id}» не сработал локально — передаю AI`)
-      return { handled: false, intent: 'ai' }
+      const outcome = await this.run(action, intent.args, ctx)
+      // мягкий отказ: эвристика не подтвердилась — пусть решает AI
+      // (но отказ ПОЛЬЗОВАТЕЛЯ от опасного — окончателен, в AI не уходит)
+      if (!outcome.result?.ok && action.softFail && !outcome.denied) {
+        logger.info('core', `«${action.id}» не сработал локально — передаю AI`)
+        return { handled: false, intent: 'ai' }
+      }
+      return outcome
     }
-    return outcome
+
+    // regex промахнулся, но фраза может быть командой в непредусмотренной форме
+    // — пробуем понять её СМЫСЛ через эмбеддинги (только для 'ai', не 'agent')
+    if (intent.kind === 'ai') {
+      const sem = await semanticIntent(text)
+      if (sem) {
+        const action = registry.get(sem.actionId)
+        if (action) {
+          logger.info('core', `семантика: «${text}» → ${action.id} (${sem.score.toFixed(2)})`)
+          const outcome = await this.run(action, {}, ctx)
+          // локально не вышло и действие «мягкое» — всё равно отдадим AI
+          if (outcome.result?.ok || !action.softFail) return outcome
+        }
+      }
+    }
+
+    return { handled: false, intent: intent.kind }
   }
 
   /**

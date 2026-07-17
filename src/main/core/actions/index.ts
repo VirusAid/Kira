@@ -35,6 +35,7 @@ export const actions: KiraAction[] = [
     aliases: ['browser', 'браузер', 'хром', 'chrome', 'интернет'],
     patterns: [/^(?:открой|запусти|включи)\s+(?:браузер|хром|chrome|интернет)$/],
     examples: ['открой браузер'],
+    phrases: ['запусти браузер', 'открой интернет', 'зайди в интернет', 'открой веб', 'дай интернет'],
     args: [],
     execute: () => BrowserController.openDefault(),
     confirmText: () => 'Открываю браузер'
@@ -89,6 +90,7 @@ export const actions: KiraAction[] = [
     aliases: ['пауза', 'pause', 'плей', 'play'],
     patterns: [/^(?:пауза|поставь(?:\s+музыку)?\s+на\s+паузу|продолжи|возобнови|стоп\s+музыка|останови\s+музыку|выключи\s+музыку|плей)$/],
     examples: ['пауза', 'продолжи'],
+    phrases: ['выключи музыку', 'останови музыку', 'поставь на паузу', 'заглуши музыку', 'хватит музыки', 'продолжи воспроизведение'],
     args: [],
     execute: () => MediaController.playPause(),
     confirmText: () => 'Готово'
@@ -101,6 +103,7 @@ export const actions: KiraAction[] = [
     aliases: ['next', 'следующий'],
     patterns: [/^(?:следующий(?:\s+трек)?|переключи(?:\s+трек)?|дальше|некст)$/],
     examples: ['следующий трек'],
+    phrases: ['переключи песню', 'давай следующую', 'смени трек', 'листай дальше', 'другую песню'],
     args: [],
     execute: () => MediaController.next(),
     confirmText: () => 'Переключаю'
@@ -113,6 +116,7 @@ export const actions: KiraAction[] = [
     aliases: ['prev', 'предыдущий'],
     patterns: [/^(?:предыдущий(?:\s+трек)?|трек назад|верни трек)$/],
     examples: ['предыдущий трек'],
+    phrases: ['верни прошлую песню', 'предыдущая композиция', 'трек назад', 'вернись к прошлому треку'],
     args: [],
     execute: () => MediaController.previous(),
     confirmText: () => 'Возвращаю'
@@ -125,6 +129,7 @@ export const actions: KiraAction[] = [
     aliases: ['громче', 'volume up'],
     patterns: [/^(?:громче|сделай (?:по)?громче|прибавь(?:\s+звук|\s+громкость)?)$/],
     examples: ['громче'],
+    phrases: ['сделай погромче', 'добавь звука', 'прибавь громкость', 'плохо слышно', 'увеличь звук'],
     args: [],
     execute: () => MediaController.volumeUp(),
     confirmText: () => 'Громче'
@@ -137,6 +142,7 @@ export const actions: KiraAction[] = [
     aliases: ['тише', 'volume down'],
     patterns: [/^(?:тише|сделай (?:по)?тише|убавь(?:\s+звук|\s+громкость)?)$/],
     examples: ['тише'],
+    phrases: ['сделай потише', 'убавь звук', 'слишком громко', 'уменьши громкость', 'приглуши немного'],
     args: [],
     execute: () => MediaController.volumeDown(),
     confirmText: () => 'Тише'
@@ -174,6 +180,7 @@ export const actions: KiraAction[] = [
     aliases: ['mute', 'без звука'],
     patterns: [/^(?:выключи|отключи|убери)\s+звук$/],
     examples: ['выключи звук'],
+    phrases: ['убери звук', 'отключи звук', 'заглуши всё', 'без звука', 'сделай тихо совсем'],
     args: [],
     execute: () => MediaController.mute(true),
     undo: () => MediaController.mute(false),
@@ -187,6 +194,7 @@ export const actions: KiraAction[] = [
     aliases: ['unmute'],
     patterns: [/^(?:включи|верни)\s+звук$/],
     examples: ['включи звук'],
+    phrases: ['верни звук', 'включи звук обратно', 'снова со звуком'],
     args: [],
     execute: () => MediaController.mute(false),
     confirmText: () => 'Звук включён'
@@ -201,6 +209,7 @@ export const actions: KiraAction[] = [
     aliases: ['screenshot', 'снимок'],
     patterns: [/^(?:сделай\s+)?(?:скриншот|снимок экрана)$/],
     examples: ['сделай скриншот'],
+    phrases: ['сфоткай экран', 'заскринь', 'снимок экрана', 'сохрани что на экране', 'сделай скрин'],
     args: [],
     execute: () => SystemController.screenshot(),
     confirmText: () => 'Скриншот готов'
@@ -213,6 +222,7 @@ export const actions: KiraAction[] = [
     aliases: ['сверни всё'],
     patterns: [/^сверни (?:все|все окна|всё)$/],
     examples: ['сверни всё'],
+    phrases: ['покажи рабочий стол', 'сверни все окна', 'убери все окна', 'сверни всё на панель'],
     args: [],
     execute: () => WindowController.minimizeAll(),
     confirmText: () => 'Свернула'
@@ -225,6 +235,7 @@ export const actions: KiraAction[] = [
     aliases: ['погода', 'weather'],
     patterns: [/^(?:какая\s+(?:сейчас\s+)?погода(?:\s+сегодня|\s+на улице)?|погода(?:\s+сегодня|\s+на улице)?)$/],
     examples: ['какая погода'],
+    phrases: ['что там с погодой', 'какая температура на улице', 'холодно ли сегодня', 'погода сейчас', 'сколько градусов'],
     args: [],
     execute: async () => {
       const w = await SystemController.weather()
@@ -241,6 +252,7 @@ export const actions: KiraAction[] = [
     aliases: ['настройки windows', 'параметры'],
     patterns: [/^открой\s+(?:настройки|параметры)(?:\s+(?:windows|виндовс|системы|пк|компьютера))?$/],
     examples: ['открой параметры'],
+    phrases: ['открой настройки виндовс', 'зайди в параметры системы', 'настройки компьютера'],
     args: [],
     execute: () => SystemController.openSettings()
   },
@@ -252,6 +264,7 @@ export const actions: KiraAction[] = [
     aliases: ['taskmgr', 'диспетчер'],
     patterns: [/^(?:открой|запусти)\s+диспетчер(?:\s+задач)?$/],
     examples: ['открой диспетчер задач'],
+    phrases: ['открой таск менеджер', 'запусти диспетчер задач', 'покажи диспетчер'],
     args: [],
     execute: () => ApplicationController.taskManager(),
     confirmText: () => 'Открываю'
@@ -269,6 +282,7 @@ export const actions: KiraAction[] = [
       /^запущен(?:а|о)?\s+ли\s+(?<filter>[\wа-я.+-]+)$/
     ],
     examples: ['какие процессы запущены', 'запущен ли discord'],
+    phrases: ['что у меня сейчас работает', 'покажи запущенные программы', 'какие приложения открыты', 'список активных процессов'],
     args: [{ name: 'filter', description: 'Имя программы для проверки' }],
     execute: (a) => SystemController.processes(a.filter)
   },
@@ -282,6 +296,7 @@ export const actions: KiraAction[] = [
     aliases: ['lock', 'блокировка'],
     patterns: [/^заблокируй(?:\s+(?:компьютер|экран|пк))?$/],
     examples: ['заблокируй компьютер'],
+    phrases: ['заблокируй экран', 'закрой доступ к компу', 'блокировка экрана', 'запри компьютер'],
     args: [],
     execute: () => PowerController.lock(),
     confirmText: () => 'Блокирую'
@@ -294,6 +309,7 @@ export const actions: KiraAction[] = [
     aliases: ['sleep', 'сон'],
     patterns: [/^(?:спящий режим|усыпи(?:\s+(?:компьютер|пк))?|переведи в сон)$/],
     examples: ['спящий режим'],
+    phrases: ['усыпи компьютер', 'переведи в сон', 'уложи комп спать'],
     args: [],
     execute: () => PowerController.sleep(),
     confirmText: () => 'Засыпаю'
@@ -533,6 +549,7 @@ export const actions: KiraAction[] = [
     aliases: ['буфер', 'clipboard'],
     patterns: [/^(?:что(?:\s+сейчас)?\s+в\s+буфере(?:\s+обмена)?|прочитай\s+буфер(?:\s+обмена)?|покажи\s+буфер(?:\s+обмена)?)$/],
     examples: ['что в буфере обмена'],
+    phrases: ['что я скопировал', 'прочитай буфер обмена', 'покажи что в буфере', 'что сейчас в буфере'],
     args: [],
     execute: async () => {
       const text = ClipboardController.read().trim()
@@ -562,6 +579,7 @@ export const actions: KiraAction[] = [
     aliases: ['отмена', 'undo'],
     patterns: [/^(?:отмени(?:\s+(?:последнее|это))?(?:\s+действие)?|отмена|верни\s+(?:как\s+было|обратно|назад))$/],
     examples: ['отмени', 'верни как было'],
+    phrases: ['отмени последнее', 'верни как было', 'отмени что сделала', 'откати назад'],
     args: [],
     execute: async (_a, ctx) => {
       const { commandEngine } = await import('../engine')

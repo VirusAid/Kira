@@ -35,6 +35,27 @@ class CommandRegistry {
       .map((a) => ({ id: a.id, patterns: a.patterns! }))
   }
 
+  /**
+   * Документы для семантического сопоставления: по одной фразе на строку.
+   * Только БЕЗОПАСНЫЕ действия БЕЗ обязательных аргументов (их можно выполнить
+   * без точного разбора аргументов), иначе семантика могла бы, например,
+   * «выключи музыку» перепутать с «выключи компьютер».
+   */
+  semanticDocs(): { id: string; text: string; label: string }[] {
+    const docs: { id: string; text: string; label: string }[] = []
+    for (const a of this.ordered) {
+      if (a.dangerous) continue
+      if (a.args.some((arg) => arg.required)) continue
+      const phrases = [...new Set([
+        a.title.toLowerCase(), ...a.aliases, ...a.examples, ...(a.phrases ?? [])
+      ])]
+      for (const p of phrases) {
+        if (p.trim().length > 2) docs.push({ id: a.id, text: p, label: a.id })
+      }
+    }
+    return docs
+  }
+
   /** Сериализуемый каталог (для UI: палитра команд, справка, hotkeys). */
   list(): Array<{
     id: string; title: string; description: string; category: string

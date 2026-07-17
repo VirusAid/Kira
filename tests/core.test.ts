@@ -113,8 +113,35 @@ import { PERSONALITY_PRESETS, detectPreset } from '../src/shared/personalityPres
   t('detectPreset на ручном тексте -> null', detectPreset('произвольный характер') === null)
 }
 
+// === УРОВЕНЬ 1e: семантический индекс интентов ===
+import { semanticIntent } from '../src/main/core/semanticIntent'
+{
+  const docs = registry.semanticDocs()
+  t('semanticDocs непустой', docs.length > 20, 'фраз: ' + docs.length)
+  const ids = new Set(docs.map((d) => d.id))
+  // опасные и требующие обяз. аргументов действия НЕ должны попадать в индекс
+  t('semanticDocs без опасных (shutdown)', !ids.has('shutdown_pc') && !ids.has('restart_pc'))
+  t('semanticDocs без обяз.-арг (open_url/create_folder)', !ids.has('open_url') && !ids.has('create_folder'))
+  t('semanticDocs содержит безопасные (weather/volume_up)', ids.has('weather') && ids.has('volume_up'))
+  const allEligible = docs.every((d) => {
+    const a = registry.get(d.id)!
+    return a && !a.dangerous && !a.args.some((arg) => arg.required)
+  })
+  t('semanticDocs: все действия безопасны и без обяз. аргументов', allEligible)
+}
+
+// === УРОВЕНЬ 1f: семантика — быстрые отсечки (без модели) ===
+async function levelSemanticGuards(): Promise<void> {
+  // эти вызовы обязаны вернуть null ДО обращения к модели (короткие отсечки)
+  t('семантика: пустая строка -> null', (await semanticIntent('')) === null)
+  t('семантика: составное «и» -> null', (await semanticIntent('выключи звук и свет')) === null)
+  t('семантика: перечисление через запятую -> null', (await semanticIntent('скриншот, потом отправь')) === null)
+  t('семантика: слишком длинно -> null', (await semanticIntent('а'.repeat(70))) === null)
+}
+
 // === УРОВЕНЬ 2: Command Engine — реальные действия ===
 async function level2(): Promise<void> {
+  await levelSemanticGuards()
   let busCount = 0
   bus.on('action:executed', () => { busCount++ })
 

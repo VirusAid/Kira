@@ -20,6 +20,13 @@ import { extractAiFile, extractFileText } from './modules/shellIntegration'
 let mainWindow: BrowserWindow | null = null
 let pendingAiFile: string | null = extractAiFile(process.argv)
 
+/** Путь к фирменной иконке (эмблема Kira) для окон и трея. */
+function iconPath(): string {
+  return app.isPackaged
+    ? join(process.resourcesPath, 'icon.ico')
+    : join(__dirname, '../../resources/icon.ico')
+}
+
 /** Открыть меню AI Actions для файла из контекстного меню Проводника. */
 async function openAiFile(path: string): Promise<void> {
   if (!mainWindow) return
@@ -41,6 +48,7 @@ function createWindow(): void {
     frame: false,
     backgroundColor: '#0a0a12',
     title: 'Kira',
+    icon: iconPath(),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       sandbox: false,
@@ -106,6 +114,11 @@ if (!gotLock) {
   })
 
   app.whenReady().then(() => {
+    // единый AppUserModelID — Windows группирует все процессы Kira под одной
+    // записью «Kira» с нашей эмблемой (а не набором «Electron»), и это же
+    // управляет идентичностью уведомлений
+    app.setAppUserModelId('app.kira.assistant')
+
     // разрешаем доступ к микрофону для голосового режима
     const { session } = require('electron') as typeof import('electron')
     session.defaultSession.setPermissionRequestHandler((_wc, permission, callback) => {
