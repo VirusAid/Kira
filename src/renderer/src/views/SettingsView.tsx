@@ -7,6 +7,7 @@ import {
 import { useAppStore } from '@/state/appStore'
 import { kira } from '@/api'
 import type { AIProviderId, KiraSettings } from '@shared/types'
+import { PERSONALITY_PRESETS, detectPreset, type PersonalityPreset } from '@shared/personalityPresets'
 
 type Section = 'models' | 'personality' | 'voice' | 'interface' | 'behavior' | 'data'
 
@@ -297,10 +298,45 @@ function ModelPicker({ value, models, loading, onChange, onRefresh }: {
 }
 
 function PersonalitySection({ settings, update }: SectionProps) {
+  const activePreset = detectPreset(settings.personality)
+  const applyPreset = (p: PersonalityPreset): void => {
+    update({
+      personality: p.apply.personality,
+      addressStyle: p.apply.addressStyle,
+      ...(p.apply.sileroSpeaker ? { sileroSpeaker: p.apply.sileroSpeaker } : {}),
+      ...(p.apply.voiceRate ? { voiceRate: p.apply.voiceRate } : {})
+    })
+  }
   return (
     <div>
       <SectionTitle icon={<User size={19} />} title="Личность Kira" subtitle="Как Kira общается и обращается к тебе." />
       <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 640 }}>
+        <Field label="Пресет характера">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))', gap: 8 }}>
+            {PERSONALITY_PRESETS.map((p) => {
+              const active = activePreset === p.id
+              return (
+                <button key={p.id} className="press" onClick={() => applyPreset(p)}
+                  style={{
+                    textAlign: 'left', padding: '10px 12px', borderRadius: 10,
+                    background: active ? 'var(--accent-soft)' : 'var(--bg-2)',
+                    border: `1px solid ${active ? 'var(--border-strong)' : 'var(--border)'}`,
+                    boxShadow: active ? '0 0 14px rgba(139,92,246,0.15)' : 'none'
+                  }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 7 }}>
+                    <span style={{ fontSize: 16 }}>{p.emoji}</span>
+                    <span style={{ fontWeight: 700, fontSize: 13.5, color: active ? 'var(--accent-text)' : 'var(--text-0)' }}>{p.name}</span>
+                    {active && <Check size={13} style={{ marginLeft: 'auto', color: 'var(--accent-text)' }} />}
+                  </div>
+                  <div className="muted" style={{ fontSize: 11, marginTop: 4, lineHeight: 1.45 }}>{p.tagline}</div>
+                </button>
+              )
+            })}
+          </div>
+          <div className="muted" style={{ fontSize: 11, marginTop: 6 }}>
+            {activePreset ? 'Выбери пресет или доредактируй промпт ниже.' : 'Сейчас: свой характер (промпт изменён вручную).'}
+          </div>
+        </Field>
         <Field label="Твоё имя">
           <input style={{ width: '100%' }} value={settings.userName}
             onChange={(e) => update({ userName: e.target.value })} />

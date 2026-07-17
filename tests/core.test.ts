@@ -101,6 +101,18 @@ import { parseWhen } from '../src/main/modules/reminders'
   t('мусор -> null', parseWhen('когда-нибудь') === null)
 }
 
+// === УРОВЕНЬ 1d: пресеты личности ===
+import { PERSONALITY_PRESETS, detectPreset } from '../src/shared/personalityPresets'
+{
+  t('пресетов >= 5', PERSONALITY_PRESETS.length >= 5)
+  const uniqueIds = new Set(PERSONALITY_PRESETS.map((p) => p.id)).size
+  t('id пресетов уникальны', uniqueIds === PERSONALITY_PRESETS.length)
+  const allValid = PERSONALITY_PRESETS.every((p) => p.name && p.emoji && p.tagline && p.apply.personality.length > 40 && p.apply.addressStyle)
+  t('все пресеты заполнены (имя/эмодзи/промпт/обращение)', allValid)
+  t('detectPreset узнаёт «Кира» по промпту', detectPreset(PERSONALITY_PRESETS[0].apply.personality) === PERSONALITY_PRESETS[0].id)
+  t('detectPreset на ручном тексте -> null', detectPreset('произвольный характер') === null)
+}
+
 // === УРОВЕНЬ 2: Command Engine — реальные действия ===
 async function level2(): Promise<void> {
   let busCount = 0

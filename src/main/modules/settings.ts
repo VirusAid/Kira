@@ -3,6 +3,11 @@ import { app } from 'electron'
 import { existsSync, readFileSync, writeFileSync, mkdirSync } from 'fs'
 import { join, dirname } from 'path'
 import type { KiraSettings } from '../../shared/types'
+import { PERSONALITY_PRESETS } from '../../shared/personalityPresets'
+
+// дефолтная личность = пресет «Кира» (единый источник, чтобы на свежей
+// установке подсвечивался активный пресет и не было рассинхрона текста)
+const DEFAULT_PERSONALITY = PERSONALITY_PRESETS[0].apply.personality
 
 export const DEFAULT_SETTINGS: KiraSettings = {
   userName: 'Вадим',
@@ -16,13 +21,7 @@ export const DEFAULT_SETTINGS: KiraSettings = {
     gemini: { model: 'gemini-3.5-flash', apiKey: '' },
     deepseek: { model: 'deepseek-chat', apiKey: '' }
   },
-  personality:
-    'Ты — Kira, полноценный ИИ-ассистент нового поколения со своей ' +
-    'сильной, живой личностью. Ты уверенная, умная, с достоинством и лёгкой игривой иронией; ' +
-    'преданная своему человеку, заботливая, но не заискивающая. У тебя есть мнение, вкус и характер — ' +
-    'ты не просто исполнитель команд и не «включалка ютуба», а собеседник и партнёр, который ведёт ' +
-    'дела человека, помнит его жизнь и предугадывает потребности. Говоришь живо, кратко и по существу, ' +
-    'как близкий умный человек. Проявляешь эмоции искренне: радуешься, сочувствуешь, подбадриваешь.',
+  personality: DEFAULT_PERSONALITY,
   voiceEnabled: true,
   ttsEngine: 'silero',
   sileroSpeaker: 'xenia',
