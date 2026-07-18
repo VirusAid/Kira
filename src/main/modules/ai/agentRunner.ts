@@ -43,6 +43,13 @@ const SEARCH_ACTIONS = new Set(['search_web', 'read_page', 'open_search', 'searc
 const SEARCH_BUDGET = 4
 
 /**
+ * Внутри автономного цикла НЕЛЬЗЯ делегировать дальше: delegate из worker'а
+ * плодил бы новых worker'ов рекурсивно (runaway), а subagent в subagent —
+ * вложенные циклы без контроля. Агент в фоне делает работу САМ.
+ */
+const NESTED_BLOCKED = new Set(['delegate', 'subagent'])
+
+/**
  * Прогоняет автономную задачу до результата. Никогда не бросает — при сбое
  * возвращает ok:false с пояснением в summary.
  */
@@ -111,6 +118,11 @@ export async function runAgentLoop(opts: AgentRunOptions): Promise<AgentRunResul
 
     for (const action of actions) {
       if (opts.isCancelled?.()) return finish(false, true)
+
+      if (NESTED_BLOCKED.has(action.name)) {
+        results.push(`${action.name}: НЕДОСТУПНО в автономном режиме — выполни задачу сам, своими инструментами.`)
+        continue
+      }
 
       const signature = `${action.name}|${action.args.join('|')}`
       if (executedSignatures.has(signature)) {

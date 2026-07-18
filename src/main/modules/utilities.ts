@@ -22,26 +22,26 @@ interface Unit { dim: Dim; factor: number; label: string }
 // factor — во сколько раз единица больше базовой (метр/кг/литр/(м/с)/байт)
 const UNITS: Record<string, Unit> = {
   // длина (база — метр)
-  'мм': { dim: 'length', factor: 0.001, label: 'мм' }, 'миллиметр': { dim: 'length', factor: 0.001, label: 'мм' },
-  'см': { dim: 'length', factor: 0.01, label: 'см' }, 'сантиметр': { dim: 'length', factor: 0.01, label: 'см' },
+  'мм': { dim: 'length', factor: 0.001, label: 'мм' }, 'миллиметр': { dim: 'length', factor: 0.001, label: 'мм' }, 'миллиметра': { dim: 'length', factor: 0.001, label: 'мм' }, 'миллиметры': { dim: 'length', factor: 0.001, label: 'мм' }, 'миллиметров': { dim: 'length', factor: 0.001, label: 'мм' },
+  'см': { dim: 'length', factor: 0.01, label: 'см' }, 'сантиметр': { dim: 'length', factor: 0.01, label: 'см' }, 'сантиметра': { dim: 'length', factor: 0.01, label: 'см' }, 'сантиметры': { dim: 'length', factor: 0.01, label: 'см' }, 'сантиметров': { dim: 'length', factor: 0.01, label: 'см' },
   'дм': { dim: 'length', factor: 0.1, label: 'дм' },
-  'м': { dim: 'length', factor: 1, label: 'м' }, 'метр': { dim: 'length', factor: 1, label: 'м' }, 'метров': { dim: 'length', factor: 1, label: 'м' },
-  'км': { dim: 'length', factor: 1000, label: 'км' }, 'километр': { dim: 'length', factor: 1000, label: 'км' }, 'километров': { dim: 'length', factor: 1000, label: 'км' },
+  'м': { dim: 'length', factor: 1, label: 'м' }, 'метр': { dim: 'length', factor: 1, label: 'м' }, 'метра': { dim: 'length', factor: 1, label: 'м' }, 'метры': { dim: 'length', factor: 1, label: 'м' }, 'метров': { dim: 'length', factor: 1, label: 'м' },
+  'км': { dim: 'length', factor: 1000, label: 'км' }, 'километр': { dim: 'length', factor: 1000, label: 'км' }, 'километра': { dim: 'length', factor: 1000, label: 'км' }, 'километры': { dim: 'length', factor: 1000, label: 'км' }, 'километров': { dim: 'length', factor: 1000, label: 'км' },
   'миля': { dim: 'length', factor: 1609.344, label: 'миль' }, 'миль': { dim: 'length', factor: 1609.344, label: 'миль' }, 'мили': { dim: 'length', factor: 1609.344, label: 'миль' }, 'mile': { dim: 'length', factor: 1609.344, label: 'миль' },
-  'ярд': { dim: 'length', factor: 0.9144, label: 'ярд' }, 'ярдов': { dim: 'length', factor: 0.9144, label: 'ярд' },
-  'фут': { dim: 'length', factor: 0.3048, label: 'фут' }, 'футов': { dim: 'length', factor: 0.3048, label: 'фут' }, 'foot': { dim: 'length', factor: 0.3048, label: 'фут' }, 'feet': { dim: 'length', factor: 0.3048, label: 'фут' },
-  'дюйм': { dim: 'length', factor: 0.0254, label: 'дюйм' }, 'дюймов': { dim: 'length', factor: 0.0254, label: 'дюйм' }, 'inch': { dim: 'length', factor: 0.0254, label: 'дюйм' },
+  'ярд': { dim: 'length', factor: 0.9144, label: 'ярд' }, 'ярда': { dim: 'length', factor: 0.9144, label: 'ярд' }, 'ярды': { dim: 'length', factor: 0.9144, label: 'ярд' }, 'ярдов': { dim: 'length', factor: 0.9144, label: 'ярд' },
+  'фут': { dim: 'length', factor: 0.3048, label: 'фут' }, 'фута': { dim: 'length', factor: 0.3048, label: 'фут' }, 'футы': { dim: 'length', factor: 0.3048, label: 'фут' }, 'футов': { dim: 'length', factor: 0.3048, label: 'фут' }, 'foot': { dim: 'length', factor: 0.3048, label: 'фут' }, 'feet': { dim: 'length', factor: 0.3048, label: 'фут' },
+  'дюйм': { dim: 'length', factor: 0.0254, label: 'дюйм' }, 'дюйма': { dim: 'length', factor: 0.0254, label: 'дюйм' }, 'дюймы': { dim: 'length', factor: 0.0254, label: 'дюйм' }, 'дюймов': { dim: 'length', factor: 0.0254, label: 'дюйм' }, 'inch': { dim: 'length', factor: 0.0254, label: 'дюйм' },
   // масса (база — кг)
   'мг': { dim: 'mass', factor: 1e-6, label: 'мг' }, 'миллиграмм': { dim: 'mass', factor: 1e-6, label: 'мг' },
-  'г': { dim: 'mass', factor: 0.001, label: 'г' }, 'грамм': { dim: 'mass', factor: 0.001, label: 'г' }, 'граммов': { dim: 'mass', factor: 0.001, label: 'г' },
-  'кг': { dim: 'mass', factor: 1, label: 'кг' }, 'килограмм': { dim: 'mass', factor: 1, label: 'кг' }, 'килограммов': { dim: 'mass', factor: 1, label: 'кг' },
-  'т': { dim: 'mass', factor: 1000, label: 'т' }, 'тонна': { dim: 'mass', factor: 1000, label: 'т' }, 'тонн': { dim: 'mass', factor: 1000, label: 'т' },
-  'фунт': { dim: 'mass', factor: 0.453592, label: 'фунт' }, 'фунтов': { dim: 'mass', factor: 0.453592, label: 'фунт' }, 'pound': { dim: 'mass', factor: 0.453592, label: 'фунт' }, 'lb': { dim: 'mass', factor: 0.453592, label: 'фунт' },
-  'унция': { dim: 'mass', factor: 0.0283495, label: 'унц' }, 'унций': { dim: 'mass', factor: 0.0283495, label: 'унц' }, 'oz': { dim: 'mass', factor: 0.0283495, label: 'унц' },
+  'г': { dim: 'mass', factor: 0.001, label: 'г' }, 'грамм': { dim: 'mass', factor: 0.001, label: 'г' }, 'грамма': { dim: 'mass', factor: 0.001, label: 'г' }, 'граммы': { dim: 'mass', factor: 0.001, label: 'г' }, 'граммов': { dim: 'mass', factor: 0.001, label: 'г' },
+  'кг': { dim: 'mass', factor: 1, label: 'кг' }, 'килограмм': { dim: 'mass', factor: 1, label: 'кг' }, 'килограмма': { dim: 'mass', factor: 1, label: 'кг' }, 'килограммы': { dim: 'mass', factor: 1, label: 'кг' }, 'килограммов': { dim: 'mass', factor: 1, label: 'кг' },
+  'т': { dim: 'mass', factor: 1000, label: 'т' }, 'тонна': { dim: 'mass', factor: 1000, label: 'т' }, 'тонны': { dim: 'mass', factor: 1000, label: 'т' }, 'тонн': { dim: 'mass', factor: 1000, label: 'т' },
+  'фунт': { dim: 'mass', factor: 0.453592, label: 'фунт' }, 'фунта': { dim: 'mass', factor: 0.453592, label: 'фунт' }, 'фунты': { dim: 'mass', factor: 0.453592, label: 'фунт' }, 'фунтов': { dim: 'mass', factor: 0.453592, label: 'фунт' }, 'pound': { dim: 'mass', factor: 0.453592, label: 'фунт' }, 'lb': { dim: 'mass', factor: 0.453592, label: 'фунт' },
+  'унция': { dim: 'mass', factor: 0.0283495, label: 'унц' }, 'унции': { dim: 'mass', factor: 0.0283495, label: 'унц' }, 'унций': { dim: 'mass', factor: 0.0283495, label: 'унц' }, 'oz': { dim: 'mass', factor: 0.0283495, label: 'унц' },
   // объём (база — литр)
-  'мл': { dim: 'volume', factor: 0.001, label: 'мл' }, 'миллилитр': { dim: 'volume', factor: 0.001, label: 'мл' },
-  'л': { dim: 'volume', factor: 1, label: 'л' }, 'литр': { dim: 'volume', factor: 1, label: 'л' }, 'литров': { dim: 'volume', factor: 1, label: 'л' },
-  'галлон': { dim: 'volume', factor: 3.78541, label: 'галлон' }, 'галлонов': { dim: 'volume', factor: 3.78541, label: 'галлон' }, 'gallon': { dim: 'volume', factor: 3.78541, label: 'галлон' },
+  'мл': { dim: 'volume', factor: 0.001, label: 'мл' }, 'миллилитр': { dim: 'volume', factor: 0.001, label: 'мл' }, 'миллилитров': { dim: 'volume', factor: 0.001, label: 'мл' },
+  'л': { dim: 'volume', factor: 1, label: 'л' }, 'литр': { dim: 'volume', factor: 1, label: 'л' }, 'литра': { dim: 'volume', factor: 1, label: 'л' }, 'литры': { dim: 'volume', factor: 1, label: 'л' }, 'литров': { dim: 'volume', factor: 1, label: 'л' },
+  'галлон': { dim: 'volume', factor: 3.78541, label: 'галлон' }, 'галлона': { dim: 'volume', factor: 3.78541, label: 'галлон' }, 'галлоны': { dim: 'volume', factor: 3.78541, label: 'галлон' }, 'галлонов': { dim: 'volume', factor: 3.78541, label: 'галлон' }, 'gallon': { dim: 'volume', factor: 3.78541, label: 'галлон' },
   // скорость (база — м/с)
   'м/с': { dim: 'speed', factor: 1, label: 'м/с' },
   'км/ч': { dim: 'speed', factor: 0.277778, label: 'км/ч' }, 'кмч': { dim: 'speed', factor: 0.277778, label: 'км/ч' },
@@ -69,6 +69,12 @@ function cToTemp(c: number, u: string): number {
 }
 const round = (n: number): number => Math.round(n * 1000) / 1000
 
+/** Слово — единица измерения (или температура)? Единый источник для роутинга единицы/валюта. */
+export function isUnitWord(word: string): boolean {
+  const k = word.trim().toLowerCase()
+  return !!UNITS[k] || TEMP.has(k)
+}
+
 export function convertUnits(value: number, fromRaw: string, toRaw: string): ActionResult {
   const from = fromRaw.trim().toLowerCase()
   const to = toRaw.trim().toLowerCase()
@@ -89,20 +95,26 @@ export function convertUnits(value: number, fromRaw: string, toRaw: string): Act
 // ─── Курсы валют и криптовалют ───────────────────────────────────────────────
 
 const FIAT: Record<string, string> = {
-  'доллар': 'USD', 'долларов': 'USD', 'долларах': 'USD', 'бакс': 'USD', 'usd': 'USD', '$': 'USD',
+  'доллар': 'USD', 'доллара': 'USD', 'доллары': 'USD', 'долларов': 'USD', 'долларах': 'USD',
+  'бакс': 'USD', 'бакса': 'USD', 'баксы': 'USD', 'баксов': 'USD', 'usd': 'USD', '$': 'USD',
   'евро': 'EUR', 'eur': 'EUR', '€': 'EUR',
-  'рубль': 'RUB', 'рублей': 'RUB', 'рублях': 'RUB', 'руб': 'RUB', 'rub': 'RUB',
-  'гривна': 'UAH', 'гривен': 'UAH', 'грн': 'UAH', 'uah': 'UAH',
-  'фунт': 'GBP', 'фунтов': 'GBP', 'gbp': 'GBP', '£': 'GBP',
-  'юань': 'CNY', 'юаней': 'CNY', 'cny': 'CNY',
-  'тенге': 'KZT', 'kzt': 'KZT', 'злотый': 'PLN', 'pln': 'PLN',
-  'йена': 'JPY', 'иена': 'JPY', 'jpy': 'JPY', 'лира': 'TRY', 'try': 'TRY',
-  'франк': 'CHF', 'chf': 'CHF', 'ram': 'AMD', 'драм': 'AMD'
+  'рубль': 'RUB', 'рубля': 'RUB', 'рубли': 'RUB', 'рублей': 'RUB', 'рублях': 'RUB', 'руб': 'RUB', 'rub': 'RUB',
+  'гривна': 'UAH', 'гривны': 'UAH', 'гривну': 'UAH', 'гривен': 'UAH', 'гривнах': 'UAH', 'грн': 'UAH', 'uah': 'UAH',
+  'фунт': 'GBP', 'фунта': 'GBP', 'фунты': 'GBP', 'фунтов': 'GBP', 'gbp': 'GBP', '£': 'GBP',
+  'юань': 'CNY', 'юаня': 'CNY', 'юани': 'CNY', 'юаней': 'CNY', 'cny': 'CNY',
+  'тенге': 'KZT', 'kzt': 'KZT', 'злотый': 'PLN', 'злотых': 'PLN', 'pln': 'PLN',
+  'йена': 'JPY', 'йены': 'JPY', 'иена': 'JPY', 'иен': 'JPY', 'jpy': 'JPY',
+  'лира': 'TRY', 'лиры': 'TRY', 'лир': 'TRY', 'try': 'TRY',
+  'франк': 'CHF', 'франка': 'CHF', 'франков': 'CHF', 'chf': 'CHF', 'драм': 'AMD', 'драмов': 'AMD'
 }
 
 export async function currencyConvert(amount: number, fromRaw: string, toRaw: string): Promise<ActionResult> {
   const from = FIAT[fromRaw.trim().toLowerCase()] ?? fromRaw.trim().toUpperCase()
   const to = FIAT[toRaw.trim().toLowerCase()] ?? toRaw.trim().toUpperCase()
+  // не гоняем в API мусор («5 яблок в корзину») — валюты это ISO-коды из 3 латинских букв
+  if (!/^[A-Z]{3}$/.test(from) || !/^[A-Z]{3}$/.test(to)) {
+    return { ok: false, message: `Не знаю валюту «${!/^[A-Z]{3}$/.test(from) ? fromRaw : toRaw}»` }
+  }
   try {
     const r = await fetch(`https://open.er-api.com/v6/latest/${from}`, { signal: AbortSignal.timeout(12_000) })
     const j = (await r.json()) as { result?: string; rates?: Record<string, number> }

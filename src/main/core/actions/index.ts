@@ -841,10 +841,13 @@ export const actions: KiraAction[] = [
       { name: 'from', description: 'Из чего', required: true },
       { name: 'to', description: 'Во что', required: true }
     ],
+    softFail: true, // «переведи 5 яблок в корзину» — не единицы и не валюта → пусть решает AI
     execute: async (a) => {
-      const from = (a.from ?? '').toLowerCase()
-      const isUnit = /^(мм|см|дм|м|км|миля|миль|мили|mile|ярд|ярдов|фут|футов|foot|feet|дюйм|дюймов|inch|мг|г|грамм|граммов|кг|килограмм|т|тонна|тонн|фунт|фунтов|pound|lb|унция|унций|oz|мл|л|литр|литров|галлон|gallon|м\/с|км\/ч|кмч|миль\/ч|mph|узел|узлов|байт|кб|мб|гб|тб|c|с|цельсий|цельсия|f|фаренгейт|фаренгейта|k|кельвин|кельвина)/.test(from)
-      return isUnit
+      // «фунт» — и масса, и валюта: единицы выбираем, только если ОБЕ стороны — единицы
+      // («100 фунтов в кг» → масса; «100 фунтов в рубли» → валюта GBP→RUB).
+      // Проверка — по единому словарю единиц (utilities.isUnitWord), не по своему списку
+      const bothUnits = UtilityController.isUnit(a.from ?? '') && UtilityController.isUnit(a.to ?? '')
+      return bothUnits
         ? UtilityController.convert(toNum(a.value), a.from ?? '', a.to ?? '')
         : UtilityController.currency(toNum(a.value), a.from ?? '', a.to ?? '')
     }
@@ -858,6 +861,7 @@ export const actions: KiraAction[] = [
     patterns: [/^(?:курс|сколько стоит|цена|почём)\s+(?<coin>[a-zа-я]+)$/],
     examples: ['курс биткоина', 'сколько стоит доллар'],
     args: [{ name: 'coin', description: 'Валюта/монета', required: true }],
+    softFail: true, // «сколько стоит айфон» — не валюта → пусть отвечает AI
     execute: (a) => UtilityController.rate(a.coin ?? '')
   },
   {

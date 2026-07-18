@@ -195,6 +195,16 @@ async function level2(): Promise<void> {
   const sf = await commandEngine.tryHandle('открой абракадабрасофт', { source: 'chat' })
   t('несуществующее приложение -> softFail -> AI', sf.handled === false)
 
+  // курс/конвертер: мусор уходит в AI (softFail), реальное — работает локально
+  const iphone = await commandEngine.tryHandle('сколько стоит айфон', { source: 'chat' })
+  t('«сколько стоит айфон» -> softFail -> AI', iphone.handled === false)
+  const apples = await commandEngine.tryHandle('переведи 5 яблок в корзину', { source: 'chat' })
+  t('«5 яблок в корзину» -> softFail -> AI', apples.handled === false)
+  const lbs = await commandEngine.tryHandle('переведи 100 фунтов в кг', { source: 'chat' })
+  t('«100 фунтов в кг» -> масса локально', !!(lbs.handled && lbs.result?.ok && (lbs.reply ?? '').includes('45.359')))
+  const clarify = await commandEngine.tryHandle('запусти игру', { source: 'chat' })
+  t('«запусти игру» -> уточняющий вопрос', !!(clarify.handled && (clarify.reply ?? '').includes('Какую игру')))
+
   const byAlias = await commandEngine.executeById('уведомление', { title: 'Тест' }, { source: 'agent' })
   t('executeById по алиасу', byAlias !== null && byAlias.ok === true)
 

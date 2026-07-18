@@ -71,6 +71,7 @@ export const SearchController = {
 
 /** Бытовые утилиты: конвертер, курсы, QR, таймер, ИМТ, замер скорости. */
 export const UtilityController = {
+  isUnit: (word: string): boolean => util.isUnitWord(word),
   convert: (value: number, from: string, to: string): ExecResult => util.convertUnits(value, from, to),
   currency: (amount: number, from: string, to: string): Promise<ExecResult> => util.currencyConvert(amount, from, to),
   crypto: (coin: string, vs?: string): Promise<ExecResult> => util.cryptoRate(coin, vs),
