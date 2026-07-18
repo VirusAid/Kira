@@ -11,9 +11,22 @@
 import {
   ApplicationController, BrowserController, ClipboardController, FileController,
   GitController, InputController, MediaController, NotificationController, PowerController,
-  SearchController, SystemController, WindowController, knownFolder
+  SearchController, SystemController, UtilityController, WindowController, knownFolder
 } from '../controllers'
 import type { KiraAction } from '../types'
+
+/** Число из строки, устойчивое к запятой/мусору: «5,5» → 5.5. */
+function toNum(v: string | undefined): number {
+  return Number(String(v ?? '').replace(',', '.').match(/-?\d+(?:\.\d+)?/)?.[0] ?? NaN)
+}
+
+/** Длительность таймера из числа + единицы в миллисекунды. */
+function durationMs(dur: string, unit: string): number {
+  const n = toNum(dur)
+  const u = unit.toLowerCase()
+  const mult = /^ч/.test(u) ? 3600_000 : /^с/.test(u) ? 1000 : 60_000
+  return n * mult
+}
 
 const APP_STOPWORDS = /(^| )(сайт|страницу|файл|папку|музыку|песню|трек|фильм|видео|звук|громкость|свет|окно|его|ее|это|мой|моя|мое)( |$)/
 
@@ -812,6 +825,106 @@ export const actions: KiraAction[] = [
     describe: () => 'Перевести компьютер в гибернацию',
     execute: () => PowerController.hibernate(),
     confirmText: () => 'Перевожу в гибернацию'
+  },
+
+  // ─── Утилиты (конвертер, курсы, QR, таймер, ИМТ, скорость) ───────────────
+  {
+    id: 'convert',
+    title: 'Конвертер',
+    description: 'Переводит единицы измерения или суммы валют',
+    category: 'info',
+    aliases: ['конвертер', 'переведи'],
+    patterns: [/^(?:переведи|конвертируй|сколько будет|переведи-ка)\s+(?<value>-?[\d.,]+)\s+(?<from>[a-zа-я/$€£]+)\s+в\s+(?<to>[a-zа-я/]+)$/],
+    examples: ['переведи 5 миль в км', 'сколько будет 100 долларов в рублях'],
+    args: [
+      { name: 'value', description: 'Число', required: true },
+      { name: 'from', description: 'Из чего', required: true },
+      { name: 'to', description: 'Во что', required: true }
+    ],
+    execute: async (a) => {
+      const from = (a.from ?? '').toLowerCase()
+      const isUnit = /^(мм|см|дм|м|км|миля|миль|мили|mile|ярд|ярдов|фут|футов|foot|feet|дюйм|дюймов|inch|мг|г|грамм|граммов|кг|килограмм|т|тонна|тонн|фунт|фунтов|pound|lb|унция|унций|oz|мл|л|литр|литров|галлон|gallon|м\/с|км\/ч|кмч|миль\/ч|mph|узел|узлов|байт|кб|мб|гб|тб|c|с|цельсий|цельсия|f|фаренгейт|фаренгейта|k|кельвин|кельвина)/.test(from)
+      return isUnit
+        ? UtilityController.convert(toNum(a.value), a.from ?? '', a.to ?? '')
+        : UtilityController.currency(toNum(a.value), a.from ?? '', a.to ?? '')
+    }
+  },
+  {
+    id: 'rate',
+    title: 'Курс валюты/крипты',
+    description: 'Показывает курс валюты или криптовалюты',
+    category: 'info',
+    aliases: ['курс', 'сколько стоит'],
+    patterns: [/^(?:курс|сколько стоит|цена|почём)\s+(?<coin>[a-zа-я]+)$/],
+    examples: ['курс биткоина', 'сколько стоит доллар'],
+    args: [{ name: 'coin', description: 'Валюта/монета', required: true }],
+    execute: (a) => UtilityController.rate(a.coin ?? '')
+  },
+  {
+    id: 'qr_code',
+    title: 'QR-код',
+    description: 'Генерирует QR-код и открывает его',
+    category: 'info',
+    aliases: ['qr', 'кьюар'],
+    patterns: [/^(?:сделай\s+|создай\s+|сгенерируй\s+)?(?:qr|кью ?ар)(?:[ -]?код)?(?:\s+(?:для|из|с текстом))?\s+(?<text>.+)$/],
+    examples: ['сделай qr код для example.com'],
+    args: [{ name: 'text', description: 'Текст или ссылка', required: true }],
+    execute: (a) => UtilityController.qr(a.text ?? ''),
+    confirmText: () => 'Готовлю QR-код'
+  },
+  {
+    id: 'bmi',
+    title: 'Индекс массы тела',
+    description: 'Считает ИМТ по росту (см) и весу (кг)',
+    category: 'info',
+    aliases: ['имт', 'bmi'],
+    patterns: [/^(?:посчитай\s+)?(?:имт|bmi)\s+(?:рост\s+)?(?<height>\d{2,3})\s*(?:см)?\s+(?:вес\s+)?(?<weight>\d{2,3})\s*(?:кг)?$/],
+    examples: ['имт 180 75'],
+    args: [
+      { name: 'height', description: 'Рост в см', required: true },
+      { name: 'weight', description: 'Вес в кг', required: true }
+    ],
+    execute: async (a) => UtilityController.bmi(toNum(a.height), toNum(a.weight))
+  },
+  {
+    id: 'timer',
+    title: 'Таймер',
+    description: 'Ставит таймер на заданное время',
+    category: 'system',
+    aliases: ['таймер'],
+    patterns: [/^(?:поставь|заведи|включи|запусти|засеки)?\s*таймер(?:\s+на)?\s+(?<dur>\d+)\s*(?<unit>секунд(?:у|ы)?|сек|минут(?:у|ы)?|мин|час(?:а|ов)?|ч)(?:\s+(?<label>.+))?$/],
+    examples: ['таймер на 10 минут', 'поставь таймер на 30 секунд чай'],
+    args: [
+      { name: 'dur', description: 'Число', required: true },
+      { name: 'unit', description: 'секунд/минут/часов', required: true },
+      { name: 'label', description: 'Метка' }
+    ],
+    execute: async (a) => UtilityController.timer(durationMs(a.dur ?? '', a.unit ?? 'мин'), a.label),
+    confirmText: (a) => `Таймер на ${a.dur} ${a.unit}`
+  },
+  {
+    id: 'timers_list',
+    title: 'Активные таймеры',
+    description: 'Показывает запущенные таймеры',
+    category: 'system',
+    aliases: ['таймеры'],
+    patterns: [/^(?:какие\s+)?таймеры(?:\s+(?:активны|идут|запущены))?$|^(?:покажи|сколько осталось на)\s+таймер(?:ах|ы|е)?$/],
+    examples: ['таймеры'],
+    phrases: ['сколько осталось на таймере', 'какие таймеры идут', 'покажи таймеры'],
+    args: [],
+    execute: async () => UtilityController.timers()
+  },
+  {
+    id: 'speedtest',
+    title: 'Скорость интернета',
+    description: 'Замеряет скорость загрузки и пинг',
+    category: 'info',
+    aliases: ['скорость интернета', 'спидтест'],
+    patterns: [/^(?:проверь|замерь|тест|измерь)\s+скорость(?:\s+интернета|\s+сети)?$|^спидтест$|^скорость интернета$/],
+    examples: ['проверь скорость интернета'],
+    phrases: ['замерь скорость интернета', 'какая у меня скорость сети', 'быстрый ли интернет', 'спидтест'],
+    args: [],
+    execute: async () => UtilityController.speedTest()
   },
 
   // ─── Приложения (универсальный — ПОСЛЕДНИМ) ──────────────────────────────

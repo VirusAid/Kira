@@ -134,6 +134,7 @@ if (!gotLock) {
       () => { if (mainWindow) { mainWindow.show(); mainWindow.focus() } }
     )
     void import('./modules/ai/wakeword').then((m) => m.wakeWord.setWindowGetter(() => mainWindow))
+    void import('./modules/ai/worker').then((m) => m.workers.setWindowGetter(() => mainWindow))
     initAutomations()
     initReminders()
     registerHotkey()

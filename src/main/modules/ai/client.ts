@@ -246,8 +246,8 @@ function isRetryableStatus(status: number): boolean {
 }
 
 /** Нестриминговый запрос — для протоколов и внутренних задач. */
-export async function completeChat(messages: AIMessage[]): Promise<string> {
-  const endpoint = resolveEndpoint()
+export async function completeChat(messages: AIMessage[], providerId?: AIProviderId): Promise<string> {
+  const endpoint = resolveEndpoint(providerId)
   const res = await fetch(endpoint.url, {
     method: 'POST',
     signal: AbortSignal.timeout(90_000),
@@ -255,10 +255,24 @@ export async function completeChat(messages: AIMessage[]): Promise<string> {
     body: JSON.stringify({ model: endpoint.model, messages, stream: false, max_tokens: 1600 })
   })
   if (!res.ok) {
-    throw new Error(humanizeApiError(res.status, await res.text().catch(() => '')))
+    throw new Error(humanizeApiError(res.status, await res.text().catch(() => ''), providerId))
   }
   const json = (await res.json()) as { choices?: { message?: { content?: string } }[] }
   return json.choices?.[0]?.message?.content ?? ''
+}
+
+/** Завершение с отказоустойчивостью: перебирает провайдеров с ключом. */
+export async function completeChatResilient(messages: AIMessage[]): Promise<string> {
+  const candidates = candidateProviders()
+  let lastError = 'Нет доступного провайдера ИИ'
+  for (const provider of candidates) {
+    try {
+      return await completeChat(messages, provider)
+    } catch (err) {
+      lastError = (err as Error).message
+    }
+  }
+  throw new Error(lastError)
 }
 
 function humanizeApiError(status: number, body: string, providerId?: AIProviderId): string {

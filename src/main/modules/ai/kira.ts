@@ -35,6 +35,7 @@ click_text|название(НАДЁЖНО кликнуть по кнопке/с
   Управление мышью: сначала пробуй click_text по названию элемента (точнее). Если не нашёл — see_screen, оцени позицию в %, потом click. После действия see_screen сам придёт — проверь результат и при ошибке повтори.
 undo(отменить последнее файловое действие — перемещение/переименование/создание/копирование/запись/удаление)
 run_protocol|название · remember|категория|заголовок|текст (категории: preference/project/note/contact/fact/setting)
+delegate|цель(запустить ДОЛГУЮ/многошаговую задачу в ФОНЕ — ты сразу свободна продолжать разговор, результат придёт уведомлением) · worker_status(проверить фоновые задачи) · worker_cancel|id(отменить фоновую; без id — все) · subagent|узкая задача(поручить ОДНУ чёткую подзадачу фокусному помощнику и получить результат ТУТ ЖЕ, следующим сообщением)
 run_ability|название/фраза(выполнить установленный навык — его инструкция придёт следующим сообщением, выполни её) · create_ability|название|инструкция|триггеры-через-запятую(когда пользователь просит «научись/запомни как делать X» — создай навык) · list_abilities
 update_profile|факт(запомнить в ПОСТОЯННЫЙ профиль устойчивое о пользователе: как обращаться, где работает, вкусы в музыке/кино, стиль общения, важных людей — то, что делает тебя персональной)
 
@@ -130,6 +131,11 @@ export function buildSystemPrompt(options?: { withTools?: boolean; extraContext?
     'выполняй пункты подряд в одном ходу своими инструментами — не останавливаясь на полпути и не ' +
     'спрашивая «продолжать ли», пока цель не достигнута. После каждого действия проверяй результат; ' +
     'если шаг не удался — попробуй другой способ (другое имя окна/элемента, иной путь), а не сдавайся. ' +
+    'ДЕЛЕГИРОВАНИЕ: если задача ДОЛГАЯ или её можно делать в фоне, пока мы общаемся (навести порядок, ' +
+    'собрать материал, обработать много файлов) — запусти её через delegate|цель и сразу скажи, что ' +
+    'взяла в работу; не блокируй диалог. Результат придёт уведомлением, статус — worker_status. ' +
+    'Если нужна ОДНА чёткая изолированная подзадача (например «глубоко изучи X и верни выжимку») — ' +
+    'поручи её subagent|задача и дождись результата. Мелочь и быстрые команды делай сама, без делегирования. ' +
     'Если задачу будешь повторять — предложи сохранить её навыком (create_ability). ' +
     'Финальное короткое подтверждение давай ТОЛЬКО когда задача действительно выполнена целиком. ' +
     'Переспрашивай лишь при реальной неоднозначности или перед необратимым/опасным.\n' +
@@ -430,6 +436,35 @@ export async function executeAction(a: ParsedAction): Promise<ActionResult> {
       }
       case 'update_profile': return updateProfile(a.args.join(' ').trim() || (a.args[0] ?? ''))
       case 'remember': return remember(a.args[0] as MemoryCategory, a.args[1] ?? '', a.args.slice(2).join('|'))
+      case 'delegate': {
+        const goal = a.args.join('|').trim()
+        if (goal.length < 4) return { ok: false, message: 'Нужна понятная цель для фоновой задачи' }
+        const { workers } = await import('./worker')
+        const task = workers.spawn(goal)
+        return { ok: true, message: `Взяла в работу в фоне (id ${task.id}). Продолжаю с тобой — сообщу, когда будет готово.`, data: task.id }
+      }
+      case 'worker_status': {
+        const { workers } = await import('./worker')
+        return { ok: true, message: `Фоновых задач активно: ${workers.activeCount()}`, data: workers.statusText() }
+      }
+      case 'worker_cancel': {
+        const { workers } = await import('./worker')
+        const ok = workers.cancel(a.args[0]?.trim() || undefined)
+        return { ok, message: ok ? 'Останавливаю фоновую задачу' : 'Активных задач для отмены нет' }
+      }
+      case 'subagent': {
+        const goal = a.args.join('|').trim()
+        if (goal.length < 4) return { ok: false, message: 'Нужна понятная подзадача' }
+        const { runAgentLoop } = await import('./agentRunner')
+        const res = await runAgentLoop({
+          goal,
+          maxRounds: 8,
+          timeoutMs: 3 * 60_000,
+          systemExtra: 'Ты — фокусный суб-агент: реши ровно ОДНУ поставленную подзадачу и верни краткий результат.'
+        })
+        const skipped = res.skippedDangerous.length ? `\n(пропущено без подтверждения: ${res.skippedDangerous.join('; ')})` : ''
+        return { ok: res.ok, message: 'Суб-агент завершил подзадачу:', data: res.summary + skipped }
+      }
       default: {
         // AI Router → Action API: неизвестные протоколу команды ищем в реестре
         // Kira Core. Новый Action становится доступен LLM без правки этого кода;

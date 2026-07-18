@@ -10,6 +10,7 @@ import { app, shell } from 'electron'
 import { join } from 'path'
 import * as sys from '../../modules/system'
 import * as fs from '../../modules/files'
+import * as util from '../../modules/utilities'
 import type { ExecResult } from '../types'
 
 export const BrowserController = {
@@ -66,6 +67,20 @@ export const InputController = {
 export const SearchController = {
   web: (query: string): Promise<ExecResult> => sys.openSearch(query, 'google'),
   youtube: (query: string): Promise<ExecResult> => sys.openSearch(query, 'youtube')
+}
+
+/** Бытовые утилиты: конвертер, курсы, QR, таймер, ИМТ, замер скорости. */
+export const UtilityController = {
+  convert: (value: number, from: string, to: string): ExecResult => util.convertUnits(value, from, to),
+  currency: (amount: number, from: string, to: string): Promise<ExecResult> => util.currencyConvert(amount, from, to),
+  crypto: (coin: string, vs?: string): Promise<ExecResult> => util.cryptoRate(coin, vs),
+  rate: (query: string): Promise<ExecResult> => util.rate(query),
+  qr: (text: string): Promise<ExecResult> => util.generateQr(text),
+  bmi: (heightCm: number, weightKg: number): ExecResult => util.bmi(heightCm, weightKg),
+  timer: (ms: number, label?: string): ExecResult => util.startTimer(ms, label),
+  timers: (): ExecResult => util.listTimers(),
+  cancelTimers: (): ExecResult => util.cancelTimers(),
+  speedTest: (): Promise<ExecResult> => util.speedTest()
 }
 
 /** Известные пользовательские папки — чтобы «в загрузках» решалось локально. */
