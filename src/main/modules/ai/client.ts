@@ -67,7 +67,7 @@ export function resolveEndpoint(providerId?: AIProviderId): ProviderEndpoint {
       return {
         url: 'https://api.z.ai/api/paas/v4/chat/completions',
         headers: { Authorization: `Bearer ${cfg.apiKey ?? ''}` },
-        model: cfg.model || 'glm-4.6'
+        model: cfg.model || 'glm-5.2'
       }
     case 'claude':
       // Anthropic — свой формат API; запросы идут через официальный SDK

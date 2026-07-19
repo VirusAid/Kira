@@ -57,8 +57,8 @@ const PROVIDERS: {
   {
     id: 'glm', name: 'GLM (Z.ai)', free: 'Недорого · сильные модели', url: 'https://z.ai/manage-apikey/apikey-list',
     needsKey: true,
-    models: ['glm-4.6', 'glm-4.5', 'glm-4.5-air'],
-    note: 'GLM от Zhipu (Z.ai) — сильные и недорогие модели, отличны в коде и агентных задачах. glm-4.6 — флагман, glm-4.5-air — быстрый и дешёвый. Ключ на z.ai.'
+    models: ['glm-5.2', 'glm-5', 'glm-5-turbo', 'glm-4.7-flash', 'glm-4.6'],
+    note: 'GLM от Zhipu (Z.ai) — сильные и недорогие модели, отличны в коде и агентных задачах. glm-5.2 — флагман (контекст 1M), glm-5-turbo — быстрый, glm-4.7-flash — лёгкий (есть бесплатный доступ). Ключ на z.ai.'
   },
   {
     id: 'ollama', name: 'Ollama', free: 'Локально · полностью бесплатно', url: 'https://ollama.com/download',
