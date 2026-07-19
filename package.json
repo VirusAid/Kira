@@ -17,6 +17,7 @@
     "dist:standalone": "node scripts/prepare-standalone.mjs && electron-vite build && electron-builder --win"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.112.3",
     "chokidar": "^3.6.0",
     "mammoth": "^1.12.0",
     "marked": "^12.0.2",

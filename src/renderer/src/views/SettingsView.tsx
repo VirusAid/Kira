@@ -49,6 +49,18 @@ const PROVIDERS: {
     note: 'Официальный DeepSeek — ПЛАТНЫЙ API (пополни баланс на platform.deepseek.com, ошибка 402 = нулевой баланс). deepseek-chat (V3) и deepseek-reasoner (R1). Бесплатно те же модели: OpenRouter → deepseek/deepseek-r1:free, либо Groq → deepseek-r1-distill-llama-70b.'
   },
   {
+    id: 'claude', name: 'Claude (Anthropic)', free: 'Платно · топ-качество', url: 'https://platform.claude.com/settings/keys',
+    needsKey: true,
+    models: ['claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5'],
+    note: 'Модели Anthropic — лучшее качество рассуждений, кода и зрения. ПЛАТНЫЙ API: ключ и баланс на platform.claude.com. claude-opus-4-8 — самый умный, claude-haiku-4-5 — быстрый и дешёвый.'
+  },
+  {
+    id: 'glm', name: 'GLM (Z.ai)', free: 'Недорого · сильные модели', url: 'https://z.ai/manage-apikey/apikey-list',
+    needsKey: true,
+    models: ['glm-4.6', 'glm-4.5', 'glm-4.5-air'],
+    note: 'GLM от Zhipu (Z.ai) — сильные и недорогие модели, отличны в коде и агентных задачах. glm-4.6 — флагман, glm-4.5-air — быстрый и дешёвый. Ключ на z.ai.'
+  },
+  {
     id: 'ollama', name: 'Ollama', free: 'Локально · полностью бесплатно', url: 'https://ollama.com/download',
     needsKey: false,
     models: ['llama3.1', 'llama3.2', 'qwen2.5', 'gemma2', 'mistral', 'phi4'],

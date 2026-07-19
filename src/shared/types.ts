@@ -192,7 +192,7 @@ export interface LogEntry {
 
 // ─── Настройки ──────────────────────────────────────────────────────────────
 
-export type AIProviderId = 'ollama' | 'groq' | 'openrouter' | 'gemini' | 'deepseek'
+export type AIProviderId = 'ollama' | 'groq' | 'openrouter' | 'gemini' | 'deepseek' | 'claude' | 'glm'
 
 export interface AIProviderConfig {
   apiKey?: string

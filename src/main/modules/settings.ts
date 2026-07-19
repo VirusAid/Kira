@@ -19,7 +19,9 @@ export const DEFAULT_SETTINGS: KiraSettings = {
     groq: { model: 'llama-3.3-70b-versatile', apiKey: '' },
     openrouter: { model: 'meta-llama/llama-3.3-70b-instruct:free', apiKey: '' },
     gemini: { model: 'gemini-3.5-flash', apiKey: '' },
-    deepseek: { model: 'deepseek-chat', apiKey: '' }
+    deepseek: { model: 'deepseek-chat', apiKey: '' },
+    claude: { model: 'claude-opus-4-8', apiKey: '' },
+    glm: { model: 'glm-4.6', apiKey: '' }
   },
   personality: DEFAULT_PERSONALITY,
   voiceEnabled: true,

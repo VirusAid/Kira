@@ -7,6 +7,7 @@
  *  • OpenRouter  — модели с суффиксом ":free" бесплатны
  *  • Gemini      — бесплатный tier Google AI
  */
+import Anthropic from '@anthropic-ai/sdk'
 import { getSettings } from '../settings'
 import type { AIProviderId, ChatRole } from '../../../shared/types'
 
@@ -61,6 +62,149 @@ export function resolveEndpoint(providerId?: AIProviderId): ProviderEndpoint {
         headers: { Authorization: `Bearer ${cfg.apiKey ?? ''}` },
         model: cfg.model || 'deepseek-chat'
       }
+    case 'glm':
+      // Z.ai (Zhipu GLM) — OpenAI-совместимый международный endpoint
+      return {
+        url: 'https://api.z.ai/api/paas/v4/chat/completions',
+        headers: { Authorization: `Bearer ${cfg.apiKey ?? ''}` },
+        model: cfg.model || 'glm-4.6'
+      }
+    case 'claude':
+      // Anthropic — свой формат API; запросы идут через официальный SDK
+      // (ветки в streamChat/completeChat), url здесь только для отчётности
+      return {
+        url: 'https://api.anthropic.com/v1/messages',
+        headers: {},
+        model: cfg.model || 'claude-opus-4-8'
+      }
+  }
+}
+
+// ─── Claude (Anthropic) — нативный Messages API через официальный SDK ────────
+
+function claudeClient(): Anthropic {
+  const key = (getSettings().providers.claude.apiKey ?? '').trim()
+  if (!key) throw new Error('Не задан API-ключ Claude. Добавь его в Настройки → Модели ИИ → Claude.')
+  return new Anthropic({ apiKey: key })
+}
+
+/**
+ * AIMessage[] (OpenAI-формат Kira) → параметры Anthropic Messages API:
+ * system — отдельным полем, картинки data-URL → базовые image-блоки,
+ * первый ход обязан быть от user.
+ */
+function toClaudeParams(messages: AIMessage[]): {
+  system: string
+  messages: Anthropic.MessageParam[]
+} {
+  const systemParts: string[] = []
+  const out: Anthropic.MessageParam[] = []
+  for (const m of messages) {
+    if (m.role === 'system') {
+      if (typeof m.content === 'string' && m.content.trim()) systemParts.push(m.content)
+      continue
+    }
+    const role: 'user' | 'assistant' = m.role === 'assistant' ? 'assistant' : 'user'
+    if (typeof m.content === 'string') {
+      if (m.content.trim()) out.push({ role, content: m.content })
+      continue
+    }
+    const blocks: Anthropic.ContentBlockParam[] = []
+    for (const c of m.content) {
+      if (c.type === 'text' && c.text?.trim()) {
+        blocks.push({ type: 'text', text: c.text })
+      } else if (c.type === 'image_url' && c.image_url?.url) {
+        const dataUrl = c.image_url.url.match(/^data:(image\/(?:jpeg|png|gif|webp));base64,(.+)$/s)
+        if (dataUrl) {
+          blocks.push({
+            type: 'image',
+            source: {
+              type: 'base64',
+              media_type: dataUrl[1] as 'image/jpeg' | 'image/png' | 'image/gif' | 'image/webp',
+              data: dataUrl[2]
+            }
+          })
+        }
+      }
+    }
+    if (blocks.length) out.push({ role, content: blocks })
+  }
+  if (out[0]?.role !== 'user') out.unshift({ role: 'user', content: 'Привет' })
+  return { system: systemParts.join('\n\n'), messages: out }
+}
+
+/**
+ * Стриминг через Anthropic SDK. thinking не задаём: без параметра запрос
+ * валиден на ЛЮБОЙ модели Claude, которую пользователь выберет в настройках
+ * (adaptive не принимается старыми, budget_tokens отвергается новыми).
+ * temperature тоже не шлём — на Opus 4.7+ параметр удалён (400).
+ */
+function streamClaude(
+  messages: AIMessage[],
+  callbacks: {
+    onDelta: (text: string) => void
+    onDone: (full: string) => void
+    onError: (err: string, retryable: boolean) => void
+  },
+  model: string
+): StreamHandle {
+  const controller = new AbortController()
+  void (async () => {
+    let full = ''
+    try {
+      const { system, messages: msgs } = toClaudeParams(messages)
+      const stream = claudeClient().messages.stream(
+        {
+          model,
+          max_tokens: 4096,
+          ...(system ? { system } : {}),
+          messages: msgs
+        },
+        { signal: controller.signal, timeout: 120_000 }
+      )
+      stream.on('text', (delta) => {
+        full += delta
+        callbacks.onDelta(delta)
+      })
+      const final = await stream.finalMessage()
+      if (final.stop_reason === 'refusal' && !full) {
+        callbacks.onError('Claude отклонил запрос (политика безопасности). Попробуй переформулировать.', false)
+        return
+      }
+      callbacks.onDone(full)
+    } catch (err) {
+      if (err instanceof Anthropic.APIUserAbortError || (err as Error).name === 'AbortError') {
+        callbacks.onDone(full)
+      } else if (err instanceof Anthropic.APIError && typeof err.status === 'number') {
+        callbacks.onError(humanizeApiError(err.status, err.message, 'claude'), isRetryableStatus(err.status))
+      } else {
+        callbacks.onError(connectionError(err as Error, 'claude'), true)
+      }
+    }
+  })()
+  return { abort: () => controller.abort() }
+}
+
+/** Нестриминговый запрос к Claude (для completeChat). */
+async function completeClaude(messages: AIMessage[], model: string): Promise<string> {
+  const { system, messages: msgs } = toClaudeParams(messages)
+  try {
+    const resp = await claudeClient().messages.create(
+      { model, max_tokens: 1600, ...(system ? { system } : {}), messages: msgs },
+      { timeout: 90_000 }
+    )
+    if (resp.stop_reason === 'refusal') {
+      throw new Error('Claude отклонил запрос (политика безопасности)')
+    }
+    return resp.content
+      .filter((b): b is Anthropic.TextBlock => b.type === 'text')
+      .map((b) => b.text)
+      .join('')
+  } catch (err) {
+    if (err instanceof Anthropic.APIError && typeof err.status === 'number') {
+      throw new Error(humanizeApiError(err.status, err.message, 'claude'))
+    }
+    throw err
   }
 }
 
@@ -77,6 +221,7 @@ export function visionCandidateProviders(): AIProviderId[] {
   const s = getSettings()
   const order: AIProviderId[] = []
   if (s.providers.gemini.apiKey?.trim()) order.push('gemini')
+  if (s.providers.claude.apiKey?.trim()) order.push('claude')
   if (s.providers.openrouter.apiKey?.trim()) order.push('openrouter')
   // добавляем текущий и остальных как запас
   for (const p of candidateProviders()) if (!order.includes(p)) order.push(p)
@@ -88,7 +233,7 @@ export function candidateProviders(): AIProviderId[] {
   const s = getSettings()
   const order: AIProviderId[] = [s.provider]
   // добавляем облачных провайдеров, у которых задан ключ (ollama — только если выбран явно)
-  const rest: AIProviderId[] = ['groq', 'gemini', 'openrouter', 'deepseek']
+  const rest: AIProviderId[] = ['groq', 'gemini', 'openrouter', 'deepseek', 'claude', 'glm']
   for (const p of rest) {
     if (p === s.provider) continue
     const cfg = s.providers[p]
@@ -136,6 +281,18 @@ export async function listProviderModels(providerId: AIProviderId): Promise<stri
       const j = (await r.json()) as { data?: unknown[] }
       return ids(j.data ?? [], (m) => m.id)
     }
+    if (providerId === 'claude') {
+      if (!key) return []
+      const found: string[] = []
+      for await (const m of claudeClient().models.list()) found.push(m.id)
+      return [...new Set(found)].sort((a, b) => a.localeCompare(b))
+    }
+    if (providerId === 'glm') {
+      if (!key) return []
+      const r = await fetch('https://api.z.ai/api/paas/v4/models', { headers: { Authorization: `Bearer ${key}` } })
+      const j = (await r.json()) as { data?: unknown[] }
+      return ids(j.data ?? [], (m) => m.id)
+    }
     if (providerId === 'ollama') {
       const base = (cfg.baseUrl || 'http://localhost:11434').replace(/\/$/, '')
       const r = await fetch(`${base}/api/tags`)
@@ -158,6 +315,9 @@ export function streamChat(
   const controller = new AbortController()
   const endpoint = resolveEndpoint(options?.providerId)
   const providerId = options?.providerId ?? getSettings().provider
+
+  // Claude — не OpenAI-формат: уходит через официальный SDK Anthropic
+  if (providerId === 'claude') return streamClaude(messages, callbacks, endpoint.model)
 
   // провайдеры без «зрения» не понимают контент-массивы с картинками:
   // при откате на них сплющиваем такие сообщения в чистый текст,
@@ -248,6 +408,8 @@ function isRetryableStatus(status: number): boolean {
 /** Нестриминговый запрос — для протоколов и внутренних задач. */
 export async function completeChat(messages: AIMessage[], providerId?: AIProviderId): Promise<string> {
   const endpoint = resolveEndpoint(providerId)
+  const id = providerId ?? getSettings().provider
+  if (id === 'claude') return completeClaude(messages, endpoint.model)
   const res = await fetch(endpoint.url, {
     method: 'POST',
     signal: AbortSignal.timeout(90_000),

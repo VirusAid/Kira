@@ -115,6 +115,8 @@
 | **OpenRouter** | Много бесплатных моделей (с пометкой `:free`) | [openrouter.ai/keys](https://openrouter.ai/keys) |
 | **Google Gemini** | Щедрый бесплатный доступ, хорошо «видит» экран | [aistudio.google.com/apikey](https://aistudio.google.com/apikey) |
 | **DeepSeek** | Мощный и недорогой | [platform.deepseek.com](https://platform.deepseek.com/api_keys) |
+| **Claude (Anthropic)** | Лучшее качество рассуждений, кода и зрения | [platform.claude.com](https://platform.claude.com/settings/keys) |
+| **GLM (Z.ai)** | Сильный и недорогой, хорош в коде | [z.ai](https://z.ai/manage-apikey/apikey-list) |
 | **Ollama** | Полностью локально, без интернета | [ollama.com](https://ollama.com) |
 
 > 🔒 **Приватность.** Все твои данные хранятся только на твоём компьютере.
