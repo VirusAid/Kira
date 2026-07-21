@@ -143,6 +143,7 @@ if (!gotLock) {
     initAutomations()
     initReminders()
     initClipboardHistory()
+    void import('./modules/routines').then((m) => m.initRoutines()).catch(() => {})
     registerHotkey()
     initPulse(() => mainWindow)
     initDiscordMonitor(() => mainWindow)

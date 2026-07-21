@@ -167,6 +167,28 @@ function checkBreak(): void {
   say('Ты за компьютером уже полтора часа без перерыва. Разомнись пару минут — я подожду.', false)
 }
 
+/** Обнаруженная привычка — предложить автоматизировать (раз в день). */
+async function checkRoutine(): Promise<void> {
+  const key = 'routine-' + today()
+  if (notifiedToday.has(key)) return
+  try {
+    const { suggestRoutine } = await import('./routines')
+    const s = suggestRoutine()
+    if (s) { notifiedToday.add(key); say(s.text, false) }
+  } catch { /* модуль привычек недоступен */ }
+}
+
+/** Заботливый чек-ин днём (раз в сутки) — компаньон интересуется, как ты. */
+function checkIn(): void {
+  const h = new Date().getHours()
+  const key = 'checkin-' + today()
+  if (h >= 14 && h < 20 && !notifiedToday.has(key)) {
+    notifiedToday.add(key)
+    const name = getSettings().userName || 'друг'
+    say(`${name}, как ты сегодня? Если что-то нужно — я рядом.`, false)
+  }
+}
+
 /** Поздняя ночь — заботливое напоминание отдохнуть (раз в сутки). */
 function checkLateNight(): void {
   const h = new Date().getHours()
@@ -211,10 +233,12 @@ async function tick(): Promise<void> {
     checkBreak()
   }
 
-  // активный — плюс аптайм и ночные заботы
+  // активный — плюс аптайм, заботы, привычки и чек-ины
   if (level === 'active') {
     checkUptime()
     checkLateNight()
+    await checkRoutine()
+    checkIn()
   }
 }
 
