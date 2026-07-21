@@ -263,6 +263,8 @@ export interface KiraSettings {
   userProfile: string
   /** Постоянная плавающая эмблема поверх всех окон */
   floatingOrb: boolean
+  /** Папка с документами для локальной базы знаний (RAG) */
+  knowledgeFolder: string
   /** Интеграции */
   obsidianVault: string // путь к хранилищу Obsidian (папка с .md)
   notionToken: string // internal integration token Notion

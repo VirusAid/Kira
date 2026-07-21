@@ -10,12 +10,16 @@ import { newId } from './ids'
 import { logger } from './logger'
 import type { ActionResult } from '../../shared/types'
 
+export type Recurrence = 'daily' | 'weekdays' | 'weekly'
+
 export interface Reminder {
   id: string
   text: string
   fireAt: number
   createdAt: number
   fired: boolean
+  /** Повтор: daily — каждый день, weekdays — по будням, weekly — раз в неделю. */
+  recurrence?: Recurrence
 }
 
 let _col: Collection<Reminder> | null = null
@@ -97,22 +101,54 @@ export function parseWhen(spec: string): number | null {
   return null
 }
 
+/** Распознать повторяемость из фразы: «каждый день», «по будням», «каждую неделю». */
+export function parseRecurrence(spec: string): Recurrence | null {
+  const s = spec.toLowerCase()
+  if (/кажд(ый|ое) буд|по будн|в будни/.test(s)) return 'weekdays'
+  if (/кажд(ую|ый) недел|еженедельно|раз в недел/.test(s)) return 'weekly'
+  if (/кажд(ый|ое) (день|утро|вечер|дн)|ежедневно|каждый раз в/.test(s)) return 'daily'
+  return null
+}
+
+/** Следующее срабатывание для повторяющегося напоминания (то же время суток). */
+function nextOccurrence(from: number, recurrence: Recurrence): number {
+  const d = new Date(from)
+  do {
+    d.setDate(d.getDate() + (recurrence === 'weekly' ? 7 : 1))
+  } while (recurrence === 'weekdays' && (d.getDay() === 0 || d.getDay() === 6))
+  return d.getTime()
+}
+
+const RECUR_LABEL: Record<Recurrence, string> = {
+  daily: 'каждый день', weekdays: 'по будням', weekly: 'каждую неделю'
+}
+
 export function addReminder(text: string, whenSpec: string): ActionResult {
-  const fireAt = parseWhen(whenSpec) ?? parseWhen(text)
+  let fireAt = parseWhen(whenSpec) ?? parseWhen(text)
+  const recurrence = parseRecurrence(whenSpec) ?? parseRecurrence(text) ?? undefined
+  // «каждый день в 9» без явной даты → parseWhen поймал время; если нет —
+  // но есть повтор, отталкиваемся от завтрашних 9:00 по умолчанию
+  if (!fireAt && recurrence) {
+    const d = new Date(); d.setHours(9, 0, 0, 0)
+    if (d.getTime() <= Date.now()) d.setDate(d.getDate() + 1)
+    fireAt = d.getTime()
+  }
   if (!fireAt) {
-    return { ok: false, message: 'Не поняла, когда напомнить. Скажи «через 30 минут» или «завтра в 9».' }
+    return { ok: false, message: 'Не поняла, когда напомнить. Скажи «через 30 минут», «завтра в 9» или «каждый день в 9».' }
   }
   const reminder: Reminder = {
     id: newId(),
     text: text.trim(),
     fireAt,
     createdAt: Date.now(),
-    fired: false
+    fired: false,
+    recurrence
   }
   col().put(reminder)
   const when = new Date(fireAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
-  logger.action('reminders', `Напоминание на ${when}: ${text}`)
-  return { ok: true, message: `Напомню ${when}: ${text}`, data: reminder }
+  const suffix = recurrence ? ` (${RECUR_LABEL[recurrence]})` : ''
+  logger.action('reminders', `Напоминание на ${when}${suffix}: ${text}`)
+  return { ok: true, message: `Напомню ${when}${suffix}: ${text}`, data: reminder }
 }
 
 export function listReminders(): Reminder[] {
@@ -127,7 +163,12 @@ function checkDue(): void {
   const now = Date.now()
   for (const r of col().all()) {
     if (r.fired || r.fireAt > now) continue
-    col().patch(r.id, { fired: true })
+    // повторяющееся — не гасим, а переносим на следующий раз
+    if (r.recurrence) {
+      col().patch(r.id, { fireAt: nextOccurrence(r.fireAt, r.recurrence) })
+    } else {
+      col().patch(r.id, { fired: true })
+    }
     logger.action('reminders', `Сработало напоминание: ${r.text}`)
     new Notification({ title: 'Kira · Напоминание', body: r.text }).show()
     for (const win of BrowserWindow.getAllWindows()) {

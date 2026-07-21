@@ -1016,3 +1016,133 @@ export async function emptyRecycleBin(): Promise<ActionResult> {
   const r = await runPowerShell(`Clear-RecycleBin -Force -ErrorAction SilentlyContinue; 'ok'`, 20_000)
   return r.stdout.includes('ok') ? { ok: true, message: 'Корзина очищена' } : { ok: false, message: 'Не удалось очистить Корзину' }
 }
+
+// ─── Локальный OCR (Windows.Media.Ocr, офлайн, без зависимостей) ─────────────
+
+/** PowerShell-обвязка WinRT-OCR: путь к картинке → распознанный текст. */
+function ocrScript(imagePath: string): string {
+  const p = imagePath.replace(/'/g, "''")
+  return `
+$ErrorActionPreference='Stop'
+try {
+  $null = [Windows.Media.Ocr.OcrEngine,Windows.Foundation,ContentType=WindowsRuntime]
+  $null = [Windows.Graphics.Imaging.BitmapDecoder,Windows.Foundation,ContentType=WindowsRuntime]
+  $null = [Windows.Storage.StorageFile,Windows.Foundation,ContentType=WindowsRuntime]
+  Add-Type -AssemblyName System.Runtime.WindowsRuntime
+  $asTaskGeneric = ([System.WindowsRuntimeSystemExtensions].GetMethods() | Where-Object { $_.Name -eq 'AsTask' -and $_.GetParameters().Count -eq 1 -and $_.GetParameters()[0].ParameterType.Name -eq 'IAsyncOperation\`1' })[0]
+  function Await($op, $t) { $m = $asTaskGeneric.MakeGenericMethod($t); $task = $m.Invoke($null, @($op)); $task.Wait(-1) | Out-Null; $task.Result }
+  $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync('${p}')) ([Windows.Storage.StorageFile])
+  $stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
+  $decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
+  $bmp = Await ($decoder.GetSoftwareBitmapAsync()) ([Windows.Graphics.Imaging.SoftwareBitmap])
+  $engine = [Windows.Media.Ocr.OcrEngine]::TryCreateFromUserProfileLanguages()
+  if ($engine -eq $null) { Write-Output 'OCR_NO_ENGINE'; exit }
+  $res = Await ($engine.RecognizeAsync($bmp)) ([Windows.Media.Ocr.OcrResult])
+  Write-Output ('OCR_OK::' + $res.Text)
+} catch { Write-Output ('OCR_ERR::' + $_.Exception.Message) }
+`
+}
+
+/** Распознать текст на картинке (файл). Полностью офлайн. */
+export async function ocrImage(imagePath: string): Promise<ActionResult> {
+  if (!existsSync(imagePath)) return { ok: false, message: `Файл не найден: ${imagePath}` }
+  logger.action('ocr', `Распознаю текст: ${imagePath}`)
+  const r = await runPowerShell(ocrScript(imagePath), 30_000)
+  const out = r.stdout.trim()
+  if (out.startsWith('OCR_OK::')) {
+    const text = out.slice('OCR_OK::'.length).trim()
+    return text
+      ? { ok: true, message: 'Распознала текст', data: text }
+      : { ok: true, message: 'На изображении текста не нашлось', data: '' }
+  }
+  if (out.includes('OCR_NO_ENGINE')) {
+    return { ok: false, message: 'Нет языкового пакета OCR. Установи в Windows: Параметры → Время и язык → Язык → русский → Языковые компоненты.' }
+  }
+  return { ok: false, message: `Не удалось распознать текст: ${out.replace('OCR_ERR::', '').slice(0, 160)}` }
+}
+
+/** Снять экран и распознать на нём текст (офлайн). */
+export async function ocrScreen(): Promise<ActionResult> {
+  try {
+    const base64 = await captureScreenBase64()
+    if (!base64) return { ok: false, message: 'Не удалось снять экран' }
+    const file = join(os.tmpdir(), `kira-ocr-${Date.now()}.png`)
+    await fsp.writeFile(file, Buffer.from(base64, 'base64'))
+    const res = await ocrImage(file)
+    fsp.unlink(file).catch(() => {})
+    return res
+  } catch (e) {
+    return { ok: false, message: `OCR экрана не удался: ${(e as Error).message}` }
+  }
+}
+
+// ─── Обслуживание ПК (нагрузка, автозагрузка, чистка) ────────────────────────
+
+/** Топ процессов по памяти или CPU. */
+export async function topProcesses(by: 'memory' | 'cpu' = 'memory', limit = 5): Promise<ActionResult> {
+  if (by === 'cpu') {
+    // портативно (без локализованных счётчиков Get-Counter): два замера
+    // процессорного времени процессов с паузой, разница делится на интервал×ядра
+    const script = `
+$cores = [Environment]::ProcessorCount
+$prev = @{}
+Get-Process -ErrorAction SilentlyContinue | ForEach-Object { $prev[$_.Id] = [double]$_.CPU }
+Start-Sleep -Milliseconds 800
+Get-Process -ErrorAction SilentlyContinue | ForEach-Object {
+  $p = $prev[$_.Id]; if ($p -eq $null) { $p = 0 }
+  $d = [double]$_.CPU - $p
+  if ($d -gt 0.05) { [PSCustomObject]@{ name=$_.Name; pct=[math]::Round($d*100/0.8/$cores,1) } }
+} | Sort-Object pct -Descending | Select-Object -First ${limit} | ConvertTo-Json -Compress`
+    const r = await runPowerShell(script, 15_000)
+    try {
+      const raw = JSON.parse(r.stdout || '[]'); const arr = Array.isArray(raw) ? raw : [raw]
+      const parts = arr.filter((p) => p && p.name).map((p) => `${p.name} — ${p.pct}% CPU`)
+      return parts.length
+        ? { ok: true, message: 'Больше всего грузят процессор:', data: parts.join('\n') }
+        : { ok: true, message: 'Процессор сейчас почти не загружен' }
+    } catch { return { ok: false, message: 'Не удалось замерить загрузку CPU' } }
+  }
+  const script =
+    `Get-Process | Sort-Object WorkingSet64 -Descending | Select-Object -First ${limit} ` +
+    `Name, @{n='mb';e={[math]::Round($_.WorkingSet64/1MB)}} | ConvertTo-Json -Compress`
+  const r = await runPowerShell(script, 15_000)
+  try {
+    const raw = JSON.parse(r.stdout); const arr = Array.isArray(raw) ? raw : [raw]
+    const parts = arr.filter((p) => p && p.Name).map((p) => `${p.Name} — ${p.mb} МБ`)
+    return { ok: true, message: 'Больше всего памяти занимают:', data: parts.join('\n') }
+  } catch { return { ok: false, message: 'Не удалось прочитать процессы' } }
+}
+
+/** Программы в автозагрузке (реестр Run + папка автозагрузки). */
+export async function startupApps(): Promise<ActionResult> {
+  const script = `
+$items = @()
+foreach ($k in 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run','HKLM:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run') {
+  if (Test-Path $k) { (Get-Item $k).Property | ForEach-Object { $items += $_ } }
+}
+$startup = [Environment]::GetFolderPath('Startup')
+if (Test-Path $startup) { Get-ChildItem $startup -File | ForEach-Object { $items += $_.BaseName } }
+$items | Select-Object -Unique | ConvertTo-Json -Compress`
+  const r = await runPowerShell(script, 15_000)
+  try {
+    const raw = JSON.parse(r.stdout || '[]'); const arr = Array.isArray(raw) ? raw : [raw]
+    const names = arr.filter(Boolean)
+    return names.length
+      ? { ok: true, message: `В автозагрузке: ${names.length}`, data: names.join('\n') }
+      : { ok: true, message: 'В автозагрузке ничего нет' }
+  } catch { return { ok: false, message: 'Не удалось прочитать автозагрузку' } }
+}
+
+/** Очистить временные файлы пользователя; вернуть, сколько освободилось. */
+export async function cleanTempFiles(): Promise<ActionResult> {
+  const script = `
+$before = (Get-ChildItem $env:TEMP -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
+Get-ChildItem $env:TEMP -Recurse -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
+$after = (Get-ChildItem $env:TEMP -Recurse -File -ErrorAction SilentlyContinue | Measure-Object Length -Sum).Sum
+$freed = [math]::Round((($before - $after)/1MB),1)
+Write-Output ('FREED::' + $freed)`
+  const r = await runPowerShell(script, 60_000)
+  const m = r.stdout.match(/FREED::([\d.]+)/)
+  const freed = m ? Number(m[1]) : 0
+  return { ok: true, message: `Почистила временные файлы, освободилось ~${freed} МБ (часть занятых файлов пропущена — они используются)` }
+}

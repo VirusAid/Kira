@@ -11,6 +11,10 @@ import { join } from 'path'
 import * as sys from '../../modules/system'
 import * as fs from '../../modules/files'
 import * as util from '../../modules/utilities'
+import * as clip from '../../modules/clipboardHistory'
+import * as snip from '../../modules/snippets'
+import * as knw from '../../modules/knowledge'
+import { getSettings } from '../../modules/settings'
 import type { ExecResult } from '../types'
 
 export const BrowserController = {
@@ -69,6 +73,30 @@ export const SearchController = {
   youtube: (query: string): Promise<ExecResult> => sys.openSearch(query, 'youtube')
 }
 
+/** Текстовые сниппеты (заготовки). */
+export const SnippetController = {
+  save: (name: string, text: string): ExecResult => snip.saveSnippet(name, text),
+  paste: (name: string): Promise<ExecResult> => snip.pasteSnippet(name),
+  list: (): ExecResult => snip.listSnippets(),
+  get: (name: string): ExecResult => snip.getSnippet(name),
+  remove: (name: string): ExecResult => snip.deleteSnippet(name)
+}
+
+/** Локальная база знаний по документам (RAG). */
+export const KnowledgeController = {
+  ask: (query: string): Promise<ExecResult> => knw.askDocs(query),
+  status: (): ExecResult => knw.knowledgeStatus(),
+  clear: (): ExecResult => knw.clearKnowledge(),
+  /** Индексирует переданную папку или папку из настроек. */
+  index: (folder?: string): Promise<ExecResult> => {
+    const target = (folder ?? '').trim() || getSettings().knowledgeFolder
+    if (!target) {
+      return Promise.resolve({ ok: false, message: 'Не задана папка с документами. Укажи её: «проиндексируй документы в C:\\Docs» или в Настройках.' })
+    }
+    return knw.indexFolder(target)
+  }
+}
+
 /** Бытовые утилиты: конвертер, курсы, QR, таймер, ИМТ, замер скорости. */
 export const UtilityController = {
   isUnit: (word: string): boolean => util.isUnitWord(word),
@@ -119,7 +147,11 @@ export const FileController = {
 
 export const ClipboardController = {
   read: (): string => sys.clipboardRead(),
-  write: (text: string): ExecResult => sys.clipboardWrite(text)
+  write: (text: string): ExecResult => sys.clipboardWrite(text),
+  history: (): ExecResult => clip.historyReport(),
+  pasteRecent: (n: number): Promise<ExecResult> => clip.pasteRecent(n),
+  copyRecent: (n: number): ExecResult => clip.copyRecent(n),
+  clearHistory: (): ExecResult => clip.clearHistory()
 }
 
 export const NotificationController = {
@@ -144,6 +176,12 @@ export const SystemController = {
   networkInfo: (): ExecResult => sys.networkInfo(),
   openRecycleBin: (): Promise<ExecResult> => sys.openRecycleBin(),
   emptyRecycleBin: (): Promise<ExecResult> => sys.emptyRecycleBin(),
+  ocrScreen: (): Promise<ExecResult> => sys.ocrScreen(),
+  ocrImage: (path: string): Promise<ExecResult> => sys.ocrImage(path),
+  topMemory: (): Promise<ExecResult> => sys.topProcesses('memory'),
+  topCpu: (): Promise<ExecResult> => sys.topProcesses('cpu'),
+  startupApps: (): Promise<ExecResult> => sys.startupApps(),
+  cleanTemp: (): Promise<ExecResult> => sys.cleanTempFiles(),
   /** Сводка загрузки: CPU, память, аптайм. */
   stats: (): ExecResult => {
     const s = sys.systemStats()

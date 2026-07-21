@@ -18,12 +18,20 @@ interface Field {
   multiline?: boolean
 }
 
-const STEPS: { title: string; subtitle: string; fields: Field[] }[] = [
+const STEPS: { title: string; subtitle: string; fields: Field[]; ai?: boolean }[] = [
   {
     title: 'Давай познакомимся',
     subtitle: 'Как тебя зовут и как мне к тебе обращаться?',
     fields: [
       { key: 'name', label: 'Твоё имя', placeholder: 'Например, Вадим' }
+    ]
+  },
+  {
+    title: 'Подключим мне «мозг»',
+    subtitle: 'Чтобы я могла думать и разговаривать, нужен бесплатный ключ ИИ. Займёт 2 минуты.',
+    ai: true,
+    fields: [
+      { key: 'groqKey', label: 'API-ключ Groq (бесплатно)', placeholder: 'gsk_…' }
     ]
   },
   {
@@ -82,11 +90,17 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       data.about && `Ещё: ${data.about}`
     ].filter(Boolean).join('. ')
 
+    const groqKey = (data.groqKey ?? '').trim()
     const next: KiraSettings = {
       ...settings,
       userName: (data.name || settings.userName).trim(),
       userProfile: profileParts,
-      onboarded: true
+      onboarded: true,
+      // если пользователь вставил ключ Groq — сразу включаем его как провайдера
+      ...(groqKey ? {
+        provider: 'groq' as const,
+        providers: { ...settings.providers, groq: { ...settings.providers.groq, apiKey: groqKey } }
+      } : {})
     }
     await saveSettings(next)
     setSaving(false)
@@ -131,6 +145,14 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+              {cur.ai && (
+                <div style={{ background: 'var(--bg-3)', borderRadius: 10, padding: '12px 14px', fontSize: 12.5, lineHeight: 1.55 }}>
+                  <b>3 шага:</b> 1) открой <button className="btn-link" style={{ color: 'var(--accent)', textDecoration: 'underline' }}
+                    onClick={() => window.open('https://console.groq.com/keys')}>console.groq.com/keys</button>, войди ·
+                  2) нажми <b>Create API Key</b> · 3) вставь ключ сюда.<br />
+                  <span className="muted">Groq бесплатный и быстрый. Можно пропустить и добавить любой ключ позже в Настройках → Модели ИИ.</span>
+                </div>
+              )}
               {cur.fields.map((f) => (
                 <div key={f.key}>
                   <label style={{ display: 'block', fontSize: 12.5, fontWeight: 600, marginBottom: 6 }}>{f.label}</label>

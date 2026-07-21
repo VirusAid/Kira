@@ -22,6 +22,17 @@ export function IntegrationsView() {
     if (dir) { upd({ obsidianVault: dir }); setTimeout(refresh, 300) }
   }
 
+  const pickKnowledge = async (): Promise<void> => {
+    const dir = await kira.files.pickFolder()
+    if (dir) upd({ knowledgeFolder: dir })
+  }
+
+  const indexKnowledge = async (): Promise<void> => {
+    setBusy('knowledge'); setMsg('Индексирую документы — читаю и считаю эмбеддинги…')
+    const r = await kira.core.execute('index_docs', {})
+    setMsg(r.message); setBusy('')
+  }
+
   const connectGoogle = async (): Promise<void> => {
     setBusy('google'); setMsg('Открываю окно входа Google…')
     const r = await kira.integrations.connectGoogle()
@@ -48,6 +59,22 @@ export function IntegrationsView() {
               <FolderOpen size={14} /> {settings.obsidianVault ? 'Сменить папку' : 'Выбрать папку хранилища'}
             </button>
             {settings.obsidianVault && <span className="muted" style={{ fontSize: 11.5 }}>…{settings.obsidianVault.slice(-40)}</span>}
+          </div>
+        </Card>
+
+        {/* База знаний (локальный RAG) */}
+        <Card icon={<FileText size={19} />} title="База знаний по документам" ok={!!settings.knowledgeFolder}
+          desc="Kira проиндексирует папку с документами (PDF, Word, txt, md, Excel) и будет отвечать по их СМЫСЛУ — офлайн, ничего не уходит в сеть. Спрашивай: «что в моих документах про…».">
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+            <button className="btn btn-ghost press" onClick={() => void pickKnowledge()}>
+              <FolderOpen size={14} /> {settings.knowledgeFolder ? 'Сменить папку' : 'Выбрать папку с документами'}
+            </button>
+            {settings.knowledgeFolder && (
+              <button className="btn btn-primary press" onClick={() => void indexKnowledge()} disabled={busy === 'knowledge'}>
+                {busy === 'knowledge' ? <Loader2 size={14} className="spin" /> : <Check size={14} />} Проиндексировать
+              </button>
+            )}
+            {settings.knowledgeFolder && <span className="muted" style={{ fontSize: 11.5 }}>…{settings.knowledgeFolder.slice(-40)}</span>}
           </div>
         </Card>
 

@@ -10,8 +10,9 @@
  */
 import {
   ApplicationController, BrowserController, ClipboardController, FileController,
-  GitController, InputController, MediaController, NotificationController, PowerController,
-  SearchController, SystemController, UtilityController, WindowController, knownFolder
+  GitController, InputController, KnowledgeController, MediaController, NotificationController,
+  PowerController, SearchController, SnippetController, SystemController, UtilityController,
+  WindowController, knownFolder
 } from '../controllers'
 import type { KiraAction } from '../types'
 
@@ -953,6 +954,178 @@ export const actions: KiraAction[] = [
         : 'А что именно открыть — программу, сайт или музыку?'
       return { ok: true, message: msg }
     }
+  },
+
+  // ─── Буфер: история и вставка прошлых копий ──────────────────────────────
+  {
+    id: 'clipboard_history',
+    title: 'История буфера обмена',
+    description: 'Показывает, что копировал недавно',
+    category: 'clipboard',
+    aliases: ['история буфера'],
+    patterns: [/^(?:история буфера(?:\s+обмена)?|что я (?:недавно )?копировал(?:а)?|покажи историю буфера)$/],
+    examples: ['история буфера'],
+    phrases: ['что я копировал недавно', 'история копирования', 'покажи что копировал'],
+    args: [],
+    execute: async () => ClipboardController.history()
+  },
+  {
+    id: 'paste_recent',
+    title: 'Вставить прошлую копию',
+    description: 'Вставляет ранее скопированный текст из истории',
+    category: 'clipboard',
+    aliases: ['вставь предыдущее'],
+    patterns: [
+      /^вставь\s+(?:предыдущ(?:ее|ую)(?:\s+копию)?|прошл(?:ое|ый)|то что копировал(?:а)? (?:до этого|раньше))$/,
+      /^вставь\s+(?:из\s+истории\s+|запись\s+)?(?<n>\d+)(?:\s+запись)?$/
+    ],
+    examples: ['вставь предыдущее', 'вставь из истории 2'],
+    args: [{ name: 'n', description: 'Номер записи (1 — предыдущая)' }],
+    execute: (a) => ClipboardController.pasteRecent(toNum(a.n) || 1),
+    confirmText: () => 'Вставила'
+  },
+
+  // ─── OCR: текст с экрана ──────────────────────────────────────────────────
+  {
+    id: 'read_screen_text',
+    title: 'Прочитать текст с экрана',
+    description: 'Распознаёт текст на экране (офлайн, OCR)',
+    category: 'system',
+    aliases: ['распознай текст', 'текст с экрана'],
+    patterns: [/^(?:прочитай|распознай|считай|извлеки)\s+текст(?:\s+(?:с экрана|на экране|со скриншота|с картинки))?$|^текст на экране$/],
+    examples: ['прочитай текст с экрана'],
+    phrases: ['распознай текст на экране', 'считай текст с картинки', 'какой текст на экране', 'вытащи текст с экрана'],
+    args: [],
+    execute: async () => SystemController.ocrScreen()
+  },
+
+  // ─── Обслуживание ПК ──────────────────────────────────────────────────────
+  {
+    id: 'top_memory',
+    title: 'Что занимает память',
+    description: 'Показывает программы, жрущие больше всего памяти',
+    category: 'system',
+    aliases: ['что жрёт память'],
+    patterns: [/^(?:что|кто)\s+(?:жр[её]т|ест|занимает|съедает)\s+(?:память|оперативк[уи]|озу|памяти|оперативную память)$/],
+    examples: ['что жрёт память'],
+    phrases: ['что занимает оперативку', 'кто ест память', 'что грузит память', 'на что уходит оперативка'],
+    args: [],
+    execute: async () => SystemController.topMemory()
+  },
+  {
+    id: 'top_cpu',
+    title: 'Что грузит процессор',
+    description: 'Показывает программы, нагружающие процессор',
+    category: 'system',
+    aliases: ['что грузит процессор'],
+    patterns: [/^(?:что|кто)\s+(?:грузит|нагружает|жр[её]т|тормозит)\s+(?:процессор|цпу|систему|компьютер|проц)$/],
+    examples: ['что грузит процессор'],
+    phrases: ['что нагружает процессор', 'от чего тормозит компьютер', 'кто грузит цпу', 'почему комп тормозит'],
+    args: [],
+    execute: async () => SystemController.topCpu()
+  },
+  {
+    id: 'startup_apps',
+    title: 'Автозагрузка',
+    description: 'Показывает программы в автозапуске',
+    category: 'system',
+    aliases: ['автозагрузка'],
+    patterns: [/^(?:что в автозагрузке|автозагрузка|какие программы (?:в автозапуске|автозагружаются)|что запускается при старте)$/],
+    examples: ['что в автозагрузке'],
+    phrases: ['что в автозапуске', 'какие программы автозагружаются', 'что стартует с виндой'],
+    args: [],
+    execute: async () => SystemController.startupApps()
+  },
+  {
+    id: 'clean_temp',
+    title: 'Очистить временные файлы',
+    description: 'Удаляет временные файлы (%TEMP%), освобождает место',
+    category: 'system',
+    aliases: ['почисти мусор'],
+    patterns: [/^(?:почисти(?:ть)?|очисти(?:ть)?|удали)\s+(?:временные файлы|темп|мусор|кэш временных|временное)$/],
+    examples: ['почисти временные файлы'],
+    args: [],
+    dangerous: true,
+    describe: () => 'Удалить временные файлы (%TEMP%)',
+    execute: () => SystemController.cleanTemp()
+  },
+
+  // ─── Сниппеты ──────────────────────────────────────────────────────────────
+  {
+    id: 'snippet_save',
+    title: 'Сохранить сниппет',
+    description: 'Сохраняет текстовую заготовку под именем',
+    category: 'clipboard',
+    aliases: ['сохрани сниппет'],
+    patterns: [/^(?:сохрани|создай|запомни)\s+сниппет\s+(?<name>[^:：]+)[:：]\s*(?<text>.+)$/],
+    examples: ['сохрани сниппет адрес: ул. Ленина 1'],
+    args: [
+      { name: 'name', description: 'Имя сниппета', required: true },
+      { name: 'text', description: 'Текст', required: true }
+    ],
+    execute: async (a) => SnippetController.save(a.name ?? '', a.text ?? '')
+  },
+  {
+    id: 'snippet_paste',
+    title: 'Вставить сниппет',
+    description: 'Вставляет сохранённый сниппет по имени',
+    category: 'clipboard',
+    aliases: ['вставь сниппет'],
+    patterns: [/^вставь\s+сниппет\s+(?<name>.+)$/],
+    examples: ['вставь сниппет адрес'],
+    args: [{ name: 'name', description: 'Имя сниппета', required: true }],
+    execute: (a) => SnippetController.paste(a.name ?? ''),
+    confirmText: () => 'Вставила'
+  },
+  {
+    id: 'snippets_list',
+    title: 'Мои сниппеты',
+    description: 'Список сохранённых сниппетов',
+    category: 'clipboard',
+    aliases: ['сниппеты'],
+    patterns: [/^(?:мои сниппеты|список сниппетов|покажи сниппеты|какие есть сниппеты)$/],
+    examples: ['мои сниппеты'],
+    phrases: ['какие у меня сниппеты', 'покажи заготовки'],
+    args: [],
+    execute: async () => SnippetController.list()
+  },
+
+  // ─── База знаний по документам (RAG) ─────────────────────────────────────
+  {
+    id: 'index_docs',
+    title: 'Проиндексировать документы',
+    description: 'Строит локальную базу знаний из папки с документами',
+    category: 'files',
+    aliases: ['проиндексируй документы'],
+    patterns: [/^(?:проиндексируй|индексируй|обнови базу знаний|добавь в базу знаний)\s+документы(?:\s+(?:в|из)\s+(?<folder>.+))?$/],
+    examples: ['проиндексируй документы', 'проиндексируй документы в C:\\Docs'],
+    noSemantic: true,
+    args: [{ name: 'folder', description: 'Папка (иначе — из настроек)' }],
+    execute: (a) => KnowledgeController.index(a.folder),
+    confirmText: () => 'Индексирую документы, это займёт немного времени'
+  },
+  {
+    id: 'ask_docs',
+    title: 'Поиск по документам',
+    description: 'Отвечает на вопрос по проиндексированным документам',
+    category: 'info',
+    aliases: ['найди в документах'],
+    patterns: [/^(?:найди в документах|что в документах (?:про|о|об)|поиск(?:\s+в)? (?:документах|моих файлах)|спроси у документов)\s+(?<query>.+)$/],
+    examples: ['найди в документах условия договора'],
+    args: [{ name: 'query', description: 'Вопрос', required: true }],
+    execute: (a) => KnowledgeController.ask(a.query ?? '')
+  },
+  {
+    id: 'knowledge_status',
+    title: 'База знаний',
+    description: 'Что проиндексировано в базе знаний',
+    category: 'info',
+    aliases: ['база знаний'],
+    patterns: [/^(?:что в базе знаний|статус базы знаний|что проиндексировано|размер базы знаний)$/],
+    examples: ['что в базе знаний'],
+    phrases: ['что проиндексировано', 'сколько документов в базе'],
+    args: [],
+    execute: async () => KnowledgeController.status()
   },
 
   // ─── Приложения (универсальный — ПОСЛЕДНИМ) ──────────────────────────────

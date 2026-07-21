@@ -52,6 +52,7 @@ export const DEFAULT_SETTINGS: KiraSettings = {
   onboarded: false,
   userProfile: '',
   floatingOrb: true,
+  knowledgeFolder: '',
   obsidianVault: '',
   notionToken: '',
   googleClientId: '',

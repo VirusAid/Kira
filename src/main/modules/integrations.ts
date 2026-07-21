@@ -268,6 +268,40 @@ export async function gmailList(query = 'is:unread in:inbox', max = 8): Promise<
   }
 }
 
+/**
+ * Подробная выжимка входящих: отправитель, тема и короткий сниппет письма —
+ * чтобы LLM мог сделать осмысленное саммари «что нового в почте».
+ */
+export async function gmailDigest(max = 10): Promise<ActionResult> {
+  const at = await googleAccessToken()
+  if (!at) return { ok: false, message: 'Gmail не подключён (Интеграции → Google)' }
+  try {
+    const list = await (await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent('is:unread in:inbox')}&maxResults=${max}`,
+      { headers: { Authorization: `Bearer ${at}` } }
+    )).json() as { messages?: { id: string }[] }
+    const ids = (list.messages ?? []).map((m) => m.id)
+    if (!ids.length) return { ok: true, message: 'Новых писем нет', data: 'Непрочитанных писем нет' }
+    const rows: string[] = []
+    for (const id of ids) {
+      const m = await (await fetch(
+        `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=metadata&metadataHeaders=From&metadataHeaders=Subject`,
+        { headers: { Authorization: `Bearer ${at}` } }
+      )).json() as { snippet?: string; payload?: { headers?: { name: string; value: string }[] } }
+      const from = header(m, 'From').replace(/<[^>]*>/, '').replace(/"/g, '').trim()
+      const snippet = (m.snippet ?? '').replace(/\s+/g, ' ').slice(0, 160)
+      rows.push(`• От: ${from || '?'}\n  Тема: ${header(m, 'Subject') || '(без темы)'}\n  Кратко: ${snippet}`)
+    }
+    return {
+      ok: true,
+      message: `Непрочитанных: ${rows.length}`,
+      data: rows.join('\n\n') + '\n\n(Сделай короткое человеческое саммари: что важное пришло, на что стоит ответить.)'
+    }
+  } catch (e) {
+    return { ok: false, message: (e as Error).message }
+  }
+}
+
 /** Отправить письмо через Gmail. */
 export async function gmailSend(to: string, subject: string, body: string): Promise<ActionResult> {
   const at = await googleAccessToken()

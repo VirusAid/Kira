@@ -4,6 +4,7 @@ import { join } from 'path'
 import { registerIpc } from './modules/ipc'
 import { initAutomations, shutdownAutomations } from './modules/automation'
 import { initReminders, shutdownReminders } from './modules/reminders'
+import { initClipboardHistory, shutdownClipboardHistory } from './modules/clipboardHistory'
 import { registerHotkey } from './modules/window'
 import { createTray, destroyTray, isQuitting, setQuitting } from './modules/tray'
 import { createOverlay, destroyOverlay } from './modules/overlay'
@@ -137,6 +138,7 @@ if (!gotLock) {
     void import('./modules/ai/worker').then((m) => m.workers.setWindowGetter(() => mainWindow))
     initAutomations()
     initReminders()
+    initClipboardHistory()
     registerHotkey()
     initPulse(() => mainWindow)
     initDiscordMonitor(() => mainWindow)
@@ -165,6 +167,7 @@ app.on('before-quit', () => {
   setQuitting(true)
   shutdownAutomations()
   shutdownReminders()
+  shutdownClipboardHistory()
   shutdownPulse()
   shutdownDiscordMonitor()
   shutdownTelegram()
