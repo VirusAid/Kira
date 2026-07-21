@@ -18,6 +18,10 @@ let timer: NodeJS.Timeout | null = null
 let getWin: (() => BrowserWindow | null) | null = null
 const notifiedToday = new Set<string>()
 let lastDiskWarn = 0
+let lastMeetingKey = ''
+let lastUnread = -1
+let lastBreak = Date.now()
+const startedAt = Date.now()
 
 function stateFile(): string {
   return join(app.getPath('userData'), 'data', 'pulse.json')
@@ -109,6 +113,60 @@ function checkUptime(): void {
   }
 }
 
+/** Скоро встреча из календаря (если Google подключён). */
+async function checkMeeting(): Promise<void> {
+  try {
+    const { calendarUpcoming } = await import('./integrations')
+    const ev = await calendarUpcoming(20)
+    if (!ev) return
+    const key = `meet-${ev.title}-${Math.round(ev.minutes / 5)}`
+    if (key === lastMeetingKey) return
+    lastMeetingKey = key
+    const when = ev.minutes <= 1 ? 'прямо сейчас' : `через ${ev.minutes} минут`
+    say(`Встреча ${when}: «${ev.title}». Подготовиться?`)
+  } catch { /* календарь недоступен */ }
+}
+
+/** Новые письма (если Gmail подключён) — тихо, когда их стало больше. */
+async function checkMail(): Promise<void> {
+  try {
+    const { gmailUnreadCount } = await import('./integrations')
+    const n = await gmailUnreadCount()
+    if (n == null) return
+    if (lastUnread >= 0 && n > lastUnread) {
+      const diff = n - lastUnread
+      say(`${diff === 1 ? 'Пришло новое письмо' : `Пришло ${diff} новых писем`}. Показать выжимку?`, false)
+    }
+    lastUnread = n
+  } catch { /* почта недоступна */ }
+}
+
+/** Низкий заряд батареи (ноутбук) — напоминание поставить на зарядку. */
+async function checkBattery(): Promise<void> {
+  try {
+    const { batteryInfo } = await import('./system')
+    const b = await batteryInfo()
+    const data = b.data as { pct?: number; status?: number } | null
+    if (!data || typeof data.pct !== 'number') return
+    const charging = data.status === 2
+    const key = `batt-${today()}-${Math.round(data.pct / 5)}`
+    if (data.pct <= 20 && !charging && !notifiedToday.has(key)) {
+      notifiedToday.add(key)
+      say(`Батарея ${data.pct}% и не заряжается — поставь на зарядку, чтобы не выключился.`)
+    }
+  } catch { /* нет батареи */ }
+}
+
+/** Долгая непрерывная работа — мягко предложить перерыв (не чаще раза в ~90 мин). */
+function checkBreak(): void {
+  const h = new Date().getHours()
+  if (h < 8 || h >= 23) return // не трогаем ночью
+  if (Date.now() - lastBreak < 90 * 60_000) return
+  if (Date.now() - startedAt < 90 * 60_000) return // не сразу после старта
+  lastBreak = Date.now()
+  say('Ты за компьютером уже полтора часа без перерыва. Разомнись пару минут — я подожду.', false)
+}
+
 /** Поздняя ночь — заботливое напоминание отдохнуть (раз в сутки). */
 function checkLateNight(): void {
   const h = new Date().getHours()
@@ -119,9 +177,14 @@ function checkLateNight(): void {
   }
 }
 
+let notifiedDay = today()
+
 async function tick(): Promise<void> {
   const s = getSettings()
   if (!s.proactiveEnabled) return
+
+  // новый день — сбрасываем «уже уведомляли сегодня»
+  if (today() !== notifiedDay) { notifiedDay = today(); notifiedToday.clear() }
 
   // утренний брифинг раз в день после briefingHour
   if (s.briefingEnabled) {
@@ -134,10 +197,25 @@ async function tick(): Promise<void> {
     }
   }
 
-  await checkDisk()
-  checkMemory()
-  checkUptime()
-  checkLateNight()
+  const level = s.proactiveLevel ?? 'balanced'
+
+  // важное — на любом уровне (кроме calm, где только по-настоящему срочное)
+  await checkMeeting()   // скоро встреча
+  await checkBattery()   // сядет батарея
+  await checkDisk()      // кончается место
+
+  // сбалансированный и активный — плюс почта, память, перерывы
+  if (level !== 'calm') {
+    await checkMail()
+    checkMemory()
+    checkBreak()
+  }
+
+  // активный — плюс аптайм и ночные заботы
+  if (level === 'active') {
+    checkUptime()
+    checkLateNight()
+  }
 }
 
 export function initPulse(getWindow: () => BrowserWindow | null): void {

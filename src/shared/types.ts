@@ -249,6 +249,8 @@ export interface KiraSettings {
   wakeWord: string
   /** Проактивность: мониторинг системы и брифинги */
   proactiveEnabled: boolean
+  /** Насколько активно Kira сама подсказывает: calm / balanced / active */
+  proactiveLevel: 'calm' | 'balanced' | 'active'
   /** Утренний брифинг раз в день */
   briefingEnabled: boolean
   /** Час, после которого делать брифинг */

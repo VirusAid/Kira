@@ -879,8 +879,30 @@ function BehaviorSection({ settings, update }: SectionProps) {
           </div>
         )}
         <Toggle label="Проактивность"
-          hint="Kira следит за системой (диск, память) и предупреждает сама"
+          hint="Kira сама следит за днём (встречи, почта, батарея, диск) и подсказывает вовремя"
           checked={settings.proactiveEnabled} onChange={(v) => update({ proactiveEnabled: v })} />
+        {settings.proactiveEnabled && (
+          <Field label="Насколько активно подсказывать">
+            <div style={{ display: 'flex', gap: 6 }}>
+              {([
+                ['calm', 'Спокойно', 'только важное'],
+                ['balanced', 'Сбалансированно', 'встречи, почта, перерывы'],
+                ['active', 'Активно', 'плюс забота и советы']
+              ] as const).map(([val, label, hint]) => (
+                <button key={val} className="press"
+                  onClick={() => update({ proactiveLevel: val })}
+                  style={{
+                    flex: 1, padding: '8px 6px', borderRadius: 9, fontSize: 12, textAlign: 'center',
+                    border: `1px solid ${settings.proactiveLevel === val ? 'var(--accent)' : 'var(--border)'}`,
+                    background: settings.proactiveLevel === val ? 'rgba(139,92,246,0.12)' : 'var(--bg-2)'
+                  }}>
+                  <div style={{ fontWeight: 600 }}>{label}</div>
+                  <div className="muted" style={{ fontSize: 10 }}>{hint}</div>
+                </button>
+              ))}
+            </div>
+          </Field>
+        )}
         <Toggle label="Утренний брифинг"
           hint="Раз в день Kira приветствует и рассказывает про напоминания и проекты"
           checked={settings.briefingEnabled} onChange={(v) => update({ briefingEnabled: v })} />

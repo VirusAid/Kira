@@ -235,6 +235,45 @@ export async function calendarToday(): Promise<ActionResult> {
   }
 }
 
+/**
+ * Ближайшее событие календаря, начинающееся в пределах withinMin минут.
+ * Для проактивных подсказок «встреча через 15 минут». Тихо возвращает null,
+ * если Google не подключён или ничего не начинается скоро.
+ */
+export async function calendarUpcoming(withinMin = 20): Promise<{ title: string; minutes: number } | null> {
+  const at = await googleAccessToken()
+  if (!at) return null
+  const now = new Date()
+  const soon = new Date(now.getTime() + withinMin * 60_000)
+  try {
+    const r = await (await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events?timeMin=${now.toISOString()}&timeMax=${soon.toISOString()}&singleEvents=true&orderBy=startTime&maxResults=1`,
+      { headers: { Authorization: `Bearer ${at}` }, signal: AbortSignal.timeout(8000) }
+    )).json() as { items?: { summary?: string; start?: { dateTime?: string } }[] }
+    const ev = (r.items ?? []).find((e) => e.start?.dateTime)
+    if (!ev?.start?.dateTime) return null
+    const minutes = Math.max(0, Math.round((new Date(ev.start.dateTime).getTime() - now.getTime()) / 60_000))
+    return { title: ev.summary ?? 'встреча', minutes }
+  } catch {
+    return null
+  }
+}
+
+/** Число непрочитанных писем во «Входящих» (для проактивных подсказок). Null — Gmail не подключён. */
+export async function gmailUnreadCount(): Promise<number | null> {
+  const at = await googleAccessToken()
+  if (!at) return null
+  try {
+    const r = await (await fetch(
+      'https://gmail.googleapis.com/gmail/v1/users/me/messages?q=is:unread in:inbox&maxResults=1',
+      { headers: { Authorization: `Bearer ${at}` }, signal: AbortSignal.timeout(8000) }
+    )).json() as { resultSizeEstimate?: number }
+    return typeof r.resultSizeEstimate === 'number' ? r.resultSizeEstimate : 0
+  } catch {
+    return null
+  }
+}
+
 // ─── Gmail (на той же Google-авторизации) ────────────────────────────────────
 
 /** Заголовок письма из metadata. */
