@@ -71,6 +71,31 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('ai:generate-title', (_e, firstMessage: string) => generateChatTitle(firstMessage))
   ipcMain.handle('ai:capture-screen', () => system.captureScreenBase64())
 
+  // Локальный офлайн-мозг (Ollama): статус, загрузка модели с прогрессом
+  ipcMain.handle('local:status', async () => {
+    const m = await import('./ai/localLlm')
+    return m.localStatus()
+  })
+  ipcMain.handle('local:models', async () => {
+    const m = await import('./ai/localLlm')
+    return m.RECOMMENDED_MODELS
+  })
+  ipcMain.handle('local:download-url', async () => {
+    const m = await import('./ai/localLlm')
+    return m.downloadPageUrl()
+  })
+  ipcMain.handle('local:pull', async (_e, tag: string) => {
+    const m = await import('./ai/localLlm')
+    return m.pullModel(tag, (percent, status) => {
+      const win = getWindow()
+      if (win && !win.isDestroyed()) win.webContents.send('local:pull-progress', { tag, percent, status })
+    })
+  })
+  ipcMain.handle('local:delete', async (_e, tag: string) => {
+    const m = await import('./ai/localLlm')
+    return m.deleteModel(tag)
+  })
+
   // Синтез речи: Silero (локальный) → Edge (облачный) → системный голос
   ipcMain.handle('tts:voices', () => ({ silero: SILERO_SPEAKERS, edge: EDGE_VOICES }))
   ipcMain.handle('tts:silero-available', () => silero.isAvailable())

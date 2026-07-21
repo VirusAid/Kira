@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef } from 'react'
 import {
   Cpu, User, Mic, Palette, Sliders, Download, Upload, Check, Loader2,
-  ExternalLink, KeyRound, Zap, RefreshCw, ChevronDown
+  ExternalLink, KeyRound, Zap, RefreshCw, ChevronDown, HardDrive, WifiOff, Trash2
 } from 'lucide-react'
 import { useAppStore } from '@/state/appStore'
 import { kira } from '@/api'
@@ -115,6 +115,125 @@ interface SectionProps {
   update: (partial: Partial<KiraSettings>) => void
 }
 
+type LocalStatus = Awaited<ReturnType<typeof kira.local.status>>
+type LocalModel = Awaited<ReturnType<typeof kira.local.models>>[number]
+
+/** Офлайн-мозг: Ollama + локальная модель. Kira думает без облака. */
+function OfflineBrainCard({ settings, update }: SectionProps) {
+  const [status, setStatus] = useState<LocalStatus | null>(null)
+  const [models, setModels] = useState<LocalModel[]>([])
+  const [pulling, setPulling] = useState<{ tag: string; percent: number; status: string } | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const refresh = async (): Promise<void> => {
+    const [st, ms] = await Promise.all([kira.local.status(), kira.local.models()])
+    setStatus(st); setModels(ms)
+  }
+  useEffect(() => { void refresh() }, [])
+  useEffect(() => kira.local.onPullProgress((p) => setPulling(p)), [])
+
+  const pull = async (tag: string): Promise<void> => {
+    setBusy(true); setPulling({ tag, percent: 0, status: 'подготовка…' })
+    const r = await kira.local.pull(tag)
+    setPulling(null); setBusy(false)
+    if (r.ok) {
+      // выбираем скачанную модель как активную для Ollama + включаем офлайн-мозг
+      update({
+        providers: { ...settings.providers, ollama: { ...settings.providers.ollama, model: tag } },
+        preferLocal: true
+      })
+    }
+    await refresh()
+  }
+
+  const removeModel = async (tag: string): Promise<void> => {
+    setBusy(true); await kira.local.delete(tag); await refresh(); setBusy(false)
+  }
+
+  const hw = status?.hardware
+  const installed = status?.installed
+  const ready = status?.running && (status?.models.length ?? 0) > 0
+
+  return (
+    <div className="card" style={{ borderColor: settings.preferLocal ? 'var(--border-strong)' : 'var(--border)', background: 'linear-gradient(180deg, rgba(139,92,246,0.06), transparent)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+        <WifiOff size={18} style={{ color: 'var(--accent-text)' }} />
+        <b style={{ fontSize: 14 }}>Офлайн-мозг (локальная модель)</b>
+        {ready && <span style={{ fontSize: 11, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 3 }}><Check size={12} /> готов</span>}
+      </div>
+      <p className="muted" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 10 }}>
+        Kira думает и разговаривает полностью офлайн, без ключей и без интернета — приватно. Через Ollama.
+      </p>
+
+      {hw && (
+        <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap', fontSize: 11.5, marginBottom: 12 }}>
+          <span className="muted" style={{ display: 'flex', alignItems: 'center', gap: 4 }}><Cpu size={13} /> {hw.gpu}</span>
+          <span className="muted" style={{ display: 'flex', alignItems: 'center', gap: 4 }}><HardDrive size={13} /> VRAM {hw.vramGb} ГБ · ОЗУ {hw.ramGb} ГБ</span>
+        </div>
+      )}
+
+      {!installed ? (
+        <div style={{ background: 'var(--bg-3)', borderRadius: 10, padding: '12px 14px', fontSize: 12.5, lineHeight: 1.5 }}>
+          Сначала установи <b>Ollama</b> (один раз, бесплатно):
+          <div style={{ marginTop: 8 }}>
+            <button className="btn btn-primary press" onClick={() => void kira.local.downloadUrl().then((u) => window.open(u))}>
+              <Download size={14} /> Скачать Ollama
+            </button>
+            <button className="btn btn-ghost press" style={{ marginLeft: 8 }} onClick={() => void refresh()}>
+              <RefreshCw size={14} /> Проверить снова
+            </button>
+          </div>
+          <span className="muted" style={{ fontSize: 11, display: 'block', marginTop: 8 }}>После установки нажми «Проверить снова» — появится выбор модели.</span>
+        </div>
+      ) : (
+        <>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+            {models.map((m) => {
+              const have = status?.models.some((x) => x === m.tag || x.startsWith(m.tag.split(':')[0] + ':')) && status?.models.includes(m.tag)
+              const isRec = status?.recommended === m.tag
+              const isPulling = pulling?.tag === m.tag
+              return (
+                <div key={m.tag} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, background: 'var(--bg-2)', border: isRec ? '1px solid var(--accent)' : '1px solid var(--border)' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12.5, fontWeight: 600 }}>{m.label} {isRec && <span style={{ fontSize: 10, color: 'var(--accent-text)' }}>· рекомендую</span>}</div>
+                    <div className="muted" style={{ fontSize: 10.5 }}>{m.tag} · ~{m.sizeGb} ГБ · {m.note}</div>
+                    {isPulling && (
+                      <div style={{ marginTop: 5 }}>
+                        <div style={{ height: 4, borderRadius: 4, background: 'var(--bg-3)', overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${pulling!.percent}%`, background: 'var(--accent)', transition: 'width 0.3s' }} />
+                        </div>
+                        <span className="muted" style={{ fontSize: 10 }}>{pulling!.status} {pulling!.percent}%</span>
+                      </div>
+                    )}
+                  </div>
+                  {have ? (
+                    <>
+                      <span style={{ fontSize: 11, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 3 }}><Check size={13} /> есть</span>
+                      <button className="btn btn-ghost press" style={{ padding: '4px 8px' }} disabled={busy} onClick={() => void removeModel(m.tag)} title="Удалить"><Trash2 size={13} /></button>
+                    </>
+                  ) : (
+                    <button className="btn btn-ghost press" style={{ padding: '5px 10px', fontSize: 12 }} disabled={busy}
+                      onClick={() => void pull(m.tag)}>
+                      {isPulling ? <Loader2 size={13} className="spin" /> : <Download size={13} />} Скачать
+                    </button>
+                  )}
+                </div>
+              )
+            })}
+          </div>
+
+          {ready && (
+            <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, cursor: 'pointer' }}>
+              <input type="checkbox" checked={settings.preferLocal} onChange={(e) => update({ preferLocal: e.target.checked })} />
+              <span style={{ fontSize: 12.5 }}>Использовать офлайн-мозг как основной <span className="muted">(облако — как запас, если задан ключ)</span></span>
+            </label>
+          )}
+        </>
+      )}
+    </div>
+  )
+}
+
 function ModelsSection({ settings, update }: SectionProps) {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null)
@@ -146,6 +265,9 @@ function ModelsSection({ settings, update }: SectionProps) {
     <div>
       <SectionTitle icon={<Cpu size={19} />} title="Модели ИИ" subtitle="Выбери провайдера. Все варианты имеют бесплатный доступ." />
 
+      <OfflineBrainCard settings={settings} update={update} />
+
+      <div style={{ fontSize: 12.5, fontWeight: 700, color: 'var(--text-1)', margin: '18px 2px 8px' }}>Облачные провайдеры</div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
         {PROVIDERS.map((p) => {
           const active = settings.provider === p.id

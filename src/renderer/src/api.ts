@@ -44,6 +44,17 @@ interface KiraBridge {
     available: () => Promise<boolean>
     install: () => Promise<{ ok: boolean; message: string }>
   }
+  local: {
+    status: () => Promise<{
+      installed: boolean; running: boolean; models: string[]
+      hardware: { ramGb: number; vramGb: number; gpu: string }; recommended: string
+    }>
+    models: () => Promise<Array<{ tag: string; label: string; sizeGb: number; note: string; minVramGb: number }>>
+    downloadUrl: () => Promise<string>
+    pull: (tag: string) => Promise<{ ok: boolean; message: string }>
+    delete: (tag: string) => Promise<boolean>
+    onPullProgress: (cb: (p: { tag: string; percent: number; status: string }) => void) => () => void
+  }
   speaker: {
     available: () => Promise<boolean>
     enrolled: () => Promise<boolean>

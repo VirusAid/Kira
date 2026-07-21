@@ -210,6 +210,8 @@ export interface KiraSettings {
   customAddress: string
   provider: AIProviderId
   providers: Record<AIProviderId, AIProviderConfig>
+  /** Предпочитать локальный офлайн-мозг (Ollama), облако — как запас */
+  preferLocal: boolean
   personality: string
   voiceEnabled: boolean
   /**

@@ -231,14 +231,15 @@ export function visionCandidateProviders(): AIProviderId[] {
 /** Провайдеры-кандидаты для отказоустойчивости: текущий + другие с ключом. */
 export function candidateProviders(): AIProviderId[] {
   const s = getSettings()
-  const order: AIProviderId[] = [s.provider]
-  // добавляем облачных провайдеров, у которых задан ключ (ollama — только если выбран явно)
+  // офлайн-мозг в приоритете: локальный Ollama первым, облако — как запас
+  const order: AIProviderId[] = s.preferLocal ? ['ollama'] : [s.provider]
   const rest: AIProviderId[] = ['groq', 'gemini', 'openrouter', 'deepseek', 'claude', 'glm']
   for (const p of rest) {
-    if (p === s.provider) continue
+    if (order.includes(p)) continue
     const cfg = s.providers[p]
     if (cfg.apiKey && cfg.apiKey.trim()) order.push(p)
   }
+  if (!order.includes(s.provider)) order.push(s.provider)
   return order
 }
 
@@ -303,6 +304,41 @@ export async function listProviderModels(providerId: AIProviderId): Promise<stri
   return []
 }
 
+/** Убрать блоки рассуждений <think>…</think> из готового текста. */
+export function stripThink(text: string): string {
+  return text.replace(/<think>[\s\S]*?<\/think>/g, '').replace(/<think>[\s\S]*$/g, '').trim()
+}
+
+/**
+ * Потоковый фильтр «мыслей» для локальных reasoning-моделей (Qwen3 и т.п.):
+ * подавляет всё между <think> и </think>, аккуратно обрабатывая теги,
+ * разрезанные между чанками. push — прогнать дельту, flush — добросить хвост.
+ */
+function makeThinkStripper(emit: (s: string) => void): { push: (d: string) => void; flush: () => void } {
+  let inside = false
+  let buf = ''
+  const process = (final: boolean): void => {
+    let out = ''
+    for (;;) {
+      if (!inside) {
+        const open = buf.indexOf('<think>')
+        if (open === -1) {
+          const keep = final ? 0 : Math.max(0, buf.length - 7) // хвост — вдруг начатый тег
+          out += buf.slice(0, buf.length - keep); buf = keep ? buf.slice(buf.length - keep) : ''
+          break
+        }
+        out += buf.slice(0, open); buf = buf.slice(open + 7); inside = true
+      } else {
+        const close = buf.indexOf('</think>')
+        if (close === -1) { buf = final ? '' : buf.slice(Math.max(0, buf.length - 8)); break }
+        buf = buf.slice(close + 8); inside = false
+      }
+    }
+    if (out) emit(out)
+  }
+  return { push: (d) => { buf += d; process(false) }, flush: () => process(true) }
+}
+
 export function streamChat(
   messages: AIMessage[],
   callbacks: {
@@ -323,12 +359,24 @@ export function streamChat(
   // при откате на них сплющиваем такие сообщения в чистый текст,
   // иначе groq отвечает 400 «content must be a string»
   const VISION_PROVIDERS = new Set<AIProviderId>(['gemini', 'openrouter'])
-  const outMessages = VISION_PROVIDERS.has(providerId)
+  let outMessages = VISION_PROVIDERS.has(providerId)
     ? messages
     : messages.map((m) =>
         Array.isArray(m.content)
           ? { ...m, content: m.content.filter((c) => c.type === 'text').map((c) => c.text ?? '').join('\n') || '[изображение]' }
           : m)
+
+  // Локальный офлайн-мозг (Ollama/Qwen3): отключаем «мысли», чтобы их не
+  // проговаривать голосом, и на всякий случай фильтруем <think> из потока
+  const isLocal = providerId === 'ollama'
+  if (isLocal) {
+    const hasSystem = outMessages.some((m) => m.role === 'system')
+    outMessages = hasSystem
+      ? outMessages.map((m) => (m.role === 'system' && typeof m.content === 'string' ? { ...m, content: m.content + '\n/no_think' } : m))
+      : [{ role: 'system' as ChatRole, content: '/no_think' }, ...outMessages]
+  }
+  const thinkStripper = isLocal ? makeThinkStripper(callbacks.onDelta) : null
+  const emitDelta = (d: string): void => { thinkStripper ? thinkStripper.push(d) : callbacks.onDelta(d) }
 
   void (async () => {
     let full = ''
@@ -377,17 +425,19 @@ export function streamChat(
             const delta: string = json.choices?.[0]?.delta?.content ?? ''
             if (delta) {
               full += delta
-              callbacks.onDelta(delta)
+              emitDelta(delta)
             }
           } catch {
             /* неполный JSON-фрагмент — пропускаем */
           }
         }
       }
-      callbacks.onDone(full)
+      thinkStripper?.flush()
+      callbacks.onDone(isLocal ? stripThink(full) : full)
     } catch (err) {
       if ((err as Error).name === 'AbortError') {
-        callbacks.onDone(full)
+        thinkStripper?.flush()
+        callbacks.onDone(isLocal ? stripThink(full) : full)
       } else {
         // ошибка соединения — можно попробовать другого провайдера
         callbacks.onError(connectionError(err as Error, options?.providerId), true)

@@ -34,6 +34,16 @@ const api = {
     menuRemove: () => invoke('shell:menu-remove')
   },
 
+  local: {
+    status: () => invoke('local:status'),
+    models: () => invoke('local:models'),
+    downloadUrl: () => invoke('local:download-url'),
+    pull: (tag: string) => invoke('local:pull', tag),
+    delete: (tag: string) => invoke('local:delete', tag),
+    onPullProgress: (cb: (p: { tag: string; percent: number; status: string }) => void) =>
+      on('local:pull-progress', (_e, p) => cb(p as { tag: string; percent: number; status: string }))
+  },
+
   tts: {
     voices: () => invoke('tts:voices'),
     sileroAvailable: () => invoke('tts:silero-available'),

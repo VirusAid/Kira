@@ -24,6 +24,7 @@ export const DEFAULT_SETTINGS: KiraSettings = {
     glm: { model: 'glm-5.2', apiKey: '' }
   },
   personality: DEFAULT_PERSONALITY,
+  preferLocal: false,
   voiceEnabled: true,
   ttsEngine: 'silero',
   sileroSpeaker: 'xenia',

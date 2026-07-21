@@ -136,6 +136,10 @@ if (!gotLock) {
     )
     void import('./modules/ai/wakeword').then((m) => m.wakeWord.setWindowGetter(() => mainWindow))
     void import('./modules/ai/worker').then((m) => m.workers.setWindowGetter(() => mainWindow))
+    // офлайн-мозг: если выбран как основной — заранее поднимаем сервер Ollama
+    if (getSettings().preferLocal) {
+      void import('./modules/ai/localLlm').then((m) => m.ensureRunning()).catch(() => {})
+    }
     initAutomations()
     initReminders()
     initClipboardHistory()
