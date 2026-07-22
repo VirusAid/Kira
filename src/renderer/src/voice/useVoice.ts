@@ -354,6 +354,10 @@ export function useVoice() {
       // 16 кГц — совместимо с Vosk (офлайн-активатор) и достаточно для VAD
       const ctx = new AudioContext({ sampleRate: 16000 })
       audioCtxRef.current = ctx
+      // страховка: если контекст усыпили (смена аудио-устройства при запуске игры,
+      // перекрытие окна) — сразу будим, иначе микрофон замолкает и Kira «глохнет»
+      ctx.onstatechange = () => { if (ctx.state === 'suspended') void ctx.resume() }
+      if (ctx.state === 'suspended') await ctx.resume()
       const source = ctx.createMediaStreamSource(stream)
 
       // узнавание голоса хозяина: включаем, если настроено, обучено и доступно

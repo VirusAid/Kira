@@ -19,6 +19,20 @@ import { logger } from './modules/logger'
 import { getSettings } from './modules/settings'
 import { extractAiFile, extractFileText } from './modules/shellIntegration'
 
+// Голосовой ассистент обязан слышать и отвечать, ДАЖE когда поверх — полноэкранная
+// игра или другое окно полностью перекрывает Kira. Chromium по умолчанию считает
+// полностью перекрытое окно «скрытым» (native window occlusion) и тормозит его
+// рендерер: замолкает микрофонный AudioContext (Vosk перестаёт слышать «Кира»),
+// не обрабатывается стрим ответа, не играет TTS — причём это происходит ДАЖE при
+// backgroundThrottling:false (тот флаг покрывает только сворачивание в трей, но не
+// перекрытие). Отключаем детект перекрытия и фоновые троттлы таймеров/рендерера,
+// чтобы весь голосовой конвейер продолжал работать поверх игры.
+// ВАЖНО: переключатели командной строки должны быть выставлены ДО app.whenReady.
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion')
+app.commandLine.appendSwitch('disable-backgrounding-occluded-windows')
+app.commandLine.appendSwitch('disable-renderer-backgrounding')
+app.commandLine.appendSwitch('disable-background-timer-throttling')
+
 let mainWindow: BrowserWindow | null = null
 let pendingAiFile: string | null = extractAiFile(process.argv)
 
