@@ -15,9 +15,9 @@ export const DEFAULT_SETTINGS: KiraSettings = {
   customAddress: '',
   provider: 'groq',
   providers: {
-    // офлайн-мозг: универсальный дефолт (заведётся на слабом ПК/CPU). На мощном
-    // железе Kira при установке сама подберёт крупнее через recommendModel.
-    ollama: { model: 'qwen3:4b', baseUrl: 'http://localhost:11434' },
+    // офлайн-мозг: вшитая Qwen3 8B (максимум мощи, что грузится на любом ПК).
+    // На мощном GPU — быстрая; на слабом Kira предложит быструю 4B (recommendModel).
+    ollama: { model: 'qwen3:8b', baseUrl: 'http://localhost:11434' },
     groq: { model: 'llama-3.3-70b-versatile', apiKey: '' },
     openrouter: { model: 'meta-llama/llama-3.3-70b-instruct:free', apiKey: '' },
     gemini: { model: 'gemini-3.5-flash', apiKey: '' },

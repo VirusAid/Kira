@@ -21,10 +21,11 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 const res = join(root, 'resources')
 
 // Офлайн-мозг: переносная Ollama + модель Qwen3, вшитые в установщик, чтобы Kira
-// думала офлайн из коробки на ЛЮБОМ ПК. Модель — универсальная 4B (заведётся на
-// слабом железе; мощным пользователь докачает крупнее из настроек).
+// думала офлайн из коробки на ЛЮБОМ ПК. Модель — 8B: максимум мощи, который ещё
+// грузится на любом современном ПК (8+ ГБ ОЗУ). На мощном GPU быстрая; на слабом
+// железе работает медленнее, и Kira подскажет переключиться на быструю 4B.
 const OLLAMA_ZIP_URL = 'https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip'
-const BUNDLED_MODEL = 'qwen3:4b'
+const BUNDLED_MODEL = 'qwen3:8b'
 
 // ВАЖНО: версия embeddable Python должна совпадать с ABI пакетов в pyenv.
 // pyenv собран колёсами cp314 (torch/numpy/onnxruntime под 3.14) — значит и
@@ -120,7 +121,7 @@ async function prepareOllama() {
     console.log(`• Модель ${BUNDLED_MODEL} уже предзагружена`)
     return
   }
-  console.log(`• Предзагружаю модель ${BUNDLED_MODEL} (~2.5 ГБ) в бандл…`)
+  console.log(`• Предзагружаю модель ${BUNDLED_MODEL} (~5 ГБ) в бандл…`)
   const env = { ...process.env, OLLAMA_MODELS: modelsDir, OLLAMA_HOST: '127.0.0.1:11434' }
   const serve = spawn(exe, ['serve'], { env, stdio: 'ignore', detached: false })
   try {
