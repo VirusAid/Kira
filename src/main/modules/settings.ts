@@ -15,8 +15,9 @@ export const DEFAULT_SETTINGS: KiraSettings = {
   customAddress: '',
   provider: 'groq',
   providers: {
-    // офлайн-мозг: вшитая Qwen3 8B (максимум мощи, что грузится на любом ПК).
-    // На мощном GPU — быстрая; на слабом Kira предложит быструю 4B (recommendModel).
+    // офлайн-мозг: Qwen3 через Ollama. Модель докачивается при первом запуске и
+    // подбирается под железо (recommendModel); setupBrain перезапишет этот тег на
+    // фактически скачанный. 8B — разумный дефолт-плейсхолдер до автоподбора.
     ollama: { model: 'qwen3:8b', baseUrl: 'http://localhost:11434' },
     groq: { model: 'llama-3.3-70b-versatile', apiKey: '' },
     openrouter: { model: 'meta-llama/llama-3.3-70b-instruct:free', apiKey: '' },
@@ -26,7 +27,8 @@ export const DEFAULT_SETTINGS: KiraSettings = {
     glm: { model: 'glm-5.2', apiKey: '' }
   },
   personality: DEFAULT_PERSONALITY,
-  // офлайн-мозг (вшитая Qwen3) — основной по умолчанию; облако как запас (если задан ключ)
+  // офлайн-мозг (Qwen3) — основной по умолчанию; облако как запас (если задан ключ).
+  // Онбординг переключит на облако, если пользователь дал ключ и не стал качать модель.
   preferLocal: true,
   voiceEnabled: true,
   ttsEngine: 'silero',

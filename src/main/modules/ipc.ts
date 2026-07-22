@@ -91,6 +91,14 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
       if (win && !win.isDestroyed()) win.webContents.send('local:pull-progress', { tag, percent, status })
     })
   })
+  // Настроить офлайн-мозг «за один клик»: докачать движок + модель под железо
+  ipcMain.handle('local:setup', async (_e, tag?: string) => {
+    const m = await import('./ai/localLlm')
+    return m.setupBrain((percent, status) => {
+      const win = getWindow()
+      if (win && !win.isDestroyed()) win.webContents.send('local:pull-progress', { tag: tag ?? 'setup', percent, status })
+    }, tag)
+  })
   ipcMain.handle('local:delete', async (_e, tag: string) => {
     const m = await import('./ai/localLlm')
     return m.deleteModel(tag)

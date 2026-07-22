@@ -8,33 +8,65 @@
  * существующий OpenAI-совместимый провайдер «ollama».
  */
 import { app } from 'electron'
-import { spawn, execFile } from 'child_process'
-import { existsSync } from 'fs'
+import { spawn, execFile, execFileSync } from 'child_process'
+import { existsSync, mkdirSync, createWriteStream, rmSync } from 'fs'
 import { join } from 'path'
+import { pipeline } from 'stream/promises'
+import { Readable, Transform } from 'stream'
 import os from 'os'
 import { logger } from '../logger'
 
 const OLLAMA_URL = 'http://localhost:11434'
 
-// ─── Встроенная (переносная) Ollama из ресурсов установщика ──────────────────
+// Переносная сборка Ollama для Windows (движок + GPU-библиотеки). Скачивается
+// один раз при первом запуске в записываемую папку данных пользователя —
+// установщик остаётся лёгким (~450 МБ), а «мозг» докачивается по требованию.
+const OLLAMA_ZIP_URL =
+  'https://github.com/ollama/ollama/releases/latest/download/ollama-windows-amd64.zip'
+
+// ─── Расположение движка и моделей ───────────────────────────────────────────
+// Переносная Ollama и модели живут в userData (запись разрешена, в отличие от
+// Program Files). Если установщик когда-то и вшил движок в resources — поддержим
+// и это как «bundled»-fallback, но модели всегда пишем в userData.
+
+function userDataDir(): string {
+  return app.getPath('userData')
+}
+/** Записываемая папка с переносной Ollama (докачивается при первом запуске). */
+function portableDir(): string {
+  return join(userDataDir(), 'ollama')
+}
+function portableExe(): string {
+  return join(portableDir(), 'ollama.exe')
+}
+function hasPortable(): boolean {
+  return existsSync(portableExe())
+}
+/** Записываемая папка с моделями (blobs) — сюда Ollama качает qwen3. */
+function modelsDir(): string {
+  return join(userDataDir(), 'ollama-models')
+}
 
 function resourcesDir(): string {
   return app.isPackaged ? process.resourcesPath : join(__dirname, '../../resources')
 }
-/** Путь к вшитой ollama.exe (если поставляется в установщике). */
+/** Legacy: путь к вшитой в установщик ollama.exe (если вдруг поставлялась). */
 function bundledExe(): string {
   return join(resourcesDir(), 'ollama', 'ollama.exe')
-}
-/** Папка с вшитыми моделями (blobs). */
-function bundledModelsDir(): string {
-  return join(resourcesDir(), 'ollama-models')
 }
 export function hasBundled(): boolean {
   return existsSync(bundledExe())
 }
-/** Окружение для запуска вшитой Ollama — модели берём из ресурсов. */
-function bundledEnv(): NodeJS.ProcessEnv {
-  return { ...process.env, OLLAMA_MODELS: bundledModelsDir(), OLLAMA_HOST: '127.0.0.1:11434' }
+
+/** Наш управляемый движок (переносной в userData → legacy-вшитый), либо null. */
+function managedExe(): string | null {
+  if (hasPortable()) return portableExe()
+  if (hasBundled()) return bundledExe()
+  return null
+}
+/** Движок под нашим контролем — сами задаём папку моделей (userData). */
+function managedEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, OLLAMA_MODELS: modelsDir(), OLLAMA_HOST: '127.0.0.1:11434' }
 }
 
 export interface LocalModel {
@@ -101,9 +133,9 @@ export async function recommendModel(): Promise<LocalModel> {
 
 // ─── Жизненный цикл Ollama ───────────────────────────────────────────────────
 
-/** Ollama доступна (вшита в установщик ИЛИ установлена в системе)? */
+/** Ollama доступна (переносная в userData, вшитая ИЛИ установлена в системе)? */
 export function isInstalled(): Promise<boolean> {
-  if (hasBundled()) return Promise.resolve(true)
+  if (managedExe()) return Promise.resolve(true)
   return new Promise((resolve) => {
     execFile(process.platform === 'win32' ? 'where' : 'which', ['ollama'],
       { timeout: 5000 }, (err) => resolve(!err))
@@ -120,16 +152,17 @@ export async function isRunning(): Promise<boolean> {
   }
 }
 
-/** Запустить сервер Ollama (вшитый — приоритетно, иначе системный). */
+/** Запустить сервер Ollama (наш переносной — приоритетно, иначе системный). */
 export async function ensureRunning(): Promise<boolean> {
   if (await isRunning()) return true
-  const bundled = hasBundled()
-  if (!bundled && !(await isInstalled())) return false
+  const managed = managedExe()
+  if (!managed && !(await isInstalled())) return false
   try {
-    const exe = bundled ? bundledExe() : 'ollama'
+    if (managed) mkdirSync(modelsDir(), { recursive: true })
+    const exe = managed ?? 'ollama'
     const proc = spawn(exe, ['serve'], {
       detached: true, stdio: 'ignore', windowsHide: true,
-      env: bundled ? bundledEnv() : process.env
+      env: managed ? managedEnv() : process.env
     })
     proc.unref()
   } catch {
@@ -138,9 +171,81 @@ export async function ensureRunning(): Promise<boolean> {
   // ждём поднятия сервера до 10 сек
   for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 500))
-    if (await isRunning()) { logger.info('local-llm', `Ollama сервер запущен${bundled ? ' (встроенная)' : ''}`); return true }
+    if (await isRunning()) { logger.info('local-llm', `Ollama сервер запущен${managed ? ' (переносная)' : ''}`); return true }
   }
   return false
+}
+
+/**
+ * Скачать переносную Ollama в userData (движок + GPU-библиотеки, ~несколько
+ * сот МБ). Прогресс 0..100 по объёму загрузки. Вызывается при первом запуске,
+ * если движок ещё не установлен и не вшит.
+ */
+export async function downloadOllama(
+  onProgress: (percent: number, status: string) => void
+): Promise<{ ok: boolean; message: string }> {
+  if (managedExe()) return { ok: true, message: 'Движок уже на месте' }
+  // системная Ollama на PATH — качать не нужно
+  if (await isInstalled()) return { ok: true, message: 'Ollama уже установлена в системе' }
+
+  const dir = portableDir()
+  const zip = join(userDataDir(), 'ollama-win.zip')
+  try {
+    mkdirSync(dir, { recursive: true })
+    onProgress(0, 'Скачиваю движок Ollama…')
+    const r = await fetch(OLLAMA_ZIP_URL)
+    if (!r.ok || !r.body) return { ok: false, message: `Не удалось скачать движок (${r.status})` }
+    const total = Number(r.headers.get('content-length') ?? 0)
+    let got = 0
+    // считаем байты в проходном потоке — backpressure соблюдается через pipeline
+    const counter = new Transform({
+      transform(chunk, _enc, cb) {
+        got += chunk.length
+        if (total) onProgress(Math.round((got / total) * 100), 'Скачиваю движок Ollama…')
+        cb(null, chunk)
+      }
+    })
+    await pipeline(Readable.fromWeb(r.body as Parameters<typeof Readable.fromWeb>[0]), counter, createWriteStream(zip))
+
+    onProgress(100, 'Распаковываю движок…')
+    execFileSync('powershell', ['-NoProfile', '-Command',
+      `Expand-Archive -Force '${zip}' '${dir}'`], { stdio: 'ignore' })
+    try { rmSync(zip, { force: true }) } catch { /* временный файл */ }
+    if (!hasPortable()) return { ok: false, message: 'ollama.exe не найден после распаковки' }
+    logger.info('local-llm', 'Переносная Ollama установлена в userData')
+    return { ok: true, message: 'Движок Ollama установлен' }
+  } catch (e) {
+    return { ok: false, message: `Ошибка установки движка: ${(e as Error).message}` }
+  }
+}
+
+/**
+ * Настроить офлайн-мозг «за один клик»: докачать движок (если нужно) и модель
+ * под железо (или заданную), с общим прогрессом 0..100. Первые ~15% — движок,
+ * остальное — модель (она в разы больше). Idempotent: если всё уже есть — ок.
+ */
+export async function setupBrain(
+  onProgress: (percent: number, status: string) => void,
+  tag?: string
+): Promise<{ ok: boolean; message: string; tag: string }> {
+  const model = tag ?? (await recommendModel()).tag
+  // 1. движок (0..15%)
+  if (!managedExe() && !(await isInstalled())) {
+    const dl = await downloadOllama((p, s) => onProgress(Math.round(p * 0.15), s))
+    if (!dl.ok) return { ok: false, message: dl.message, tag: model }
+  }
+  if (!(await ensureRunning())) {
+    return { ok: false, message: 'Не удалось запустить движок Ollama', tag: model }
+  }
+  // 2. модель (15..100%) — если уже есть, не качаем повторно
+  const have = await installedModels()
+  if (have.some((m) => m === model || m.startsWith(model.split(':')[0] + ':'))) {
+    onProgress(100, 'Модель уже загружена')
+    return { ok: true, message: `Офлайн-мозг готов: ${model}`, tag: model }
+  }
+  const pull = await pullModel(model, (p, s) => onProgress(15 + Math.round(p * 0.85), s))
+  if (!pull.ok) return { ok: false, message: pull.message, tag: model }
+  return { ok: true, message: `Офлайн-мозг готов: ${model}`, tag: model }
 }
 
 /** Установленные локально модели. */
@@ -216,22 +321,23 @@ export async function deleteModel(tag: string): Promise<boolean> {
 export interface LocalStatus {
   installed: boolean
   running: boolean
-  bundled: boolean
+  /** движок под нашим контролем (переносной в userData) — поднимаем сами */
+  managed: boolean
   models: string[]
   hardware: HardwareInfo
   recommended: string
 }
 
 export async function localStatus(): Promise<LocalStatus> {
-  const bundled = hasBundled()
+  const managed = managedExe() !== null
   const installed = await isInstalled()
-  // при вшитой Ollama — сами поднимаем сервер, чтобы показать реальный статус
-  if (bundled) await ensureRunning()
+  // при нашем движке — сами поднимаем сервер, чтобы показать реальный статус
+  if (managed) await ensureRunning()
   const running = installed ? await isRunning() : false
   const models = running ? await installedModels() : []
   const hardware = await hardwareInfo()
   const recommended = (await recommendModel()).tag
-  return { installed, running, bundled, models, hardware, recommended }
+  return { installed, running, managed, models, hardware, recommended }
 }
 
 /** Готов ли офлайн-мозг к работе (запущен и есть хотя бы одна модель). */

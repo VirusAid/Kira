@@ -3,8 +3,8 @@
  * пользователя (имя, работа, вкусы, интересы) и раскладывает это в свою
  * долговременную память + профиль, чтобы использовать в каждом разговоре.
  */
-import { useState } from 'react'
-import { ArrowRight, ArrowLeft, Sparkles, Check } from 'lucide-react'
+import { useState, useEffect } from 'react'
+import { ArrowRight, ArrowLeft, Sparkles, Check, Download, Loader2, WifiOff } from 'lucide-react'
 import { KiraEmblem } from './KiraEmblem'
 import { useAppStore } from '@/state/appStore'
 import { kira } from '@/api'
@@ -27,11 +27,11 @@ const STEPS: { title: string; subtitle: string; fields: Field[]; ai?: boolean }[
     ]
   },
   {
-    title: 'Мой мозг уже со мной',
-    subtitle: 'Я думаю офлайн из коробки — локальная модель уже встроена, ничего настраивать не нужно. По желанию можешь добавить бесплатный облачный ключ для максимальной мощности.',
+    title: 'Как мне думать',
+    subtitle: 'Я могу думать локально (приватно, офлайн) или через бесплатное облако. Выбери, что ближе — можно и то, и другое, и поменять позже.',
     ai: true,
     fields: [
-      { key: 'groqKey', label: 'API-ключ Groq (необязательно)', placeholder: 'gsk_… — или пропусти' }
+      { key: 'groqKey', label: 'API-ключ Groq (для облака, необязательно)', placeholder: 'gsk_… — или пропусти' }
     ]
   },
   {
@@ -64,6 +64,18 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(-1) // -1 = приветствие
   const [data, setData] = useState<Record<string, string>>({})
   const [saving, setSaving] = useState(false)
+  // офлайн-мозг: докачивается при первом запуске (движок + модель под железо)
+  const [brain, setBrain] = useState<{ running: boolean; percent: number; status: string; done: boolean }>(
+    { running: false, percent: 0, status: '', done: false }
+  )
+
+  useEffect(() => kira.local.onPullProgress((p) => setBrain((b) => ({ ...b, percent: p.percent, status: p.status }))), [])
+
+  const setupBrain = async (): Promise<void> => {
+    setBrain({ running: true, percent: 0, status: 'подготовка…', done: false })
+    const r = await kira.local.setup()
+    setBrain({ running: false, percent: 100, status: r.message, done: r.ok })
+  }
 
   const isWelcome = step === -1
   const cur = STEPS[step]
@@ -96,6 +108,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
       userName: (data.name || settings.userName).trim(),
       userProfile: profileParts,
       onboarded: true,
+      // офлайн-мозг настроен → он основной; иначе если дали ключ Groq — облако
+      // как основное (мгновенно работает), офлайн можно докачать позже в Настройках
+      preferLocal: brain.done ? true : groqKey ? false : settings.preferLocal,
       // если пользователь вставил ключ Groq — сразу включаем его как провайдера
       ...(groqKey ? {
         provider: 'groq' as const,
@@ -146,10 +161,43 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {cur.ai && (
-                <div style={{ background: 'var(--bg-3)', borderRadius: 10, padding: '12px 14px', fontSize: 12.5, lineHeight: 1.55 }}>
-                  🧠 <b>Локальный мозг (Qwen3) уже встроен</b> — я работаю офлайн и приватно сразу, без ключей.<br />
-                  <span className="muted">Хочешь ещё мощнее/быстрее? Добавь бесплатный ключ Groq: открой <button className="btn-link" style={{ color: 'var(--accent)', textDecoration: 'underline' }}
-                    onClick={() => window.open('https://console.groq.com/keys')}>console.groq.com/keys</button> → Create API Key → вставь сюда. Необязательно, можно позже в Настройках.</span>
+                <div style={{ background: 'var(--bg-3)', borderRadius: 10, padding: '14px', fontSize: 12.5, lineHeight: 1.55, display: 'flex', flexDirection: 'column', gap: 12 }}>
+                  {/* Вариант 1 — локальный офлайн-мозг */}
+                  <div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 7, fontWeight: 700, marginBottom: 4 }}>
+                      <WifiOff size={15} style={{ color: 'var(--accent-text)' }} /> Локальный мозг (Qwen3) — приватно и офлайн
+                    </div>
+                    <span className="muted">Ничего не уходит в облако. Скачаю движок и модель под твоё железо (несколько ГБ, один раз) — дальше работаю без интернета.</span>
+                    {brain.done ? (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: '#22c55e', marginTop: 8, fontWeight: 600 }}>
+                        <Check size={15} /> Офлайн-мозг готов
+                      </div>
+                    ) : (
+                      <div style={{ marginTop: 8 }}>
+                        <button className="btn btn-primary press" disabled={brain.running} onClick={() => void setupBrain()}>
+                          {brain.running ? <Loader2 size={14} className="spin" /> : <Download size={14} />} Настроить офлайн-мозг
+                        </button>
+                        {brain.running && (
+                          <div style={{ marginTop: 8 }}>
+                            <div style={{ height: 5, borderRadius: 4, background: 'var(--bg-2)', overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${brain.percent}%`, background: 'var(--accent)', transition: 'width 0.3s' }} />
+                            </div>
+                            <span className="muted" style={{ fontSize: 10.5 }}>{brain.status} {brain.percent}%</span>
+                          </div>
+                        )}
+                        {!brain.running && brain.status && !brain.done && (
+                          <span className="muted" style={{ fontSize: 11, display: 'block', marginTop: 6 }}>{brain.status}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ height: 1, background: 'var(--border)' }} />
+                  {/* Вариант 2 — облако (по желанию) */}
+                  <div>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>☁️ Облако (по желанию) — мгновенно, ключ за минуту</div>
+                    <span className="muted">Не хочешь ждать загрузку? Добавь бесплатный ключ Groq: открой <button className="btn-link" style={{ color: 'var(--accent)', textDecoration: 'underline' }}
+                      onClick={() => window.open('https://console.groq.com/keys')}>console.groq.com/keys</button> → Create API Key → вставь ниже. Можно и позже в Настройках.</span>
+                  </div>
                 </div>
               )}
               {cur.fields.map((f) => (

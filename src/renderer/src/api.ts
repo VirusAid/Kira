@@ -46,12 +46,13 @@ interface KiraBridge {
   }
   local: {
     status: () => Promise<{
-      installed: boolean; running: boolean; bundled: boolean; models: string[]
+      installed: boolean; running: boolean; managed: boolean; models: string[]
       hardware: { ramGb: number; vramGb: number; gpu: string }; recommended: string
     }>
     models: () => Promise<Array<{ tag: string; label: string; sizeGb: number; note: string; minVramGb: number }>>
     downloadUrl: () => Promise<string>
     pull: (tag: string) => Promise<{ ok: boolean; message: string }>
+    setup: (tag?: string) => Promise<{ ok: boolean; message: string; tag: string }>
     delete: (tag: string) => Promise<boolean>
     onPullProgress: (cb: (p: { tag: string; percent: number; status: string }) => void) => () => void
   }

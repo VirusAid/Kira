@@ -146,6 +146,20 @@ function OfflineBrainCard({ settings, update }: SectionProps) {
     await refresh()
   }
 
+  // Один клик: докачать движок Ollama + модель под железо и включить офлайн-мозг
+  const setup = async (): Promise<void> => {
+    setBusy(true); setPulling({ tag: 'setup', percent: 0, status: 'подготовка…' })
+    const r = await kira.local.setup()
+    setPulling(null); setBusy(false)
+    if (r.ok) {
+      update({
+        providers: { ...settings.providers, ollama: { ...settings.providers.ollama, model: r.tag } },
+        preferLocal: true
+      })
+    }
+    await refresh()
+  }
+
   const removeModel = async (tag: string): Promise<void> => {
     setBusy(true); await kira.local.delete(tag); await refresh(); setBusy(false)
   }
@@ -163,7 +177,7 @@ function OfflineBrainCard({ settings, update }: SectionProps) {
       </div>
       <p className="muted" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 10 }}>
         Kira думает и разговаривает полностью офлайн, без ключей и без интернета — приватно. Через Ollama.
-        {status?.bundled && <span style={{ color: '#22c55e' }}> Модель встроена в Kira — работает из коробки.</span>}
+        {status?.managed && <span style={{ color: '#22c55e' }}> Движок уже установлен — всё под рукой.</span>}
       </p>
 
       {hw && (
@@ -175,16 +189,27 @@ function OfflineBrainCard({ settings, update }: SectionProps) {
 
       {!installed ? (
         <div style={{ background: 'var(--bg-3)', borderRadius: 10, padding: '12px 14px', fontSize: 12.5, lineHeight: 1.5 }}>
-          Сначала установи <b>Ollama</b> (один раз, бесплатно):
-          <div style={{ marginTop: 8 }}>
-            <button className="btn btn-primary press" onClick={() => void kira.local.downloadUrl().then((u) => window.open(u))}>
-              <Download size={14} /> Скачать Ollama
+          Настрою офлайн-мозг за один клик — скачаю движок и модель под твоё железо
+          {status?.recommended && <b> ({status.recommended})</b>}. Один раз, дальше работает без интернета.
+          <div style={{ marginTop: 10 }}>
+            <button className="btn btn-primary press" disabled={busy} onClick={() => void setup()}>
+              {busy ? <Loader2 size={14} className="spin" /> : <Download size={14} />} Настроить офлайн-мозг
             </button>
-            <button className="btn btn-ghost press" style={{ marginLeft: 8 }} onClick={() => void refresh()}>
-              <RefreshCw size={14} /> Проверить снова
+            <button className="btn btn-ghost press" style={{ marginLeft: 8 }} disabled={busy} onClick={() => void refresh()}>
+              <RefreshCw size={14} /> Обновить статус
             </button>
           </div>
-          <span className="muted" style={{ fontSize: 11, display: 'block', marginTop: 8 }}>После установки нажми «Проверить снова» — появится выбор модели.</span>
+          {pulling?.tag === 'setup' && (
+            <div style={{ marginTop: 10 }}>
+              <div style={{ height: 5, borderRadius: 4, background: 'var(--bg-2)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${pulling.percent}%`, background: 'var(--accent)', transition: 'width 0.3s' }} />
+              </div>
+              <span className="muted" style={{ fontSize: 10.5 }}>{pulling.status} {pulling.percent}%</span>
+            </div>
+          )}
+          <span className="muted" style={{ fontSize: 11, display: 'block', marginTop: 8 }}>
+            Загрузка большая (движок + модель, ~несколько ГБ). Можно пользоваться облаком, пока качается.
+          </span>
         </div>
       ) : (
         <>
