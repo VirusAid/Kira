@@ -7,11 +7,35 @@
  * автозапуск сервера, список и загрузка моделей) — сам инференс идёт через
  * существующий OpenAI-совместимый провайдер «ollama».
  */
+import { app } from 'electron'
 import { spawn, execFile } from 'child_process'
+import { existsSync } from 'fs'
+import { join } from 'path'
 import os from 'os'
 import { logger } from '../logger'
 
 const OLLAMA_URL = 'http://localhost:11434'
+
+// ─── Встроенная (переносная) Ollama из ресурсов установщика ──────────────────
+
+function resourcesDir(): string {
+  return app.isPackaged ? process.resourcesPath : join(__dirname, '../../resources')
+}
+/** Путь к вшитой ollama.exe (если поставляется в установщике). */
+function bundledExe(): string {
+  return join(resourcesDir(), 'ollama', 'ollama.exe')
+}
+/** Папка с вшитыми моделями (blobs). */
+function bundledModelsDir(): string {
+  return join(resourcesDir(), 'ollama-models')
+}
+export function hasBundled(): boolean {
+  return existsSync(bundledExe())
+}
+/** Окружение для запуска вшитой Ollama — модели берём из ресурсов. */
+function bundledEnv(): NodeJS.ProcessEnv {
+  return { ...process.env, OLLAMA_MODELS: bundledModelsDir(), OLLAMA_HOST: '127.0.0.1:11434' }
+}
 
 export interface LocalModel {
   tag: string
@@ -58,19 +82,28 @@ export async function hardwareInfo(): Promise<HardwareInfo> {
   return { ramGb, vramGb, gpu }
 }
 
-/** Подобрать модель под железо. */
+/**
+ * Подобрать модель под железо ЛЮБОГО пользователя — универсально, а не под
+ * конкретный GPU. Дискретный GPU → по VRAM. Без него (CPU/встройка) —
+ * консервативно, т.к. инференс на CPU медленный: даже с 32 ГБ ОЗУ не тянем 8B+.
+ */
 export async function recommendModel(): Promise<LocalModel> {
   const { vramGb, ramGb } = await hardwareInfo()
-  // с дискретным GPU ориентируемся на VRAM; без него — на ОЗУ (выгрузка в RAM)
-  const budget = vramGb > 0 ? vramGb : Math.min(ramGb / 2, 8)
-  const pick = RECOMMENDED_MODELS.find((m) => budget >= m.minVramGb) ?? RECOMMENDED_MODELS[RECOMMENDED_MODELS.length - 1]
-  return pick
+  const byTag = (tag: string): LocalModel => RECOMMENDED_MODELS.find((m) => m.tag === tag)!
+
+  if (vramGb >= 10) return byTag('qwen3:14b')
+  if (vramGb >= 6) return byTag('qwen3:8b')
+  if (vramGb >= 4) return byTag('qwen3:4b')
+  if (vramGb > 0) return ramGb >= 8 ? byTag('qwen3:4b') : byTag('qwen3:1.7b') // слабый GPU + выгрузка в ОЗУ
+  // CPU-only / встроенная графика: 4B — потолок разумной скорости, ниже 8 ГБ ОЗУ — 1.7B
+  return ramGb >= 8 ? byTag('qwen3:4b') : byTag('qwen3:1.7b')
 }
 
 // ─── Жизненный цикл Ollama ───────────────────────────────────────────────────
 
-/** Ollama установлена (есть бинарь в PATH)? */
+/** Ollama доступна (вшита в установщик ИЛИ установлена в системе)? */
 export function isInstalled(): Promise<boolean> {
+  if (hasBundled()) return Promise.resolve(true)
   return new Promise((resolve) => {
     execFile(process.platform === 'win32' ? 'where' : 'which', ['ollama'],
       { timeout: 5000 }, (err) => resolve(!err))
@@ -87,12 +120,17 @@ export async function isRunning(): Promise<boolean> {
   }
 }
 
-/** Запустить сервер Ollama, если установлен, но не запущен. */
+/** Запустить сервер Ollama (вшитый — приоритетно, иначе системный). */
 export async function ensureRunning(): Promise<boolean> {
   if (await isRunning()) return true
-  if (!(await isInstalled())) return false
+  const bundled = hasBundled()
+  if (!bundled && !(await isInstalled())) return false
   try {
-    const proc = spawn('ollama', ['serve'], { detached: true, stdio: 'ignore', windowsHide: true })
+    const exe = bundled ? bundledExe() : 'ollama'
+    const proc = spawn(exe, ['serve'], {
+      detached: true, stdio: 'ignore', windowsHide: true,
+      env: bundled ? bundledEnv() : process.env
+    })
     proc.unref()
   } catch {
     return false
@@ -100,7 +138,7 @@ export async function ensureRunning(): Promise<boolean> {
   // ждём поднятия сервера до 10 сек
   for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 500))
-    if (await isRunning()) { logger.info('local-llm', 'Ollama сервер запущен'); return true }
+    if (await isRunning()) { logger.info('local-llm', `Ollama сервер запущен${bundled ? ' (встроенная)' : ''}`); return true }
   }
   return false
 }
@@ -178,18 +216,22 @@ export async function deleteModel(tag: string): Promise<boolean> {
 export interface LocalStatus {
   installed: boolean
   running: boolean
+  bundled: boolean
   models: string[]
   hardware: HardwareInfo
   recommended: string
 }
 
 export async function localStatus(): Promise<LocalStatus> {
+  const bundled = hasBundled()
   const installed = await isInstalled()
+  // при вшитой Ollama — сами поднимаем сервер, чтобы показать реальный статус
+  if (bundled) await ensureRunning()
   const running = installed ? await isRunning() : false
   const models = running ? await installedModels() : []
   const hardware = await hardwareInfo()
   const recommended = (await recommendModel()).tag
-  return { installed, running, models, hardware, recommended }
+  return { installed, running, bundled, models, hardware, recommended }
 }
 
 /** Готов ли офлайн-мозг к работе (запущен и есть хотя бы одна модель). */

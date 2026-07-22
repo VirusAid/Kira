@@ -46,7 +46,7 @@ interface KiraBridge {
   }
   local: {
     status: () => Promise<{
-      installed: boolean; running: boolean; models: string[]
+      installed: boolean; running: boolean; bundled: boolean; models: string[]
       hardware: { ramGb: number; vramGb: number; gpu: string }; recommended: string
     }>
     models: () => Promise<Array<{ tag: string; label: string; sizeGb: number; note: string; minVramGb: number }>>

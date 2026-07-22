@@ -163,6 +163,7 @@ function OfflineBrainCard({ settings, update }: SectionProps) {
       </div>
       <p className="muted" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 10 }}>
         Kira думает и разговаривает полностью офлайн, без ключей и без интернета — приватно. Через Ollama.
+        {status?.bundled && <span style={{ color: '#22c55e' }}> Модель встроена в Kira — работает из коробки.</span>}
       </p>
 
       {hw && (

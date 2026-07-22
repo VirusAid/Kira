@@ -15,7 +15,9 @@ export const DEFAULT_SETTINGS: KiraSettings = {
   customAddress: '',
   provider: 'groq',
   providers: {
-    ollama: { model: 'llama3.1', baseUrl: 'http://localhost:11434' },
+    // офлайн-мозг: универсальный дефолт (заведётся на слабом ПК/CPU). На мощном
+    // железе Kira при установке сама подберёт крупнее через recommendModel.
+    ollama: { model: 'qwen3:4b', baseUrl: 'http://localhost:11434' },
     groq: { model: 'llama-3.3-70b-versatile', apiKey: '' },
     openrouter: { model: 'meta-llama/llama-3.3-70b-instruct:free', apiKey: '' },
     gemini: { model: 'gemini-3.5-flash', apiKey: '' },
@@ -24,7 +26,8 @@ export const DEFAULT_SETTINGS: KiraSettings = {
     glm: { model: 'glm-5.2', apiKey: '' }
   },
   personality: DEFAULT_PERSONALITY,
-  preferLocal: false,
+  // офлайн-мозг (вшитая Qwen3) — основной по умолчанию; облако как запас (если задан ключ)
+  preferLocal: true,
   voiceEnabled: true,
   ttsEngine: 'silero',
   sileroSpeaker: 'xenia',

@@ -27,11 +27,11 @@ const STEPS: { title: string; subtitle: string; fields: Field[]; ai?: boolean }[
     ]
   },
   {
-    title: 'Подключим мне «мозг»',
-    subtitle: 'Чтобы я могла думать и разговаривать, нужен бесплатный ключ ИИ. Займёт 2 минуты.',
+    title: 'Мой мозг уже со мной',
+    subtitle: 'Я думаю офлайн из коробки — локальная модель уже встроена, ничего настраивать не нужно. По желанию можешь добавить бесплатный облачный ключ для максимальной мощности.',
     ai: true,
     fields: [
-      { key: 'groqKey', label: 'API-ключ Groq (бесплатно)', placeholder: 'gsk_…' }
+      { key: 'groqKey', label: 'API-ключ Groq (необязательно)', placeholder: 'gsk_… — или пропусти' }
     ]
   },
   {
@@ -147,10 +147,9 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
             <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
               {cur.ai && (
                 <div style={{ background: 'var(--bg-3)', borderRadius: 10, padding: '12px 14px', fontSize: 12.5, lineHeight: 1.55 }}>
-                  <b>3 шага:</b> 1) открой <button className="btn-link" style={{ color: 'var(--accent)', textDecoration: 'underline' }}
-                    onClick={() => window.open('https://console.groq.com/keys')}>console.groq.com/keys</button>, войди ·
-                  2) нажми <b>Create API Key</b> · 3) вставь ключ сюда.<br />
-                  <span className="muted">Groq бесплатный и быстрый. Можно пропустить и добавить любой ключ позже в Настройках → Модели ИИ.</span>
+                  🧠 <b>Локальный мозг (Qwen3) уже встроен</b> — я работаю офлайн и приватно сразу, без ключей.<br />
+                  <span className="muted">Хочешь ещё мощнее/быстрее? Добавь бесплатный ключ Groq: открой <button className="btn-link" style={{ color: 'var(--accent)', textDecoration: 'underline' }}
+                    onClick={() => window.open('https://console.groq.com/keys')}>console.groq.com/keys</button> → Create API Key → вставь сюда. Необязательно, можно позже в Настройках.</span>
                 </div>
               )}
               {cur.fields.map((f) => (
