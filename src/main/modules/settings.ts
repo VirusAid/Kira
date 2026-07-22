@@ -46,6 +46,7 @@ export const DEFAULT_SETTINGS: KiraSettings = {
   wakeWord: 'кира',
   proactiveEnabled: true,
   proactiveLevel: 'balanced',
+  screenAssist: false,
   briefingEnabled: true,
   briefingHour: 9,
   allowControl: true,

@@ -903,6 +903,9 @@ function BehaviorSection({ settings, update }: SectionProps) {
             </div>
           </Field>
         )}
+        <Toggle label="Помощь по контексту экрана"
+          hint="Kira ненавязчиво видит, чем ты занят (локально, офлайн OCR), и при явной проблеме на экране один раз предлагает помочь. Скриншот уходит в ИИ только если ты согласишься. По умолчанию выключено."
+          checked={settings.screenAssist} onChange={(v) => update({ screenAssist: v })} />
         <Toggle label="Утренний брифинг"
           hint="Раз в день Kira приветствует и рассказывает про напоминания и проекты"
           checked={settings.briefingEnabled} onChange={(v) => update({ briefingEnabled: v })} />

@@ -16,14 +16,17 @@ import type { ActionResult, ProcessInfo, SystemStats } from '../../shared/types'
 /** Запуск PowerShell-команды с таймаутом. */
 export function runPowerShell(command: string, timeoutMs = 30_000): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
-    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', command], {
+    // заставляем PowerShell выводить UTF-8 (иначе кириллица из вывода — заголовки
+    // окон, распознанный OCR-текст — приходит в OEM-кодировке и бьётся)
+    const wrapped = '[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;' + command
+    const child = spawn('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', wrapped], {
       windowsHide: true
     })
     let stdout = ''
     let stderr = ''
     const timer = setTimeout(() => child.kill(), timeoutMs)
-    child.stdout.on('data', (d) => (stdout += d.toString()))
-    child.stderr.on('data', (d) => (stderr += d.toString()))
+    child.stdout.on('data', (d) => (stdout += d.toString('utf8')))
+    child.stderr.on('data', (d) => (stderr += d.toString('utf8')))
     child.on('close', (code) => {
       clearTimeout(timer)
       resolve({ stdout, stderr, code: code ?? -1 })
@@ -1015,6 +1018,18 @@ export async function openRecycleBin(): Promise<ActionResult> {
 export async function emptyRecycleBin(): Promise<ActionResult> {
   const r = await runPowerShell(`Clear-RecycleBin -Force -ErrorAction SilentlyContinue; 'ok'`, 20_000)
   return r.stdout.includes('ok') ? { ok: true, message: 'Корзина очищена' } : { ok: false, message: 'Не удалось очистить Корзину' }
+}
+
+/** Активное (переднего плана) окно: заголовок + имя процесса. */
+export async function foregroundWindow(): Promise<{ title: string; process: string }> {
+  const script = `
+Add-Type -TypeDefinition 'using System;using System.Runtime.InteropServices;using System.Text;public class FGW2{[DllImport("user32.dll")]public static extern IntPtr GetForegroundWindow();[DllImport("user32.dll")]public static extern int GetWindowText(IntPtr h,StringBuilder s,int n);[DllImport("user32.dll")]public static extern int GetWindowThreadProcessId(IntPtr h,out int pid);}' -ErrorAction SilentlyContinue
+$h=[FGW2]::GetForegroundWindow();$sb=New-Object System.Text.StringBuilder 512;[FGW2]::GetWindowText($h,$sb,512)|Out-Null;$p=0;[FGW2]::GetWindowThreadProcessId($h,[ref]$p)|Out-Null
+$name=(Get-Process -Id $p -ErrorAction SilentlyContinue).ProcessName
+Write-Output ($sb.ToString()+'||'+$name)`
+  const r = await runPowerShell(script, 8000)
+  const [title, process] = r.stdout.trim().split('||')
+  return { title: (title ?? '').trim(), process: (process ?? '').trim() }
 }
 
 // ─── Локальный OCR (Windows.Media.Ocr, офлайн, без зависимостей) ─────────────

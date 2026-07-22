@@ -82,6 +82,11 @@ export const SnippetController = {
   remove: (name: string): ExecResult => snip.deleteSnippet(name)
 }
 
+/** Самодиагностика подсистем Kira. */
+export const DiagnosticsController = {
+  run: (topic?: string): Promise<ExecResult> => import('../../modules/diagnostics').then((m) => m.diagnoseReport(topic))
+}
+
 /** Локальная база знаний по документам (RAG). */
 export const KnowledgeController = {
   ask: (query: string): Promise<ExecResult> => knw.askDocs(query),

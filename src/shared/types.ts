@@ -251,6 +251,8 @@ export interface KiraSettings {
   proactiveEnabled: boolean
   /** Насколько активно Kira сама подсказывает: calm / balanced / active */
   proactiveLevel: 'calm' | 'balanced' | 'active'
+  /** Помощь по контексту экрана: Kira ненавязчиво видит, чем ты занят, и предлагает помощь */
+  screenAssist: boolean
   /** Утренний брифинг раз в день */
   briefingEnabled: boolean
   /** Час, после которого делать брифинг */

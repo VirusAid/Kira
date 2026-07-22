@@ -9,7 +9,7 @@
  * LLM-протокол и история подхватывают его автоматически.
  */
 import {
-  ApplicationController, BrowserController, ClipboardController, FileController,
+  ApplicationController, BrowserController, ClipboardController, DiagnosticsController, FileController,
   GitController, InputController, KnowledgeController, MediaController, NotificationController,
   PowerController, SearchController, SnippetController, SystemController, UtilityController,
   WindowController, knownFolder
@@ -1126,6 +1126,20 @@ export const actions: KiraAction[] = [
     phrases: ['что проиндексировано', 'сколько документов в базе'],
     args: [],
     execute: async () => KnowledgeController.status()
+  },
+
+  // ─── Самодиагностика ──────────────────────────────────────────────────────
+  {
+    id: 'diagnose',
+    title: 'Самодиагностика',
+    description: 'Проверяет подсистемы Kira и подсказывает, что починить',
+    category: 'system',
+    aliases: ['диагностика', 'проверь себя'],
+    patterns: [/^(?:почему не работает|что не так с|что случилось с|проверь|диагностика|самодиагностика|проверь себя|всё ли работает|что сломалось|проверь системы)(?:\s+(?<topic>.+))?$/],
+    examples: ['почему не работает голос', 'диагностика'],
+    phrases: ['проверь все системы', 'что у тебя не работает', 'самопроверка', 'всё ли в порядке'],
+    args: [{ name: 'topic', description: 'Что проверить (голос/мозг/память…)' }],
+    execute: (a) => DiagnosticsController.run(a.topic)
   },
 
   // ─── Приложения (универсальный — ПОСЛЕДНИМ) ──────────────────────────────
