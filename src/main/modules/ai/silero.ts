@@ -51,7 +51,7 @@ class SileroManager {
     if (this.available !== null) return Promise.resolve(this.available)
     return new Promise<boolean>((resolve) => {
       const env = { ...process.env, PYTHONPATH: this.pyenvDir() }
-      execFile(this.pythonExe(), ['-c', 'import torch'], { env, timeout: 25_000 }, (err) => {
+      execFile(this.pythonExe(), ['-c', 'import torch'], { env, timeout: 25_000, windowsHide: true }, (err) => {
         this.available = !err
         resolve(this.available)
       })
@@ -61,7 +61,7 @@ class SileroManager {
   /** Проверка наличия Python в системе (нужен для локального голоса). */
   checkPython(): Promise<{ ok: boolean; version: string }> {
     return new Promise((resolve) => {
-      execFile(this.pythonExe(), ['--version'], { timeout: 15_000 }, (err, stdout, stderr) => {
+      execFile(this.pythonExe(), ['--version'], { timeout: 15_000, windowsHide: true }, (err, stdout, stderr) => {
         const out = (stdout || stderr || '').trim()
         resolve({ ok: !err && /python/i.test(out), version: out })
       })
@@ -84,7 +84,7 @@ class SileroManager {
         '--index-url', 'https://download.pytorch.org/whl/cpu',
         '--extra-index-url', 'https://pypi.org/simple'
       ]
-      const proc = spawn(this.pythonExe(), args, { env })
+      const proc = spawn(this.pythonExe(), args, { env, windowsHide: true })
       const onData = (d: Buffer): void => {
         const line = d.toString().trim()
         if (line) onProgress(line.slice(0, 200))
@@ -114,7 +114,7 @@ class SileroManager {
       const env = { ...process.env, PYTHONPATH: this.pyenvDir(), PYTHONIOENCODING: 'utf-8' }
 
       logger.info('silero', 'Запускаю локальный синтез речи Silero…')
-      const proc = spawn(this.pythonExe(), ['-u', script, cacheDir], { env })
+      const proc = spawn(this.pythonExe(), ['-u', script, cacheDir], { env, windowsHide: true })
       this.proc = proc
 
       const startTimeout = setTimeout(() => {

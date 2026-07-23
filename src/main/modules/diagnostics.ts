@@ -20,7 +20,7 @@ function pythonOk(): Promise<boolean> {
   return new Promise((resolve) => {
     const local = require('path').join(app.getPath('userData'), '..', 'python', 'python.exe')
     execFile(require('fs').existsSync(local) ? local : (process.platform === 'win32' ? 'python' : 'python3'),
-      ['--version'], { timeout: 6000 }, (err) => resolve(!err))
+      ['--version'], { timeout: 6000, windowsHide: true }, (err) => resolve(!err))
   })
 }
 

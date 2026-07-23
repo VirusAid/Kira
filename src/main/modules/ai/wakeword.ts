@@ -50,7 +50,7 @@ export function resolveModelDir(): string | null {
   const zip = join(dir, 'model.zip')
   if (existsSync(zip)) {
     try {
-      execFileSync('powershell', ['-NoProfile', '-Command', `Expand-Archive -Force '${zip}' '${dir}'`], { timeout: 60_000 })
+      execFileSync('powershell', ['-NoProfile', '-Command', `Expand-Archive -Force '${zip}' '${dir}'`], { timeout: 60_000, windowsHide: true })
       const sub = findModelSub(dir)
       if (sub) return sub
     } catch { /* ignore */ }
@@ -79,7 +79,7 @@ class WakeWordManager {
     return new Promise((resolve) => {
       if (!resolveModelDir()) { this.available = false; return resolve(false) }
       const env = { ...process.env, PYTHONPATH: pyenvDir() }
-      execFile(pythonExe(), ['-c', 'import vosk'], { env, timeout: 20_000 }, (err) => {
+      execFile(pythonExe(), ['-c', 'import vosk'], { env, timeout: 20_000, windowsHide: true }, (err) => {
         this.available = !err
         resolve(this.available)
       })
@@ -94,7 +94,7 @@ class WakeWordManager {
     this.starting = true
     const script = join(resourcesRoot(), 'vosk_wake.py')
     const env = { ...process.env, PYTHONPATH: pyenvDir(), PYTHONIOENCODING: 'utf-8' }
-    const proc = spawn(pythonExe(), ['-u', script, modelDir], { env })
+    const proc = spawn(pythonExe(), ['-u', script, modelDir], { env, windowsHide: true })
     this.proc = proc
 
     proc.stdout.setEncoding('utf-8')
@@ -173,7 +173,7 @@ class WakeWordManager {
       const tmp = join(target, '..', 'pytmp')
       const env = { ...process.env, TMP: tmp, TEMP: tmp, PIP_NO_INPUT: '1' }
       onProgress('Устанавливаю Vosk (офлайн-распознавание)…')
-      const pip = spawn(pythonExe(), ['-m', 'pip', 'install', '--no-cache-dir', '--target', target, 'vosk'], { env })
+      const pip = spawn(pythonExe(), ['-m', 'pip', 'install', '--no-cache-dir', '--target', target, 'vosk'], { env, windowsHide: true })
       pip.stdout.on('data', (d: Buffer) => onProgress(d.toString().trim().slice(0, 160)))
       pip.stderr.on('data', (d: Buffer) => onProgress(d.toString().trim().slice(0, 160)))
       pip.on('error', (e) => resolve({ ok: false, message: `Нужен Python. ${e.message}` }))

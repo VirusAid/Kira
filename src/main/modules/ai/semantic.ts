@@ -62,7 +62,7 @@ class SemanticManager {
     if (this.available !== null) return Promise.resolve(this.available)
     return new Promise((resolve) => {
       const env = { ...process.env, PYTHONPATH: pyenvDir() }
-      execFile(pythonExe(), ['-c', 'import fastembed'], { env, timeout: 20_000 }, (err) => {
+      execFile(pythonExe(), ['-c', 'import fastembed'], { env, timeout: 20_000, windowsHide: true }, (err) => {
         this.available = !err
         resolve(this.available)
       })
@@ -78,7 +78,7 @@ class SemanticManager {
       const cacheDir = join(app.getPath('userData'), 'embed-model')
       const env = { ...process.env, PYTHONPATH: pyenvDir(), PYTHONIOENCODING: 'utf-8' }
       logger.info('semantic', 'Загружаю модель эмбеддингов…')
-      const proc = spawn(pythonExe(), ['-u', script, cacheDir], { env })
+      const proc = spawn(pythonExe(), ['-u', script, cacheDir], { env, windowsHide: true })
       this.proc = proc
       const timeout = setTimeout(() => reject(new Error('Таймаут загрузки модели эмбеддингов')), 180_000)
 
@@ -165,7 +165,7 @@ class SemanticManager {
       const tmp = join(target, '..', 'pytmp')
       const env = { ...process.env, TMP: tmp, TEMP: tmp, PIP_NO_INPUT: '1' }
       onProgress('Устанавливаю движок эмбеддингов (fastembed)…')
-      const pip = spawn(pythonExe(), ['-m', 'pip', 'install', '--no-cache-dir', '--target', target, 'fastembed'], { env })
+      const pip = spawn(pythonExe(), ['-m', 'pip', 'install', '--no-cache-dir', '--target', target, 'fastembed'], { env, windowsHide: true })
       pip.stdout.on('data', (d: Buffer) => onProgress(d.toString().trim().slice(0, 160)))
       pip.stderr.on('data', (d: Buffer) => onProgress(d.toString().trim().slice(0, 160)))
       pip.on('error', (e) => resolve({ ok: false, message: `Нужен Python. ${e.message}` }))

@@ -396,19 +396,19 @@ export async function powerAction(action: 'shutdown' | 'restart' | 'sleep' | 'lo
   logger.action('system', `Питание: ${action}`)
   switch (action) {
     case 'shutdown':
-      execFile('shutdown', ['/s', '/t', '3'])
+      execFile('shutdown', ['/s', '/t', '3'], { windowsHide: true })
       return { ok: true, message: 'Выключаю компьютер через 3 секунды…' }
     case 'restart':
-      execFile('shutdown', ['/r', '/t', '3'])
+      execFile('shutdown', ['/r', '/t', '3'], { windowsHide: true })
       return { ok: true, message: 'Перезагружаю компьютер через 3 секунды…' }
     case 'sleep':
       await runPowerShell('Add-Type -AssemblyName System.Windows.Forms; [System.Windows.Forms.Application]::SetSuspendState("Suspend", $false, $false)')
       return { ok: true, message: 'Перевожу в спящий режим' }
     case 'hibernate':
-      execFile('shutdown', ['/h'])
+      execFile('shutdown', ['/h'], { windowsHide: true })
       return { ok: true, message: 'Перевожу в гибернацию' }
     case 'lock':
-      execFile('rundll32.exe', ['user32.dll,LockWorkStation'])
+      execFile('rundll32.exe', ['user32.dll,LockWorkStation'], { windowsHide: true })
       return { ok: true, message: 'Блокирую экран' }
   }
 }

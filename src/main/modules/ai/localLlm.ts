@@ -103,7 +103,7 @@ async function detectVram(): Promise<{ vramGb: number; gpu: string }> {
   // nvidia-smi точнее всего
   const smi = await new Promise<string>((resolve) => {
     execFile('nvidia-smi', ['--query-gpu=name,memory.total', '--format=csv,noheader,nounits'],
-      { timeout: 6000 }, (err, stdout) => resolve(err ? '' : stdout))
+      { timeout: 6000, windowsHide: true }, (err, stdout) => resolve(err ? '' : stdout))
   })
   const line = smi.trim().split('\n')[0]
   if (line) {
@@ -145,7 +145,7 @@ export function isInstalled(): Promise<boolean> {
   if (managedExe()) return Promise.resolve(true)
   return new Promise((resolve) => {
     execFile(process.platform === 'win32' ? 'where' : 'which', ['ollama'],
-      { timeout: 5000 }, (err) => resolve(!err))
+      { timeout: 5000, windowsHide: true }, (err) => resolve(!err))
   })
 }
 
@@ -216,7 +216,7 @@ export async function downloadOllama(
 
     onProgress(100, 'Распаковываю движок…')
     execFileSync('powershell', ['-NoProfile', '-Command',
-      `Expand-Archive -Force '${zip}' '${dir}'`], { stdio: 'ignore' })
+      `Expand-Archive -Force '${zip}' '${dir}'`], { stdio: 'ignore', windowsHide: true })
     try { rmSync(zip, { force: true }) } catch { /* временный файл */ }
     if (!hasPortable()) return { ok: false, message: 'ollama.exe не найден после распаковки' }
     logger.info('local-llm', 'Переносная Ollama установлена в userData')

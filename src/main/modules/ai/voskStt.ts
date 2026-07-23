@@ -41,7 +41,7 @@ class VoskSttManager {
 
       const script = join(resourcesRoot(), 'vosk_stt.py')
       const env = { ...process.env, PYTHONPATH: pyenvDir(), PYTHONIOENCODING: 'utf-8' }
-      const proc = spawn(pythonExe(), ['-u', script, modelDir], { env })
+      const proc = spawn(pythonExe(), ['-u', script, modelDir], { env, windowsHide: true })
       this.proc = proc
 
       const timeout = setTimeout(() => { if (!this.ready) { resolve(false) } }, 30_000)

@@ -52,7 +52,7 @@ class SpeakerManager {
     if (this.available !== null) return Promise.resolve(this.available)
     return new Promise((resolve) => {
       const env = { ...process.env, PYTHONPATH: pyenvDir() }
-      execFile(pythonExe(), ['-c', 'import resemblyzer'], { env, timeout: 25_000 }, (err) => {
+      execFile(pythonExe(), ['-c', 'import resemblyzer'], { env, timeout: 25_000, windowsHide: true }, (err) => {
         this.available = !err
         resolve(this.available)
       })
@@ -66,7 +66,7 @@ class SpeakerManager {
       const script = join(resourcesRoot(), 'speaker.py')
       if (!existsSync(script)) return reject(new Error('speaker.py не найден'))
       const env = { ...process.env, PYTHONPATH: pyenvDir(), PYTHONIOENCODING: 'utf-8' }
-      const proc = spawn(pythonExe(), ['-u', script], { env })
+      const proc = spawn(pythonExe(), ['-u', script], { env, windowsHide: true })
       this.proc = proc
       const t = setTimeout(() => reject(new Error('Таймаут загрузки модели голоса')), 120_000)
       proc.stdout.setEncoding('utf-8')
@@ -153,13 +153,13 @@ class SpeakerManager {
       const env = { ...process.env, TMP: tmp, TEMP: tmp, PIP_NO_INPUT: '1' }
       onProgress('Устанавливаю узнавание голоса (resemblyzer + librosa)…')
       // webrtcvad не собирается на py3.14 → ставим resemblyzer без зависимостей и librosa отдельно
-      const pip = spawn(pythonExe(), ['-m', 'pip', 'install', '--no-cache-dir', '--target', target, '--no-deps', 'resemblyzer'], { env })
+      const pip = spawn(pythonExe(), ['-m', 'pip', 'install', '--no-cache-dir', '--target', target, '--no-deps', 'resemblyzer'], { env, windowsHide: true })
       pip.stdout.on('data', (d: Buffer) => onProgress(d.toString().trim().slice(0, 140)))
       pip.stderr.on('data', (d: Buffer) => onProgress(d.toString().trim().slice(0, 140)))
       pip.on('error', (e) => resolve({ ok: false, message: `Нужен Python. ${e.message}` }))
       pip.on('close', (code) => {
         if (code !== 0) return resolve({ ok: false, message: 'Не удалось установить resemblyzer.' })
-        const pip2 = spawn(pythonExe(), ['-m', 'pip', 'install', '--no-cache-dir', '--target', target, 'librosa'], { env })
+        const pip2 = spawn(pythonExe(), ['-m', 'pip', 'install', '--no-cache-dir', '--target', target, 'librosa'], { env, windowsHide: true })
         pip2.stdout.on('data', (d: Buffer) => onProgress(d.toString().trim().slice(0, 140)))
         pip2.stderr.on('data', (d: Buffer) => onProgress(d.toString().trim().slice(0, 140)))
         pip2.on('close', (c2) => {

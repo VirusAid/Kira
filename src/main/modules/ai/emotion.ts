@@ -39,7 +39,7 @@ class EmotionManager {
     if (this.available !== null) return Promise.resolve(this.available)
     return new Promise((resolve) => {
       const env = { ...process.env, PYTHONPATH: pyenvDir() }
-      execFile(pythonExe(), ['-c', 'import librosa'], { env, timeout: 25_000 }, (err) => {
+      execFile(pythonExe(), ['-c', 'import librosa'], { env, timeout: 25_000, windowsHide: true }, (err) => {
         this.available = !err
         resolve(this.available)
       })
@@ -53,7 +53,7 @@ class EmotionManager {
       const script = join(resourcesRoot(), 'emotion.py')
       if (!existsSync(script)) return reject(new Error('emotion.py не найден'))
       const env = { ...process.env, PYTHONPATH: pyenvDir(), PYTHONIOENCODING: 'utf-8' }
-      const proc = spawn(pythonExe(), ['-u', script], { env })
+      const proc = spawn(pythonExe(), ['-u', script], { env, windowsHide: true })
       this.proc = proc
       const t = setTimeout(() => reject(new Error('Таймаут загрузки анализа голоса')), 60_000)
       proc.stdout.setEncoding('utf-8')
