@@ -257,8 +257,9 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
         try {
           const { ocrImageBase64 } = await import('../system')
           const r = await ocrImageBase64(req.imageBase64)
-          const note = r.ok && r.message.trim()
-            ? `\n\n[Офлайн-модель не видит изображения. Распознанный на нём текст]:\n${r.message.slice(0, 4000)}`
+          const text = String(r.data ?? '').trim() // OCR-текст лежит в data, не в message
+          const note = r.ok && text
+            ? `\n\n[Офлайн-модель не видит изображения. Распознанный на нём текст]:\n${text.slice(0, 4000)}`
             : '\n\n[Офлайн-модель не видит изображения, а текста на нём не распознано. Скажи пользователю: для описания картинок нужен облачный ИИ (Gemini) или локальная vision-модель.]'
           history[history.length - 1] = { role: 'user', content: last.content + note }
         } catch { /* оставляем как есть */ }
@@ -314,8 +315,9 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
               const { ocrScreen } = await import('../system')
               send(win, 'ai:action', { requestId: req.requestId, name: 'see_screen', ok: true, message: 'Читаю текст с экрана' })
               const r = await ocrScreen()
-              results.push(r.ok && r.message.trim()
-                ? `see_screen (офлайн, OCR — вижу ТЕКСТ на экране):\n${r.message.slice(0, 4000)}`
+              const text = String(r.data ?? '').trim() // OCR-текст в data, а не в message
+              results.push(r.ok && text
+                ? `see_screen (офлайн, OCR — вижу ТЕКСТ на экране):\n${text.slice(0, 4000)}`
                 : 'see_screen: на экране не распознан текст. Ты офлайн-модель и не видишь картинки — честно скажи это пользователю и предложи включить облачный ИИ (Gemini) или скачать локальную vision-модель для описания изображений.')
             }
             executedInRound = true
@@ -394,7 +396,8 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
             // офлайн: проверяем результат по тексту экрана (OCR)
             const { ocrScreen } = await import('../system')
             const r = await ocrScreen()
-            if (r.ok && r.message.trim()) results.push(`[после действий — текст на экране, OCR]:\n${r.message.slice(0, 3000)}`)
+            const text = String(r.data ?? '').trim() // OCR-текст в data
+            if (r.ok && text) results.push(`[после действий — текст на экране, OCR]:\n${text.slice(0, 3000)}`)
           }
         } catch { /* экран недоступен */ }
       }

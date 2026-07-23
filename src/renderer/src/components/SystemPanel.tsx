@@ -197,7 +197,13 @@ function RecordTab() {
     clearInterval(timerRef.current)
   }
 
-  useEffect(() => () => clearInterval(timerRef.current), [])
+  // при размонтировании (ушли с панели) — гасим таймер И саму запись, иначе
+  // захват экрана продолжает крутиться в фоне (утечка + приватность): stop()
+  // триггерит onstop, где останавливаются дорожки потока
+  useEffect(() => () => {
+    clearInterval(timerRef.current)
+    try { recorderRef.current?.stop() } catch { /* уже остановлена */ }
+  }, [])
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 18, alignItems: 'center', padding: '24px 0' }}>

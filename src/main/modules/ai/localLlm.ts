@@ -222,6 +222,7 @@ export async function downloadOllama(
     logger.info('local-llm', 'Переносная Ollama установлена в userData')
     return { ok: true, message: 'Движок Ollama установлен' }
   } catch (e) {
+    try { rmSync(zip, { force: true }) } catch { /* недокачанный архив */ }
     return { ok: false, message: `Ошибка установки движка: ${(e as Error).message}` }
   }
 }
@@ -246,7 +247,10 @@ export async function setupBrain(
   }
   // 2. модель (15..100%) — если уже есть, не качаем повторно
   const have = await installedModels()
-  if (have.some((m) => m === model || m.startsWith(model.split(':')[0] + ':'))) {
+  // ТОЧНОЕ совпадение тега: иначе наличие любой qwen3:* (напр. 4b) ошибочно
+  // считало бы скачанной рекомендованную qwen3:8b → делали её активной, а её нет
+  // → инференс падал 404. Ollama хранит теги как есть ('qwen3:8b'), плюс ':latest'.
+  if (have.includes(model) || have.includes(model.includes(':') ? model : `${model}:latest`)) {
     onProgress(100, 'Модель уже загружена')
     return { ok: true, message: `Офлайн-мозг готов: ${model}`, tag: model }
   }

@@ -154,9 +154,16 @@ class CommandEngine {
     bus.emit('action:executed', { action, args, result, source: ctx.source })
     logger.action('core', `${action.title}${result.ok ? '' : ' — ошибка: ' + result.message}`)
 
+    // Локальный ответ пользователю. Если у действия есть своё содержимое в
+    // result.data (строкой) — добавляем его к message, как это уже делает
+    // LLM-цикл (chat.ts). Иначе контент-действия (текст с экрана, история буфера,
+    // сниппеты, поиск по документам) показывали бы лишь статус («Распознала
+    // текст», «В истории буфера: 5») без самого содержимого. confirmText (свой
+    // готовый ответ действия) имеет приоритет и data к нему не клеим.
+    const dataStr = typeof result.data === 'string' && result.data.trim() ? `\n${result.data}` : ''
     return {
       handled: true, intent: 'local', actionId: action.id, result,
-      reply: result.ok ? (action.confirmText?.(args) ?? result.message) : result.message
+      reply: result.ok ? (action.confirmText?.(args) ?? result.message + dataStr) : result.message
     }
   }
 }

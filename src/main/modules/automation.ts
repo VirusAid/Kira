@@ -24,6 +24,9 @@ function fire(automation: Automation, reason: string): void {
 }
 
 function arm(automation: Automation): void {
+  // защита от двойной постановки: иначе старый cron-таск/наблюдатель остаётся
+  // жить (утечка), а в map попадает только новая ссылка
+  disarm(automation.id)
   if (!automation.enabled) return
 
   if (automation.trigger === 'schedule') {

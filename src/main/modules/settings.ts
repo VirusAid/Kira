@@ -90,11 +90,15 @@ export function getSettings(): KiraSettings {
   if (existsSync(file)) {
     try {
       const saved = JSON.parse(readFileSync(file, 'utf-8'))
-      cached = {
-        ...DEFAULT_SETTINGS,
-        ...saved,
-        providers: { ...DEFAULT_SETTINGS.providers, ...(saved.providers ?? {}) }
+      // ГЛУБОКОЕ слияние провайдеров: shallow-merge терял НОВЫЕ поля провайдера
+      // (напр. добавили ollama.baseUrl) для старых сохранённых настроек, где у
+      // провайдера сохранён только apiKey/model → поле становилось undefined.
+      const savedProviders = (saved.providers ?? {}) as Record<string, object>
+      const providers = {} as KiraSettings['providers']
+      for (const key of Object.keys(DEFAULT_SETTINGS.providers) as (keyof KiraSettings['providers'])[]) {
+        providers[key] = { ...DEFAULT_SETTINGS.providers[key], ...(savedProviders[key] ?? {}) }
       }
+      cached = { ...DEFAULT_SETTINGS, ...saved, providers }
       return cached!
     } catch {
       /* повреждённые настройки — используем дефолтные */

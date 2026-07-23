@@ -113,9 +113,12 @@ export function parseRecurrence(spec: string): Recurrence | null {
 /** Следующее срабатывание для повторяющегося напоминания (то же время суток). */
 function nextOccurrence(from: number, recurrence: Recurrence): number {
   const d = new Date(from)
+  const now = Date.now()
+  // проматываем в БУДУЩЕЕ: если ПК был выключен несколько дней, иначе fireAt так
+  // и остаётся в прошлом и напоминание срабатывает каждые 20с, догоняя «сегодня»
   do {
     d.setDate(d.getDate() + (recurrence === 'weekly' ? 7 : 1))
-  } while (recurrence === 'weekdays' && (d.getDay() === 0 || d.getDay() === 6))
+  } while (d.getTime() <= now || (recurrence === 'weekdays' && (d.getDay() === 0 || d.getDay() === 6)))
   return d.getTime()
 }
 

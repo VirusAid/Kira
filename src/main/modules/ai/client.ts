@@ -238,6 +238,8 @@ export function visionAvailable(): boolean {
 export function visionCandidateProviders(): AIProviderId[] {
   const s = getSettings()
   const order: AIProviderId[] = []
+  // офлайн-first: если локальная модель умеет видеть — она первая (приватно)
+  if (s.preferLocal && isVisionModel(s.providers.ollama.model || '')) order.push('ollama')
   if (s.providers.gemini.apiKey?.trim()) order.push('gemini')
   if (s.providers.claude.apiKey?.trim()) order.push('claude')
   if (s.providers.openrouter.apiKey?.trim()) order.push('openrouter')
