@@ -25,3 +25,4 @@ resources/*.zip
 
 # Артефакты тестов
 tests/.build/
+resources/vosk-model/

@@ -155,6 +155,15 @@ if (!gotLock) {
     if (getSettings().preferLocal) {
       void import('./modules/ai/localLlm').then((m) => m.ensureRunning()).catch(() => {})
     }
+    // офлайн-распознавание речи: если голос включён и нет ключа Groq (Whisper),
+    // распознавание пойдёт через Vosk — прогреваем сайдкар заранее, чтобы первая
+    // команда сработала мгновенно (иначе первый раз ждём старт Python + модели)
+    {
+      const s0 = getSettings()
+      if (s0.voiceEnabled && !s0.providers.groq.apiKey?.trim()) {
+        void import('./modules/ai/voskStt').then((m) => m.voskStt.warmup()).catch(() => {})
+      }
+    }
     initAutomations()
     initReminders()
     initClipboardHistory()

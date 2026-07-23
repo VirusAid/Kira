@@ -10,7 +10,7 @@
  *
  * Запуск: npm run prepare:standalone   (или npm run dist:standalone)
  */
-import { existsSync, mkdirSync, cpSync, createWriteStream } from 'fs'
+import { existsSync, mkdirSync, cpSync, createWriteStream, readdirSync, rmSync } from 'fs'
 import { join, dirname } from 'path'
 import { fileURLToPath } from 'url'
 import { pipeline } from 'stream/promises'
@@ -31,6 +31,9 @@ const res = join(root, 'resources')
 // встраиваемый Python обязан быть 3.14.x, иначе нативные модули не загрузятся.
 const PY_EMBED_URL = 'https://www.python.org/ftp/python/3.14.6/python-3.14.6-embed-amd64.zip'
 const MODEL_URL = 'https://huggingface.co/Derur/silero-models/resolve/main/tts/ru/ru_v4/v4_ru.pt'
+// Офлайн-распознавание речи (Vosk) — вшиваем модель в установщик, чтобы голосовой
+// ВВОД работал офлайн из коробки, без ключа Groq/Whisper. Модель маленькая (~45 МБ).
+const VOSK_MODEL_URL = 'https://alphacephei.com/vosk/models/vosk-model-small-ru-0.22.zip'
 
 async function download(url, dest) {
   console.log(`↓ ${url}`)
@@ -88,6 +91,23 @@ async function main() {
       console.warn('⚠ ._pth не найден в embeddable Python — проверь распаковку')
     }
   } else console.log('• Python уже на месте')
+
+  // 4. модель Vosk — офлайн-распознавание речи (голосовой ВВОД без Groq/Whisper)
+  const voskDir = join(res, 'vosk-model')
+  const voskReady = existsSync(voskDir) &&
+    readdirSync(voskDir).some((n) => n.toLowerCase().startsWith('vosk-model'))
+  if (!voskReady) {
+    mkdirSync(voskDir, { recursive: true })
+    const zip = join(res, 'vosk-model.zip')
+    console.log('• Скачиваю модель Vosk (офлайн-распознавание, ~45 МБ)…')
+    await download(VOSK_MODEL_URL, zip)
+    console.log('• Распаковываю Vosk…')
+    execSync(`powershell -NoProfile -Command "Expand-Archive -Force '${zip}' '${voskDir}'"`, { stdio: 'inherit' })
+    rmSync(zip, { force: true })
+    if (!readdirSync(voskDir).some((n) => n.toLowerCase().startsWith('vosk-model'))) {
+      throw new Error('модель Vosk не распаковалась — проверь архив')
+    }
+  } else console.log('• Модель Vosk уже на месте')
 
   console.log('\n✅ Готово. Теперь: npm run dist  (или уже запущено через dist:standalone)')
   console.log('   Установщик появится в папке release/ (офлайн-голос из коробки;')

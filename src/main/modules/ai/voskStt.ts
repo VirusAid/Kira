@@ -91,6 +91,21 @@ class VoskSttManager {
     return this.startPromise
   }
 
+  /** Есть ли готовая/поднимаемая офлайн-модель. */
+  available(): boolean {
+    return this.hasModel()
+  }
+
+  /**
+   * Прогреть сайдкар заранее (загрузка модели ~пара секунд), чтобы ПЕРВАЯ
+   * голосовая команда распозналась мгновенно, а не ждала старта Python+модели.
+   * Вызывается при запуске, если офлайн-распознавание — основной путь.
+   */
+  async warmup(): Promise<boolean> {
+    if (!this.hasModel()) return false
+    return this.ensureStarted()
+  }
+
   /** Распознать WAV (base64). Возвращает текст или ошибку. */
   async transcribe(wavBase64: string): Promise<SttResponse> {
     const started = await this.ensureStarted()

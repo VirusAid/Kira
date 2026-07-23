@@ -196,7 +196,9 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     if (!groqKey) {
       const off = await offlineFallback()
       if (off) return off
-      return { ok: false, text: '', error: 'Для голосового ввода нужен бесплатный API-ключ Groq (настройки → Модели). Он также включает распознавание речи Whisper.' }
+      // офлайн-распознавание недоступно (нет модели/сайдкара) и нет ключа —
+      // честно подсказываем оба пути, не навязывая облако
+      return { ok: false, text: '', error: 'Офлайн-распознавание речи недоступно (не нашлась модель Vosk). Переустанови Kira или поставь голосовой модуль в Настройках → Голос. Как вариант — бесплатный ключ Groq (Whisper) в Настройках → Модели.' }
     }
     try {
       const buffer = Buffer.from(audioBase64, 'base64')

@@ -92,12 +92,22 @@ export async function diagnose(topicText?: string): Promise<{ checks: DiagCheck[
       const ok = await wakeWord.isAvailable()
       checks.push({ name: 'Слово-активатор «Кира» (Vosk)', ok, detail: ok ? 'готов' : 'не установлен', fix: ok ? undefined : 'Настройки → Поведение → установить слово-активатор' })
     } catch { /* ignore */ }
-    checks.push({
-      name: 'Голосовой ввод (распознавание речи)',
-      ok: !!s.providers.groq.apiKey?.trim(),
-      detail: s.providers.groq.apiKey?.trim() ? 'Whisper через Groq' : 'нужен ключ Groq (бесплатный Whisper)',
-      fix: s.providers.groq.apiKey?.trim() ? undefined : 'Добавь ключ Groq (Настройки → Модели ИИ) — он даёт бесплатное распознавание речи'
-    })
+    {
+      const hasGroq = !!s.providers.groq.apiKey?.trim()
+      let hasOfflineStt = false
+      try {
+        const { voskStt } = await import('./ai/voskStt')
+        hasOfflineStt = voskStt.available()
+      } catch { /* ignore */ }
+      checks.push({
+        name: 'Голосовой ввод (распознавание речи)',
+        ok: hasOfflineStt || hasGroq,
+        detail: hasOfflineStt
+          ? (hasGroq ? 'офлайн (Vosk) + Whisper через Groq' : 'офлайн (Vosk), без интернета')
+          : hasGroq ? 'Whisper через Groq' : 'недоступно',
+        fix: hasOfflineStt || hasGroq ? undefined : 'Переустанови Kira (офлайн-модель Vosk) или добавь ключ Groq (Настройки → Модели ИИ)'
+      })
+    }
   }
 
   // ─── Семантика / память / документы ───

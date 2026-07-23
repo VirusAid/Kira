@@ -27,27 +27,36 @@ function voskDir(): string {
   return join(app.getPath('userData'), 'vosk')
 }
 
-/** Путь к распакованной модели (папка vosk-model-*). Распаковывает zip при необходимости. */
+/** Найти папку vosk-model-* внутри каталога (или null). */
+function findModelSub(dir: string): string | null {
+  if (!existsSync(dir)) return null
+  const sub = readdirSync(dir, { withFileTypes: true }).find(
+    (e) => e.isDirectory() && e.name.toLowerCase().startsWith('vosk-model')
+  )
+  return sub ? join(dir, sub.name) : null
+}
+
+/**
+ * Путь к распакованной модели Vosk (папка vosk-model-*).
+ * Приоритет: userData (пользователь мог поставить модель побольше) → вшитая в
+ * установщик (resources/vosk-model, офлайн-голос из коробки). Распаковывает zip
+ * из userData при необходимости.
+ */
 export function resolveModelDir(): string | null {
   const dir = voskDir()
-  if (existsSync(dir)) {
-    const sub = readdirSync(dir, { withFileTypes: true }).find(
-      (e) => e.isDirectory() && e.name.toLowerCase().startsWith('vosk-model')
-    )
-    if (sub) return join(dir, sub.name)
-    // есть zip — распакуем
-    const zip = join(dir, 'model.zip')
-    if (existsSync(zip)) {
-      try {
-        execFileSync('powershell', ['-NoProfile', '-Command', `Expand-Archive -Force '${zip}' '${dir}'`], { timeout: 60_000 })
-        const sub2 = readdirSync(dir, { withFileTypes: true }).find(
-          (e) => e.isDirectory() && e.name.toLowerCase().startsWith('vosk-model')
-        )
-        if (sub2) return join(dir, sub2.name)
-      } catch { /* ignore */ }
-    }
+  const inUser = findModelSub(dir)
+  if (inUser) return inUser
+  // есть скачанный zip в userData — распакуем
+  const zip = join(dir, 'model.zip')
+  if (existsSync(zip)) {
+    try {
+      execFileSync('powershell', ['-NoProfile', '-Command', `Expand-Archive -Force '${zip}' '${dir}'`], { timeout: 60_000 })
+      const sub = findModelSub(dir)
+      if (sub) return sub
+    } catch { /* ignore */ }
   }
-  return null
+  // вшитая в установщик модель (только чтение — Vosk её лишь читает)
+  return findModelSub(join(resourcesRoot(), 'vosk-model'))
 }
 
 class WakeWordManager {
