@@ -49,7 +49,7 @@ interface KiraBridge {
       installed: boolean; running: boolean; managed: boolean; models: string[]
       hardware: { ramGb: number; vramGb: number; gpu: string }; recommended: string
     }>
-    models: () => Promise<Array<{ tag: string; label: string; sizeGb: number; note: string; minVramGb: number }>>
+    models: () => Promise<Array<{ tag: string; label: string; sizeGb: number; note: string; minVramGb: number; vision?: boolean }>>
     downloadUrl: () => Promise<string>
     pull: (tag: string) => Promise<{ ok: boolean; message: string }>
     setup: (tag?: string) => Promise<{ ok: boolean; message: string; tag: string }>

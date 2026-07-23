@@ -216,6 +216,24 @@ export interface StreamHandle {
  * Стриминг ответа модели. onDelta вызывается для каждого фрагмента текста,
  * onDone — по завершении, onError — при ошибке.
  */
+/** Похож ли тег на vision-модель Ollama (умеет «видеть» картинки). */
+export function isVisionModel(tag: string): boolean {
+  return /vl\b|llava|vision|moondream|minicpm-v|bakllava|gemma3|llama3\.2-vision|qwen2\.5-vl|qwen3-vl/i.test(tag)
+}
+
+/**
+ * Есть ли у Kira реальная возможность «видеть» изображения прямо сейчас:
+ * облачный vision-провайдер с ключом ИЛИ локальная vision-модель в Ollama.
+ * Если нет — экран приходится читать через офлайн-OCR (только текст).
+ */
+export function visionAvailable(): boolean {
+  const s = getSettings()
+  if (s.providers.gemini.apiKey?.trim() || s.providers.claude.apiKey?.trim() || s.providers.openrouter.apiKey?.trim()) {
+    return true
+  }
+  return isVisionModel(s.providers.ollama.model || '')
+}
+
 /** Провайдеры с поддержкой зрения (изображений). Gemini надёжнее всего. */
 export function visionCandidateProviders(): AIProviderId[] {
   const s = getSettings()
@@ -359,7 +377,10 @@ export function streamChat(
   // при откате на них сплющиваем такие сообщения в чистый текст,
   // иначе groq отвечает 400 «content must be a string»
   const VISION_PROVIDERS = new Set<AIProviderId>(['gemini', 'openrouter'])
-  let outMessages = VISION_PROVIDERS.has(providerId)
+  // Ollama тоже умеет «видеть», если скачана vision-модель (qwen2.5-vl, llava…)
+  const keepImages = VISION_PROVIDERS.has(providerId) ||
+    (providerId === 'ollama' && isVisionModel(endpoint.model))
+  let outMessages = keepImages
     ? messages
     : messages.map((m) =>
         Array.isArray(m.content)

@@ -1081,13 +1081,23 @@ export async function ocrScreen(): Promise<ActionResult> {
   try {
     const base64 = await captureScreenBase64()
     if (!base64) return { ok: false, message: 'Не удалось снять экран' }
+    return ocrImageBase64(base64)
+  } catch (e) {
+    return { ok: false, message: `OCR экрана не удался: ${(e as Error).message}` }
+  }
+}
+
+/** OCR по картинке в base64 (jpeg/png) — распознаём текст офлайн (Windows OCR). */
+export async function ocrImageBase64(base64: string): Promise<ActionResult> {
+  try {
+    if (!base64) return { ok: false, message: 'Пустое изображение' }
     const file = join(os.tmpdir(), `kira-ocr-${Date.now()}.png`)
     await fsp.writeFile(file, Buffer.from(base64, 'base64'))
     const res = await ocrImage(file)
     fsp.unlink(file).catch(() => {})
     return res
   } catch (e) {
-    return { ok: false, message: `OCR экрана не удался: ${(e as Error).message}` }
+    return { ok: false, message: `OCR не удался: ${(e as Error).message}` }
   }
 }
 

@@ -7,7 +7,7 @@
  * событие ai:confirm и запрашивает подтверждение пользователя.
  */
 import { BrowserWindow } from 'electron'
-import { streamChat, candidateProviders, visionCandidateProviders, type AIMessage, resolveEndpoint } from './client'
+import { streamChat, candidateProviders, visionCandidateProviders, visionAvailable, type AIMessage, resolveEndpoint } from './client'
 import { buildSystemPrompt, parseActions, stripActions, executeAction, isDangerous, describeAction, type ParsedAction } from './kira'
 import { logger } from '../logger'
 import { getSettings } from '../settings'
@@ -235,16 +235,33 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
     ...req.messages.map((m) => ({ role: m.role as ChatRole, content: m.content }))
   ]
 
+  // может ли Kira реально «видеть» картинки (облачный vision-ключ или локальная
+  // vision-модель). Если нет — офлайн текстовая модель картинку не поймёт, поэтому
+  // экран читаем через OCR (текст), а не шлём изображение впустую.
+  const canSee = visionAvailable()
+
   // vision: прикрепляем скриншот к последнему сообщению пользователя
   if (req.imageBase64) {
     const last = history[history.length - 1]
     if (last && last.role === 'user' && typeof last.content === 'string') {
-      history[history.length - 1] = {
-        role: 'user',
-        content: [
-          { type: 'text', text: last.content },
-          { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${req.imageBase64}` } }
-        ]
+      if (canSee) {
+        history[history.length - 1] = {
+          role: 'user',
+          content: [
+            { type: 'text', text: last.content },
+            { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${req.imageBase64}` } }
+          ]
+        }
+      } else {
+        // офлайн: распознаём текст на приложенном изображении (OCR)
+        try {
+          const { ocrImageBase64 } = await import('../system')
+          const r = await ocrImageBase64(req.imageBase64)
+          const note = r.ok && r.message.trim()
+            ? `\n\n[Офлайн-модель не видит изображения. Распознанный на нём текст]:\n${r.message.slice(0, 4000)}`
+            : '\n\n[Офлайн-модель не видит изображения, а текста на нём не распознано. Скажи пользователю: для описания картинок нужен облачный ИИ (Gemini) или локальная vision-модель.]'
+          history[history.length - 1] = { role: 'user', content: last.content + note }
+        } catch { /* оставляем как есть */ }
       }
     }
   }
@@ -283,16 +300,27 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
       for (const action of actions) {
         if (state.aborted) break
 
-        // «зрение»: захватываем экран и приложим его к следующему запросу (для vision-модели)
+        // «зрение»: если есть настоящее зрение (облако/локальная vision-модель) —
+        // прикладываем скриншот. Иначе (офлайн текстовая модель) читаем ТЕКСТ
+        // экрана через OCR — так «что на экране» работает и офлайн.
         if (action.name === 'see_screen') {
           try {
-            const { captureScreenBase64 } = await import('../system')
-            screenToAttach = await captureScreenBase64()
-            send(win, 'ai:action', { requestId: req.requestId, name: 'see_screen', ok: true, message: 'Смотрю на экран' })
-            results.push('see_screen: экран захвачен, изображение приложено ниже — опиши/проанализируй то, что видишь')
+            if (canSee) {
+              const { captureScreenBase64 } = await import('../system')
+              screenToAttach = await captureScreenBase64()
+              send(win, 'ai:action', { requestId: req.requestId, name: 'see_screen', ok: true, message: 'Смотрю на экран' })
+              results.push('see_screen: экран захвачен, изображение приложено ниже — опиши/проанализируй то, что видишь')
+            } else {
+              const { ocrScreen } = await import('../system')
+              send(win, 'ai:action', { requestId: req.requestId, name: 'see_screen', ok: true, message: 'Читаю текст с экрана' })
+              const r = await ocrScreen()
+              results.push(r.ok && r.message.trim()
+                ? `see_screen (офлайн, OCR — вижу ТЕКСТ на экране):\n${r.message.slice(0, 4000)}`
+                : 'see_screen: на экране не распознан текст. Ты офлайн-модель и не видишь картинки — честно скажи это пользователю и предложи включить облачный ИИ (Gemini) или скачать локальную vision-модель для описания изображений.')
+            }
             executedInRound = true
           } catch (err) {
-            results.push(`see_screen: не удалось захватить экран — ${(err as Error).message}`)
+            results.push(`see_screen: не удалось прочитать экран — ${(err as Error).message}`)
           }
           continue
         }
@@ -358,9 +386,16 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
       // после действий управления — даём Kira «увидеть» результат
       if (controlActed && !screenToAttach) {
         try {
-          const { captureScreenBase64 } = await import('../system')
           await new Promise((r) => setTimeout(r, 500)) // ждём отрисовку интерфейса
-          screenToAttach = await captureScreenBase64()
+          if (canSee) {
+            const { captureScreenBase64 } = await import('../system')
+            screenToAttach = await captureScreenBase64()
+          } else {
+            // офлайн: проверяем результат по тексту экрана (OCR)
+            const { ocrScreen } = await import('../system')
+            const r = await ocrScreen()
+            if (r.ok && r.message.trim()) results.push(`[после действий — текст на экране, OCR]:\n${r.message.slice(0, 3000)}`)
+          }
         } catch { /* экран недоступен */ }
       }
 

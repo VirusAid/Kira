@@ -108,6 +108,19 @@ export async function diagnose(topicText?: string): Promise<{ checks: DiagCheck[
         fix: hasOfflineStt || hasGroq ? undefined : 'Переустанови Kira (офлайн-модель Vosk) или добавь ключ Groq (Настройки → Модели ИИ)'
       })
     }
+    // Зрение: видит ли Kira картинки, или читает экран только текстом (OCR)
+    try {
+      const { visionAvailable } = await import('./ai/client')
+      const canSee = visionAvailable()
+      checks.push({
+        name: 'Зрение (описание экрана/картинок)',
+        ok: true,
+        detail: canSee
+          ? 'полноценное зрение (облачная или локальная vision-модель)'
+          : 'офлайн: читаю ТЕКСТ экрана (OCR). Картинки не описываю — нужен облачный ИИ или локальная vision-модель',
+        fix: canSee ? undefined : 'Для описания изображений: ключ Gemini (Настройки → Модели) или скачай vision-модель в Ollama (напр. qwen2.5-vl)'
+      })
+    } catch { /* ignore */ }
   }
 
   // ─── Семантика / память / документы ───

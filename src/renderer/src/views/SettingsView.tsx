@@ -221,7 +221,7 @@ function OfflineBrainCard({ settings, update }: SectionProps) {
               return (
                 <div key={m.tag} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, background: 'var(--bg-2)', border: isRec ? '1px solid var(--accent)' : '1px solid var(--border)' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12.5, fontWeight: 600 }}>{m.label} {isRec && <span style={{ fontSize: 10, color: 'var(--accent-text)' }}>· рекомендую</span>}</div>
+                    <div style={{ fontSize: 12.5, fontWeight: 600 }}>{m.label} {isRec && <span style={{ fontSize: 10, color: 'var(--accent-text)' }}>· рекомендую</span>}{m.vision && <span style={{ fontSize: 10, color: '#22c55e' }}> · 👁 видит экран</span>}</div>
                     <div className="muted" style={{ fontSize: 10.5 }}>{m.tag} · ~{m.sizeGb} ГБ · {m.note}</div>
                     {isPulling && (
                       <div style={{ marginTop: 5 }}>

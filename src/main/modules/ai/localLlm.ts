@@ -75,6 +75,8 @@ export interface LocalModel {
   sizeGb: number
   note: string
   minVramGb: number
+  /** умеет «видеть» картинки/экран (vision-модель) */
+  vision?: boolean
 }
 
 /** Курируемый список — Qwen3 отлично знает русский, силён в коде и рассуждениях. */
@@ -82,7 +84,12 @@ export const RECOMMENDED_MODELS: LocalModel[] = [
   { tag: 'qwen3:14b', label: 'Максимум (Qwen3 14B)', sizeGb: 9.3, note: 'Самый умный. Нужно ≥10 ГБ VRAM или выгрузка в ОЗУ (медленнее).', minVramGb: 10 },
   { tag: 'qwen3:8b', label: 'Сбалансированный (Qwen3 8B)', sizeGb: 5.2, note: 'Лучший баланс качества и скорости. Рекомендуется для 6+ ГБ VRAM.', minVramGb: 6 },
   { tag: 'qwen3:4b', label: 'Быстрый (Qwen3 4B)', sizeGb: 2.5, note: 'Шустрый, контекст 256K. Хорош для 4 ГБ VRAM и слабых ПК.', minVramGb: 4 },
-  { tag: 'qwen3:1.7b', label: 'Лёгкий (Qwen3 1.7B)', sizeGb: 1.4, note: 'Для очень слабого железа / только CPU.', minVramGb: 0 }
+  { tag: 'qwen3:1.7b', label: 'Лёгкий (Qwen3 1.7B)', sizeGb: 1.4, note: 'Для очень слабого железа / только CPU.', minVramGb: 0 },
+  // Vision-модели: «видят» экран и картинки офлайн. Умеют и текст, и зрение —
+  // можно сделать основным «мозгом». Не выбираются автоподбором (recommendModel):
+  // это осознанный выбор ради офлайн-зрения.
+  { tag: 'qwen2.5-vl:7b', label: 'Зрение (Qwen2.5-VL 7B)', sizeGb: 6.0, note: '👁 Видит экран и картинки офлайн + хороший текст. Нужно 6+ ГБ VRAM.', minVramGb: 6, vision: true },
+  { tag: 'qwen2.5-vl:3b', label: 'Зрение лёгкое (Qwen2.5-VL 3B)', sizeGb: 3.2, note: '👁 Видит экран офлайн, для 4 ГБ VRAM и слабых ПК.', minVramGb: 4, vision: true }
 ]
 
 export interface HardwareInfo {
