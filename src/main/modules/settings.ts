@@ -10,7 +10,10 @@ import { PERSONALITY_PRESETS } from '../../shared/personalityPresets'
 const DEFAULT_PERSONALITY = PERSONALITY_PRESETS[0].apply.personality
 
 export const DEFAULT_SETTINGS: KiraSettings = {
-  userName: 'Вадим',
+  // пусто по умолчанию — имя узнаём у пользователя в онбординге. НЕ хардкодить
+  // конкретное имя: иначе КАЖДЫЙ пользователь получает «Привет, <чужое имя>».
+  // Пока имя не задано, интерфейс обращается нейтрально («друг»).
+  userName: '',
   addressStyle: 'name',
   customAddress: '',
   provider: 'groq',
@@ -19,7 +22,9 @@ export const DEFAULT_SETTINGS: KiraSettings = {
     // подбирается под железо (recommendModel); setupBrain перезапишет этот тег на
     // фактически скачанный. 8B — разумный дефолт-плейсхолдер до автоподбора.
     ollama: { model: 'qwen3:8b', baseUrl: 'http://localhost:11434' },
-    groq: { model: 'llama-3.3-70b-versatile', apiKey: '' },
+    // llama-3.3-70b-versatile снят с Groq (deprecated) → gpt-oss-120b (актуальная
+    // рекомендованная Groq модель, бесплатный tier). Whisper для STT остаётся.
+    groq: { model: 'openai/gpt-oss-120b', apiKey: '' },
     openrouter: { model: 'meta-llama/llama-3.3-70b-instruct:free', apiKey: '' },
     gemini: { model: 'gemini-3.5-flash', apiKey: '' },
     deepseek: { model: 'deepseek-chat', apiKey: '' },

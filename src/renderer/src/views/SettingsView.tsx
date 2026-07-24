@@ -27,19 +27,19 @@ const PROVIDERS: {
   {
     id: 'groq', name: 'Groq', free: 'Бесплатно · очень быстро', url: 'https://console.groq.com/keys',
     needsKey: true,
-    models: ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'openai/gpt-oss-120b', 'qwen/qwen3-32b', 'deepseek-r1-distill-llama-70b'],
+    models: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3-32b'],
     note: 'Рекомендуется. Бесплатный ключ за минуту. Также включает распознавание речи Whisper для голосового режима.'
   },
   {
     id: 'openrouter', name: 'OpenRouter', free: 'Есть бесплатные модели (:free)', url: 'https://openrouter.ai/keys',
     needsKey: true,
-    models: ['meta-llama/llama-3.3-70b-instruct:free', 'deepseek/deepseek-r1:free', 'google/gemini-2.0-flash-exp:free', 'qwen/qwen-2.5-72b-instruct:free'],
+    models: ['meta-llama/llama-3.3-70b-instruct:free', 'qwen/qwen3-coder:free', 'qwen/qwen-2.5-72b-instruct:free'],
     note: 'Десятки моделей. Модели с суффиксом :free — бесплатные.'
   },
   {
     id: 'gemini', name: 'Google Gemini', free: 'Бесплатный tier', url: 'https://aistudio.google.com/apikey',
     needsKey: true,
-    models: ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-2.0-flash', 'gemini-2.0-flash-lite'],
+    models: ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-3.1-flash', 'gemini-3.1-flash-lite'],
     note: 'Щедрый бесплатный лимит. Хорошо работает с изображениями (зрение Kira).'
   },
   {
@@ -51,7 +51,7 @@ const PROVIDERS: {
   {
     id: 'claude', name: 'Claude (Anthropic)', free: 'Платно · топ-качество', url: 'https://platform.claude.com/settings/keys',
     needsKey: true,
-    models: ['claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5'],
+    models: ['claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'],
     note: 'Модели Anthropic — лучшее качество рассуждений, кода и зрения. ПЛАТНЫЙ API: ключ и баланс на platform.claude.com. claude-opus-4-8 — самый умный, claude-haiku-4-5 — быстрый и дешёвый.'
   },
   {
@@ -59,13 +59,11 @@ const PROVIDERS: {
     needsKey: true,
     models: ['glm-5.2', 'glm-5', 'glm-5-turbo', 'glm-4.7-flash', 'glm-4.6'],
     note: 'GLM от Zhipu (Z.ai) — сильные и недорогие модели, отличны в коде и агентных задачах. glm-5.2 — флагман (контекст 1M), glm-5-turbo — быстрый, glm-4.7-flash — лёгкий (есть бесплатный доступ). Ключ на z.ai.'
-  },
-  {
-    id: 'ollama', name: 'Ollama', free: 'Локально · полностью бесплатно', url: 'https://ollama.com/download',
-    needsKey: false,
-    models: ['llama3.1', 'llama3.2', 'qwen2.5', 'gemma2', 'mistral', 'phi4'],
-    note: 'Работает офлайн на твоём ПК. Установи Ollama и выполни: ollama pull llama3.1'
   }
+  // Ollama (локальный офлайн-мозг) НАМЕРЕННО не в этом списке: у него отдельная
+  // карточка OfflineBrainCard с НАСТОЯЩЕЙ загрузкой модели (прогресс, под железо).
+  // Раньше здесь был ModelPicker, который лишь СОХРАНЯЛ имя модели без скачивания
+  // → пользователь жал «скачать», а модель не качалась (баг тестировщика).
 ]
 
 export function SettingsView() {
@@ -335,13 +333,6 @@ function ModelsSection({ settings, update }: SectionProps) {
                       <label className="muted" style={{ display: 'block', marginBottom: 5 }}>API-ключ</label>
                       <input type="password" style={{ width: '100%' }} placeholder="Вставь ключ сюда"
                         value={cfg.apiKey ?? ''} onChange={(e) => setProviderCfg(p.id, { apiKey: e.target.value })} />
-                    </div>
-                  )}
-                  {p.id === 'ollama' && (
-                    <div>
-                      <label className="muted" style={{ display: 'block', marginBottom: 5 }}>Адрес сервера</label>
-                      <input style={{ width: '100%' }} placeholder="http://localhost:11434"
-                        value={cfg.baseUrl ?? ''} onChange={(e) => setProviderCfg(p.id, { baseUrl: e.target.value })} />
                     </div>
                   )}
                   <div>

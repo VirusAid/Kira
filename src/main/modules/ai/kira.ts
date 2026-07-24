@@ -58,11 +58,17 @@ const ADDRESS_MAP: Record<string, string> = {
 
 export function buildSystemPrompt(options?: { withTools?: boolean; extraContext?: string }): string {
   const s = getSettings()
+  const name = s.userName.trim()
+  // если имя ещё не задано (пользователь не прошёл онбординг) — обращаемся
+  // нейтрально, а не по пустому имени («Обращайся по имени — .» ломало промпт)
+  const byName = name
+    ? `Обращайся к пользователю по имени — ${name}.`
+    : 'Имя пользователя пока неизвестно — обращайся дружелюбно и нейтрально, без выдуманного имени; при случае мягко спроси, как к нему обращаться.'
   const address =
-    s.addressStyle === 'name' ? `Обращайся к пользователю по имени — ${s.userName}.`
+    s.addressStyle === 'name' ? byName
     : s.addressStyle === 'custom' && s.customAddress.trim()
       ? `Обращайся к пользователю так: «${s.customAddress.trim()}».`
-    : ADDRESS_MAP[s.addressStyle] ?? `Обращайся к пользователю по имени — ${s.userName}.`
+    : ADDRESS_MAP[s.addressStyle] ?? byName
 
   // память: только закреплённое + недавнее, компактно (экономим токены)
   const memory = db().memory.all()
