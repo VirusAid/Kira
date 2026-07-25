@@ -66,6 +66,7 @@ export function ChatView() {
           {filteredChats.map((c) => (
             <div
               key={c.id}
+              className="chat-row"
               style={{
                 ...styles.chatItem,
                 background: c.id === activeChatId ? 'var(--accent-soft)' : 'transparent',
@@ -89,12 +90,14 @@ export function ChatView() {
               ) : (
                 <>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5,
-                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
-                    }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, display: 'flex', alignItems: 'center', gap: 5 }}>
                       {c.pinned && <Pin size={11} style={{ color: 'var(--accent-text)', flexShrink: 0 }} />}
-                      {c.title}
+                      {/* многоточие работает только на текстовом блоке: на самом
+                          flex-контейнере textOverflow игнорируется, и заголовок
+                          обрезался «на полуслове» без многоточия */}
+                      <span style={{ minWidth: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {c.title}
+                      </span>
                     </div>
                     <div className="muted" style={{ fontSize: 11 }}>{timeAgo(c.updatedAt)}</div>
                   </div>
@@ -140,7 +143,7 @@ export function ChatView() {
 
           {/* Выполненные действия */}
           {streaming && actionEvents.map((a, i) => (
-            <div key={`act-${i}`} style={styles.actionChip} className="anim-in">
+            <div key={`act-${i}`} style={styles.actionChip} className="anim-in action-chip">
               <span style={{ color: a.ok ? 'var(--ok)' : 'var(--err)' }}>{a.ok ? '✓' : '✗'}</span>
               {a.message}
             </div>
@@ -150,7 +153,7 @@ export function ChatView() {
           {streaming && (
             <div style={{ ...styles.bubbleRow, justifyContent: 'flex-start', alignItems: 'flex-end', gap: 8 }}>
               <KiraEmblem size={30} state="thinking" />
-              <div style={{ ...styles.bubble, ...styles.assistantBubble }}>
+              <div className="msg-ai" style={{ ...styles.bubble, ...styles.assistantBubble }}>
                 {streamText
                   ? <div><Markdown content={streamText} /><span className="stream-caret" /></div>
                   : <div style={{ display: 'flex', gap: 5, padding: '4px 2px' }}>
@@ -176,7 +179,7 @@ export function ChatView() {
               </button>
             </div>
           )}
-          <div style={styles.composer}>
+          <div className="composer" style={styles.composer}>
             <button
               className="icon-btn"
               title="Показать Kira экран (vision)"
@@ -245,7 +248,7 @@ function MessageBubble({ msg }: { msg: ChatMessage }) {
   return (
     <div style={{ ...styles.bubbleRow, justifyContent: isUser ? 'flex-end' : 'flex-start' }}
       className={isUser ? 'msg-in-right' : 'msg-in-left'}>
-      <div style={{
+      <div className={isUser ? 'msg-user' : 'msg-ai'} style={{
         ...styles.bubble,
         ...(isUser ? styles.userBubble : styles.assistantBubble),
         ...(msg.error ? { borderColor: 'rgba(248,113,113,0.4)' } : {})
@@ -318,7 +321,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '9px 11px', borderRadius: 10, cursor: 'pointer',
     border: '1px solid transparent', marginBottom: 2, transition: 'background 0.13s'
   },
-  chatItemActions: { display: 'flex', gap: 1, opacity: 0.75 },
+  chatItemActions: { display: 'flex', gap: 1 },
   bubbleRow: { display: 'flex', marginBottom: 14 },
   bubble: {
     maxWidth: 'min(680px, 82%)', padding: '12px 16px', borderRadius: 16,

@@ -476,6 +476,56 @@ html[data-anim='off'] .meter-fill::after { animation: none; }
 html[data-anim='reduced'] .lit-border::before { animation-duration: 9s; }
 html[data-anim='off'] .lit-border::before { animation: none; opacity: 0.3; }
 
+/* ── Диалог ────────────────────────────────────────────────────────────── */
+
+/* Сообщения — те же материалы, что у карточек: стекло, световая кромка,
+   мягкая глубина. Реплики пользователя «ближе» (теплее и контрастнее),
+   реплики Kira — спокойнее, как фон сцены. */
+.msg-ai {
+  box-shadow: var(--elev-1), var(--glass-hi);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.045), rgba(255, 255, 255, 0) 45%),
+    var(--panel) !important;
+}
+.msg-user {
+  box-shadow: var(--elev-2), inset 0 1px 0 rgba(255, 255, 255, 0.14);
+}
+
+/* Поле ввода оживает при фокусе: подсвечивается кромка и появляется ореол —
+   видно, что Kira «слушает» набор. */
+.composer {
+  transition: border-color 0.25s ease, box-shadow 0.3s var(--ease-soft);
+  box-shadow: var(--elev-1);
+}
+.composer:focus-within {
+  border-color: var(--border-strong) !important;
+  box-shadow: var(--elev-2), 0 0 0 3px var(--accent-soft), 0 0 26px -6px var(--accent-glow);
+}
+
+/* Кнопки диалога в списке появляются при наведении: постоянно висящие иконки
+   отбирали место у названия и создавали визуальный шум */
+.chat-actions {
+  opacity: 0;
+  transform: translateX(4px);
+  transition: opacity 0.2s ease, transform 0.25s var(--ease-soft);
+  flex-shrink: 0;
+}
+.chat-row:hover .chat-actions,
+.chat-actions:focus-within {
+  opacity: 1;
+  transform: translateX(0);
+}
+
+/* Плашка выполненного действия — компактный HUD-элемент */
+.action-chip {
+  transition: transform 0.3s var(--ease-spring), border-color 0.2s;
+  box-shadow: var(--elev-1);
+}
+.action-chip:hover {
+  transform: translateY(-1px);
+  border-color: var(--border-strong);
+}
+
 /* ── Герой главного экрана ─────────────────────────────────────────────── */
 
 /* Медленная световая развёртка за приветствием: конический градиент
