@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import {
   Folder, FileText, FileCode, FileImage, FileArchive, FileVideo, FileAudio, File as FileIcon,
-  ArrowUp, RefreshCw, Search, Trash2, PenLine, FolderPlus, ExternalLink, Save, X, HardDrive, Globe
+  ArrowUp, RefreshCw, Search, Trash2, PenLine, FolderPlus, ExternalLink, Save, X, HardDrive, Globe, Eye, EyeOff
 } from 'lucide-react'
 import { kira } from '@/api'
 import { overlayStyle } from './MemoryView'
@@ -37,6 +37,10 @@ export function FilesView() {
   const [viewer, setViewer] = useState<{ path: string; name: string; content: string; editable: boolean } | null>(null)
   const [renaming, setRenaming] = useState<FileItem | null>(null)
   const [renameValue, setRenameValue] = useState('')
+  // служебные папки (.cache, .ssh, .ollama…) прячем, как это делает Проводник:
+  // иначе список начинается с полутора десятков технических имён, и до своих
+  // файлов надо прокручивать. Показать их можно переключателем.
+  const [showHidden, setShowHidden] = useState(false)
 
   const navigate = useCallback(async (path: string) => {
     try {
@@ -56,6 +60,9 @@ export function FilesView() {
       if (dirs[0]) void navigate(dirs[0].path)
     })
   }, [navigate])
+
+  const hiddenCount = items.filter((i) => i.name.startsWith('.')).length
+  const visibleItems = showHidden ? items : items.filter((i) => !i.name.startsWith('.'))
 
   const goUp = (): void => {
     const parent = cwd.replace(/[\\/][^\\/]+[\\/]?$/, '')
@@ -145,6 +152,13 @@ export function FilesView() {
             onClick={() => void runSearch(true)}>
             <Globe size={13} /> Везде
           </button>
+          {hiddenCount > 0 && (
+            <button className="icon-btn" title={showHidden ? 'Скрыть служебные папки' : `Показать служебные папки (${hiddenCount})`}
+              onClick={() => setShowHidden((v) => !v)}
+              style={{ color: showHidden ? 'var(--accent-text)' : undefined }}>
+              {showHidden ? <Eye size={15} /> : <EyeOff size={15} />}
+            </button>
+          )}
           <button className="icon-btn" title="Новая папка" onClick={() => {
             const name = prompt('Имя новой папки:')
             if (name) void kira.files.mkdir(`${cwd}\\${name}`).then(() => navigate(cwd))
@@ -157,7 +171,7 @@ export function FilesView() {
         {searching && <div style={{ padding: '10px 16px' }} className="muted">Ищу…</div>}
 
         <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }}>
-          {items.map((item) => (
+          {visibleItems.map((item) => (
             <div key={item.path}
               style={{
                 display: 'flex', alignItems: 'center', gap: 11, padding: '7px 12px',
@@ -193,7 +207,7 @@ export function FilesView() {
               </span>
             </div>
           ))}
-          {items.length === 0 && !error && (
+          {visibleItems.length === 0 && !error && (
             <div className="muted" style={{ textAlign: 'center', padding: 30 }}>Папка пуста</div>
           )}
         </div>
