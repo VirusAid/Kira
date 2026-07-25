@@ -28,37 +28,37 @@ const PROVIDERS: {
     id: 'groq', name: 'Groq', free: 'Бесплатно · очень быстро', url: 'https://console.groq.com/keys',
     needsKey: true,
     models: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3-32b'],
-    note: 'Рекомендуется. Бесплатный ключ за минуту. Также включает распознавание речи Whisper для голосового режима.'
+    note: 'Рекомендуется. Бесплатный ключ за минуту. Также включает распознавание речи распознавание речи для голосового режима.'
   },
   {
     id: 'openrouter', name: 'OpenRouter', free: 'Есть бесплатные модели (:free)', url: 'https://openrouter.ai/keys',
     needsKey: true,
     models: ['meta-llama/llama-3.3-70b-instruct:free', 'qwen/qwen3-coder:free', 'qwen/qwen-2.5-72b-instruct:free'],
-    note: 'Десятки моделей. Модели с суффиксом :free — бесплатные.'
+    note: 'Много разных вариантов на выбор, среди них есть бесплатные.'
   },
   {
     id: 'gemini', name: 'Google Gemini', free: 'Бесплатный tier', url: 'https://aistudio.google.com/apikey',
     needsKey: true,
     models: ['gemini-3.5-flash', 'gemini-flash-latest', 'gemini-3.1-flash', 'gemini-3.1-flash-lite'],
-    note: 'Щедрый бесплатный лимит. Хорошо работает с изображениями (зрение Kira).'
+    note: 'Щедрый бесплатный доступ. Лучше всех понимает картинки и экран.'
   },
   {
     id: 'deepseek', name: 'DeepSeek', free: 'Платно · нужен баланс', url: 'https://platform.deepseek.com/api_keys',
     needsKey: true,
     models: ['deepseek-chat', 'deepseek-reasoner'],
-    note: 'Официальный DeepSeek — ПЛАТНЫЙ API (пополни баланс на platform.deepseek.com, ошибка 402 = нулевой баланс). deepseek-chat (V3) и deepseek-reasoner (R1). Бесплатно те же модели: OpenRouter → deepseek/deepseek-r1:free, либо Groq → deepseek-r1-distill-llama-70b.'
+    note: 'Умный и недорогой, но платный — нужно пополнить баланс на сайте. Те же возможности бесплатно есть у OpenRouter и Groq.'
   },
   {
     id: 'claude', name: 'Claude (Anthropic)', free: 'Платно · топ-качество', url: 'https://platform.claude.com/settings/keys',
     needsKey: true,
     models: ['claude-opus-4-8', 'claude-sonnet-5', 'claude-haiku-4-5-20251001'],
-    note: 'Модели Anthropic — лучшее качество рассуждений, кода и зрения. ПЛАТНЫЙ API: ключ и баланс на platform.claude.com. claude-opus-4-8 — самый умный, claude-haiku-4-5 — быстрый и дешёвый.'
+    note: 'Лучше всех рассуждает, пишет код и понимает картинки. Платный — нужен баланс на сайте.'
   },
   {
     id: 'glm', name: 'GLM (Z.ai)', free: 'Недорого · сильные модели', url: 'https://z.ai/manage-apikey/apikey-list',
     needsKey: true,
     models: ['glm-5.2', 'glm-5', 'glm-5-turbo', 'glm-4.7-flash', 'glm-4.6'],
-    note: 'GLM от Zhipu (Z.ai) — сильные и недорогие модели, отличны в коде и агентных задачах. glm-5.2 — флагман (контекст 1M), glm-5-turbo — быстрый, glm-4.7-flash — лёгкий (есть бесплатный доступ). Ключ на z.ai.'
+    note: 'Сильный и недорогой, особенно хорош в коде. Есть и бесплатный вариант.'
   }
   // Ollama (локальный офлайн-мозг) НАМЕРЕННО не в этом списке: у него отдельная
   // карточка OfflineBrainCard с НАСТОЯЩЕЙ загрузкой модели (прогресс, под железо).
@@ -183,12 +183,12 @@ function OfflineBrainCard({ settings, update }: SectionProps) {
     <div className="card" style={{ borderColor: settings.preferLocal ? 'var(--border-strong)' : 'var(--border)', background: 'linear-gradient(180deg, rgba(139,92,246,0.06), transparent)' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
         <WifiOff size={18} style={{ color: 'var(--accent-text)' }} />
-        <b style={{ fontSize: 14 }}>Офлайн-мозг (локальная модель)</b>
+        <b style={{ fontSize: 14 }}>Разум на твоём компьютере</b>
         {ready && <span style={{ fontSize: 11, color: '#22c55e', display: 'flex', alignItems: 'center', gap: 3 }}><Check size={12} /> готов</span>}
       </div>
       <p className="muted" style={{ fontSize: 12, lineHeight: 1.5, marginBottom: 10 }}>
-        Kira думает и разговаривает полностью офлайн, без ключей и без интернета — приватно. Через Ollama.
-        {status?.managed && <span style={{ color: '#22c55e' }}> Движок уже установлен — всё под рукой.</span>}
+        Kira думает прямо на твоём компьютере — без интернета и без ключей. Ничего никуда не уходит.
+        {status?.managed && <span style={{ color: '#22c55e' }}> Всё готово к работе.</span>}
       </p>
 
       {hw && (
@@ -211,11 +211,11 @@ function OfflineBrainCard({ settings, update }: SectionProps) {
 
       {!installed ? (
         <div style={{ background: 'var(--bg-3)', borderRadius: 10, padding: '12px 14px', fontSize: 12.5, lineHeight: 1.5 }}>
-          Настрою офлайн-мозг за один клик — скачаю движок и модель под твоё железо
+          Настрою за один клик — подберу и загружу подходящий разум под твой компьютер
           {status?.recommended && <b> ({status.recommended})</b>}. Один раз, дальше работает без интернета.
           <div style={{ marginTop: 10 }}>
             <button className="btn btn-primary press" disabled={busy} onClick={() => void setup()}>
-              {busy ? <Loader2 size={14} className="spin" /> : <Download size={14} />} Настроить офлайн-мозг
+              {busy ? <Loader2 size={14} className="spin" /> : <Download size={14} />} Настроить
             </button>
             <button className="btn btn-ghost press" style={{ marginLeft: 8 }} disabled={busy} onClick={() => void refresh()}>
               <RefreshCw size={14} /> Обновить статус
@@ -233,8 +233,8 @@ function OfflineBrainCard({ settings, update }: SectionProps) {
             </div>
           )}
           <span className="muted" style={{ fontSize: 11, display: 'block', marginTop: 8 }}>
-            Загрузка большая: движок ~1.4 ГБ + модель ~5 ГБ. На небыстром интернете это надолго —
-            можно свернуть и пользоваться облаком, скачивание идёт в фоне.
+            Загрузка большая — несколько гигабайт. На небыстром интернете это надолго: можно свернуть
+            окно и пользоваться Kira как обычно, загрузка идёт сама.
           </span>
         </div>
       ) : (
@@ -280,7 +280,7 @@ function OfflineBrainCard({ settings, update }: SectionProps) {
           {ready && (
             <label style={{ display: 'flex', alignItems: 'center', gap: 10, marginTop: 12, cursor: 'pointer' }}>
               <input type="checkbox" checked={settings.preferLocal} onChange={(e) => update({ preferLocal: e.target.checked })} />
-              <span style={{ fontSize: 12.5 }}>Использовать офлайн-мозг как основной <span className="muted">(облако — как запас, если задан ключ)</span></span>
+              <span style={{ fontSize: 12.5 }}>Думать на моём компьютере <span className="muted">(облако подстрахует, если понадобится)</span></span>
             </label>
           )}
         </>
@@ -577,11 +577,11 @@ function VoiceSection({ settings, update }: SectionProps) {
   const installSilero = async (): Promise<void> => {
     const py = await kira.tts.pythonCheck()
     if (!py.ok) {
-      setInstallLog('Не найден Python. Установи Python 3 с python.org (галочка «Add to PATH») и повтори.')
+      setInstallLog('Не хватает системного компонента. Переустанови Kira — он идёт в комплекте.')
       return
     }
     setInstalling(true)
-    setInstallLog(`Найден ${py.version}. Устанавливаю…`)
+    setInstallLog('Включаю свой голос — это займёт пару минут…')
     const off = kira.on('silero:install-progress', (line) => setInstallLog(String(line)))
     try {
       const res = await kira.tts.sileroInstall()
@@ -626,7 +626,7 @@ function VoiceSection({ settings, update }: SectionProps) {
         audio.playbackRate = settings.voiceRate
         audio.onended = () => URL.revokeObjectURL(url)
         await audio.play()
-        setStatus(`Голос: ${r.engine === 'silero' ? 'Silero (локально)' : r.engine === 'edge' ? 'Edge (облако)' : 'системный'}`)
+        setStatus(`Голос: ${r.engine === 'silero' ? 'свой' : r.engine === 'edge' ? 'облачный' : 'встроенный'}`)
       } else {
         setStatus(r.error || 'Не удалось синтезировать. Проверь установку.')
       }
@@ -656,11 +656,11 @@ function VoiceSection({ settings, update }: SectionProps) {
         <Toggle label="Автоматически слушать" hint="После ответа Kira снова слушает тебя"
           checked={settings.voiceAutoListen} onChange={(v) => update({ voiceAutoListen: v })} />
 
-        <Field label="Движок синтеза речи">
+        <Field label="Каким голосом говорить">
           <div style={{ display: 'flex', gap: 8 }}>
-            {engineCard('silero', '🧠 Silero (локально)', 'Лучшее качество RU. Офлайн, на CPU.')}
-            {engineCard('edge', '✨ Edge (облако)', 'Нейросеть Microsoft. Нужен интернет.')}
-            {engineCard('system', '💻 Системный', 'Голоса Windows. Проще звучит.')}
+            {engineCard('silero', '🧠 Свой голос', 'Живой и тёплый. Работает без интернета.')}
+            {engineCard('edge', '✨ Облачный', 'Другой тембр. Нужен интернет.')}
+            {engineCard('system', '💻 Встроенный', 'Голос из Windows. Звучит проще.')}
           </div>
         </Field>
 
@@ -669,12 +669,12 @@ function VoiceSection({ settings, update }: SectionProps) {
             {sileroReady === false && (
               <div className="card" style={{ borderColor: 'rgba(251,191,36,0.35)', background: 'rgba(251,191,36,0.06)' }}>
                 <div style={{ fontSize: 12.5, color: 'var(--text-1)', lineHeight: 1.5, marginBottom: 10 }}>
-                  Локальный голос Silero требует PyTorch (ставится один раз). Нажми — Kira установит сама.
-                  Пока не установлен, используется облачный Edge-голос.
+                  Свой голос Kira нужно один раз включить — это займёт пару минут.
+                  Пока он выключен, Kira говорит облачным голосом.
                 </div>
                 <button className="btn btn-primary press" onClick={() => void installSilero()} disabled={installing}>
                   {installing ? <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Cpu size={14} />}
-                  {installing ? 'Устанавливаю…' : 'Установить локальный голос'}
+                  {installing ? 'Включаю…' : 'Включить свой голос'}
                 </button>
                 {installLog && (
                   <div style={{ fontFamily: 'Cascadia Code, monospace', fontSize: 11, marginTop: 10, color: 'var(--text-2)', wordBreak: 'break-word', maxHeight: 80, overflow: 'hidden' }}>
@@ -683,7 +683,7 @@ function VoiceSection({ settings, update }: SectionProps) {
                 )}
               </div>
             )}
-            <Field label="Голос Kira (Silero)">
+            <Field label="Голос Kira">
               <select style={{ width: '100%' }} value={settings.sileroSpeaker}
                 onChange={(e) => update({ sileroSpeaker: e.target.value })}>
                 <optgroup label="Женские">
@@ -979,17 +979,17 @@ function BehaviorSection({ settings, update }: SectionProps) {
             <div className="card" style={{ background: 'var(--bg-2)' }}>
               {wakeReady ? (
                 <div style={{ fontSize: 12.5, color: 'var(--ok)' }}>
-                  ✓ Офлайн-активатор установлен (Vosk). Kira слышит «{settings.wakeWord}» локально, мгновенно, без интернета.
+                  ✓ Kira слышит «{settings.wakeWord}» мгновенно и без интернета.
                 </div>
               ) : (
                 <>
                   <div style={{ fontSize: 12.5, color: 'var(--text-1)', marginBottom: 10, lineHeight: 1.5 }}>
-                    Мгновенный офлайн-детектор (Vosk, ~45 МБ) — реагирует локально без облака.
-                    Без него слово-активатор работает через Whisper (медленнее, нужен интернет).
+                    Kira будет отзываться на имя мгновенно и без интернета.
+                    Пока это выключено, отклик медленнее и нужна сеть.
                   </div>
                   <button className="btn btn-primary press" onClick={() => void installWake()} disabled={wakeInstalling}>
                     {wakeInstalling ? <Loader2 size={14} style={{ animation: 'spin 0.8s linear infinite' }} /> : <Mic size={14} />}
-                    {wakeInstalling ? 'Устанавливаю…' : 'Установить офлайн-активатор'}
+                    {wakeInstalling ? 'Включаю…' : 'Включить отклик на имя'}
                   </button>
                   {wakeLog && <div style={{ fontFamily: 'Cascadia Code, monospace', fontSize: 11, marginTop: 10, color: 'var(--text-2)', maxHeight: 60, overflow: 'hidden' }}>{wakeLog}</div>}
                 </>

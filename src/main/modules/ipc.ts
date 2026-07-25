@@ -164,7 +164,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
         const audio = await silero.synthesize(text, override?.speaker ?? s.sileroSpeaker)
         return { ok: true, audio, format: 'wav', engine: 'silero' }
       } catch (err) {
-        logger.warn('tts', `Silero недоступен, пробую Edge: ${(err as Error).message}`)
+        logger.warn('tts', `Свой голос недоступен, перехожу на облачный: ${(err as Error).message}`)
       }
     }
 
@@ -189,7 +189,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
       if (!voskStt.hasModel()) return null
       const r = await voskStt.transcribe(audioBase64)
       if (!r.ok) return null
-      logger.info('vosk-stt', 'Распознано офлайн (Vosk)')
+      logger.info('vosk-stt', 'Распознала речь на компьютере')
       return { ok: true, text: r.text }
     }
 
@@ -198,7 +198,7 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
       if (off) return off
       // офлайн-распознавание недоступно (нет модели/сайдкара) и нет ключа —
       // честно подсказываем оба пути, не навязывая облако
-      return { ok: false, text: '', error: 'Офлайн-распознавание речи недоступно (не нашлась модель Vosk). Переустанови Kira или поставь голосовой модуль в Настройках → Голос. Как вариант — бесплатный ключ Groq (Whisper) в Настройках → Модели.' }
+      return { ok: false, text: '', error: 'Распознавание речи выключено. Включи его в разделе «Способности» — это займёт пару минут.' }
     }
     try {
       const buffer = Buffer.from(audioBase64, 'base64')

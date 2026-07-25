@@ -16,7 +16,7 @@ const NAV: { id: ViewId; label: string; icon: typeof Home }[] = [
   { id: 'files', label: 'Файлы', icon: HardDrive },
   { id: 'automation', label: 'Автоматизация', icon: Clock },
   { id: 'integrations', label: 'Интеграции', icon: Plug },
-  { id: 'systems', label: 'Центр систем', icon: Activity },
+  { id: 'systems', label: 'Способности', icon: Activity },
   { id: 'settings', label: 'Настройки', icon: Settings },
   { id: 'logs', label: 'Логи', icon: ScrollText }
 ]

@@ -193,7 +193,7 @@ export async function ensureRunning(): Promise<boolean> {
   // ждём поднятия сервера до 10 сек
   for (let i = 0; i < 20; i++) {
     await new Promise((r) => setTimeout(r, 500))
-    if (await isRunning()) { logger.info('local-llm', `Ollama сервер запущен${managed ? ' (переносная)' : ''}`); return true }
+    if (await isRunning()) { logger.info('local-llm', 'Разум на компьютере запущен'); return true }
   }
   return false
 }
@@ -214,8 +214,8 @@ export async function downloadOllama(
   const zip = join(userDataDir(), 'ollama-win.zip')
   try {
     mkdirSync(dir, { recursive: true })
-    onProgress(0, 'Скачиваю движок Ollama…')
-    logger.info('local-llm', 'Скачиваю движок Ollama…')
+    onProgress(0, 'Загружаю основу для локального разума…')
+    logger.info('local-llm', 'Загружаю основу для локального разума…')
     const r = await fetch(OLLAMA_ZIP_URL)
     if (!r.ok || !r.body) return { ok: false, message: `Не удалось скачать движок (${r.status})` }
     const total = Number(r.headers.get('content-length') ?? 0)
@@ -245,7 +245,7 @@ export async function downloadOllama(
       `Expand-Archive -Force '${zip}' '${dir}'`], { stdio: 'ignore', windowsHide: true })
     try { rmSync(zip, { force: true }) } catch { /* временный файл */ }
     if (!hasPortable()) return { ok: false, message: 'ollama.exe не найден после распаковки' }
-    logger.info('local-llm', 'Переносная Ollama установлена в userData')
+    logger.info('local-llm', 'Основа локального разума установлена')
     return { ok: true, message: 'Движок Ollama установлен' }
   } catch (e) {
     try { rmSync(zip, { force: true }) } catch { /* недокачанный архив */ }
@@ -271,7 +271,7 @@ export async function setupBrain(
     if (!dl.ok) { logger.warn('local-llm', `Движок не установлен: ${dl.message}`); return { ok: false, message: dl.message, tag: model } }
   }
   if (!(await ensureRunning())) {
-    logger.warn('local-llm', 'Движок Ollama не запустился')
+    logger.warn('local-llm', 'Не удалось запустить локальный разум')
     return { ok: false, message: 'Не удалось запустить движок Ollama', tag: model }
   }
   // 2. модель — свой процент 0..100. Если уже есть, не качаем повторно

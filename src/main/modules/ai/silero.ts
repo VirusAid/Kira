@@ -77,7 +77,7 @@ class SileroManager {
       const target = this.pyenvDir()
       const tmp = join(target, '..', 'pytmp')
       const env = { ...process.env, TMP: tmp, TEMP: tmp, PIP_NO_INPUT: '1' }
-      onProgress('Запускаю установку PyTorch (CPU). Это ~200–300 МБ, наберись терпения…')
+      onProgress('Включаю свой голос. Это займёт пару минут…')
       const args = [
         '-m', 'pip', 'install', '--no-cache-dir', '--target', target,
         'numpy', 'torch',
@@ -91,11 +91,11 @@ class SileroManager {
       }
       proc.stdout.on('data', onData)
       proc.stderr.on('data', onData)
-      proc.on('error', (err) => resolve({ ok: false, message: `Не удалось запустить Python: ${err.message}. Установи Python 3 с python.org.` }))
+      proc.on('error', (err) => resolve({ ok: false, message: 'Не удалось включить голос. Попробуй переустановить Kira.' }))
       proc.on('close', (code) => {
         this.available = null // пересчитать при следующей проверке
-        if (code === 0) resolve({ ok: true, message: 'PyTorch установлен. Локальный голос Silero готов!' })
-        else resolve({ ok: false, message: `Установка завершилась с ошибкой (код ${code}). Проверь, установлен ли Python.` })
+        if (code === 0) resolve({ ok: true, message: 'Готово — теперь Kira говорит своим голосом!' })
+        else resolve({ ok: false, message: 'Не получилось включить голос. Попробуй ещё раз.' })
       })
     })
   }
@@ -107,18 +107,18 @@ class SileroManager {
     this.starting = new Promise<void>((resolve, reject) => {
       const script = join(this.resourcesRoot(), 'silero_tts.py')
       if (!existsSync(script)) {
-        reject(new Error('silero_tts.py не найден'))
+        reject(new Error('Голосовой модуль не найден'))
         return
       }
       const cacheDir = join(app.getPath('userData'), 'silero')
       const env = { ...process.env, PYTHONPATH: this.pyenvDir(), PYTHONIOENCODING: 'utf-8' }
 
-      logger.info('silero', 'Запускаю локальный синтез речи Silero…')
+      logger.info('silero', 'Готовлю голос Kira…')
       const proc = spawn(this.pythonExe(), ['-u', script, cacheDir], { env, windowsHide: true })
       this.proc = proc
 
       const startTimeout = setTimeout(() => {
-        reject(new Error('Silero: превышено время загрузки модели'))
+        reject(new Error('Голос слишком долго готовится'))
         this.kill()
       }, 120_000)
 
@@ -144,14 +144,14 @@ class SileroManager {
         this.ready = false
         this.proc = null
         this.starting = null
-        for (const [, p] of this.pending) p.reject(new Error('Silero: процесс завершился'))
+        for (const [, p] of this.pending) p.reject(new Error('Голос остановился'))
         this.pending.clear()
-        if (code !== 0 && code !== null) logger.warn('silero', `Silero завершился с кодом ${code}. ${this.lastError}`)
+        if (code !== 0 && code !== null) logger.warn('silero', `Голос остановился (код ${code}). ${this.lastError}`)
       })
 
       proc.on('error', (err) => {
         clearTimeout(startTimeout)
-        reject(new Error(`Не удалось запустить Python: ${err.message}`))
+        reject(new Error(`Не удалось запустить голос: ${err.message}`))
       })
     })
 
@@ -173,7 +173,7 @@ class SileroManager {
     if (msg.type === 'ready') {
       clearTimeout(startTimeout)
       this.ready = true
-      logger.info('silero', 'Silero готов — локальный голос активен')
+      logger.info('silero', 'Голос Kira готов')
       resolveStart()
     } else if (msg.type === 'error') {
       clearTimeout(startTimeout)
@@ -186,14 +186,14 @@ class SileroManager {
       if (!p) return
       this.pending.delete(msg.id)
       if (msg.ok && msg.audio) p.resolve(msg.audio)
-      else p.reject(new Error(msg.error ?? 'Silero: ошибка синтеза'))
+      else p.reject(new Error(msg.error ?? 'Не удалось произнести'))
     }
   }
 
   /** Синтез речи. Возвращает WAV в base64 (24 kHz mono). */
   async synthesize(text: string, speaker: string): Promise<string> {
     await this.start()
-    if (!this.proc || !this.ready) throw new Error(this.lastError || 'Silero недоступен')
+    if (!this.proc || !this.ready) throw new Error(this.lastError || 'Свой голос недоступен')
     const id = ++this.reqId
     return new Promise<string>((resolve, reject) => {
       this.pending.set(id, { resolve, reject })
@@ -201,7 +201,7 @@ class SileroManager {
       setTimeout(() => {
         if (this.pending.has(id)) {
           this.pending.delete(id)
-          reject(new Error('Silero: таймаут синтеза'))
+          reject(new Error('Голос не успел ответить'))
         }
       }, 30_000)
     })

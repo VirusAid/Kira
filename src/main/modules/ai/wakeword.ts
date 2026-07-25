@@ -90,7 +90,7 @@ class WakeWordManager {
     this.stopped = false
     if (this.ready || this.starting) return
     const modelDir = resolveModelDir()
-    if (!modelDir) { logger.warn('wake', 'Модель Vosk не найдена — офлайн-активатор недоступен'); return }
+    if (!modelDir) { logger.warn('wake', 'Отклик на имя недоступен — не хватает голосового модуля'); return }
     this.starting = true
     const script = join(resourcesRoot(), 'vosk_wake.py')
     const env = { ...process.env, PYTHONPATH: pyenvDir(), PYTHONIOENCODING: 'utf-8' }
@@ -116,11 +116,11 @@ class WakeWordManager {
       // максимум 5 попыток подряд), иначе офлайн-активация молча умирала
       if (wasReady && !this.stopped && this.restartAttempts < 5) {
         this.restartAttempts++
-        logger.warn('wake', `Vosk упал — перезапускаю (попытка ${this.restartAttempts})`)
+        logger.warn('wake', `Слух прервался — восстанавливаю (попытка ${this.restartAttempts})`)
         setTimeout(() => { if (!this.stopped) this.start() }, 5000)
       }
     })
-    proc.on('error', (e) => { this.starting = false; logger.warn('wake', `Vosk: ${e.message}`) })
+    proc.on('error', (e) => { this.starting = false; logger.warn('wake', `Слух: ${e.message}`) })
   }
 
   private handle(line: string): void {
@@ -131,10 +131,10 @@ class WakeWordManager {
       this.starting = false
       this.stopped = false
       this.restartAttempts = 0
-      logger.info('wake', 'Офлайн-активатор «Кира» активен (Vosk)')
+      logger.info('wake', 'Kira слышит своё имя')
     } else if (msg.type === 'error') {
       this.starting = false
-      logger.warn('wake', msg.error ?? 'ошибка Vosk')
+      logger.warn('wake', msg.error ?? 'ошибка распознавания')
     } else if (msg.type === 'partial' || msg.type === 'final') {
       const text = (msg.text ?? '').toLowerCase()
       const wake = (getSettings().wakeWord || 'кира').toLowerCase()
@@ -172,15 +172,15 @@ class WakeWordManager {
       const target = pyenvDir()
       const tmp = join(target, '..', 'pytmp')
       const env = { ...process.env, TMP: tmp, TEMP: tmp, PIP_NO_INPUT: '1' }
-      onProgress('Устанавливаю Vosk (офлайн-распознавание)…')
+      onProgress('Включаю распознавание речи…')
       const pip = spawn(pythonExe(), ['-m', 'pip', 'install', '--no-cache-dir', '--target', target, 'vosk'], { env, windowsHide: true })
       pip.stdout.on('data', (d: Buffer) => onProgress(d.toString().trim().slice(0, 160)))
       pip.stderr.on('data', (d: Buffer) => onProgress(d.toString().trim().slice(0, 160)))
-      pip.on('error', (e) => resolve({ ok: false, message: `Нужен Python. ${e.message}` }))
+      pip.on('error', (e) => resolve({ ok: false, message: 'Не удалось включить. Попробуй переустановить Kira.' }))
       pip.on('close', async (code) => {
-        if (code !== 0) return resolve({ ok: false, message: 'Не удалось установить Vosk (проверь Python).' })
+        if (code !== 0) return resolve({ ok: false, message: 'Не получилось включить распознавание речи.' })
         // скачиваем модель
-        onProgress('Скачиваю русскую модель Vosk (~45 МБ)…')
+        onProgress('Загружаю русскую речь (~45 МБ)…')
         const dir = voskDir()
         const { mkdirSync, createWriteStream } = await import('fs')
         mkdirSync(dir, { recursive: true })
@@ -190,12 +190,12 @@ class WakeWordManager {
           const { Readable } = await import('stream')
           const { pipeline } = await import('stream/promises')
           await pipeline(Readable.fromWeb(res.body as never), createWriteStream(join(dir, 'model.zip')))
-          onProgress('Распаковываю модель…')
+          onProgress('Почти готово…')
           resolveModelDir() // распакует zip
           this.available = null
-          resolve({ ok: true, message: 'Офлайн-активатор «Кира» установлен!' })
+          resolve({ ok: true, message: 'Готово — Kira теперь слышит своё имя!' })
         } catch (e) {
-          resolve({ ok: false, message: `Модель не скачалась: ${(e as Error).message}` })
+          resolve({ ok: false, message: `Не удалось загрузить: ${(e as Error).message}` })
         }
       })
     })
