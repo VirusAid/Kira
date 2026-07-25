@@ -72,7 +72,7 @@ export function AbilitiesView() {
               <div style={{ minWidth: 0, flex: 1 }}>
                 <div style={{ fontWeight: 700, fontSize: 14.5 }}>{a.name}</div>
                 <div className="muted" style={{ fontSize: 11.5 }}>
-                  {a.source === 'imported' ? 'установлен' : 'свой'} · вызовов: {a.runCount}
+                  {a.source === 'imported' ? 'установлен' : 'свой'} · вызовов: {a.runCount ?? 0}
                   {a.lastRunAt && ` · ${timeAgo(a.lastRunAt)}`}
                 </div>
               </div>

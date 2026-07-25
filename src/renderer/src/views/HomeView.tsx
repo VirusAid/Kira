@@ -183,7 +183,7 @@ export function HomeView() {
               <MessageSquare size={14} style={{ color: 'var(--accent-text)', flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                 <div style={{ fontWeight: 600, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.title}</div>
-                <div className="muted">{c.messageCount} {plural(c.messageCount, 'сообщение', 'сообщения', 'сообщений')} · {timeAgo(c.updatedAt)}</div>
+                <div className="muted">{(c.messageCount ?? 0)} {plural(c.messageCount ?? 0, 'сообщение', 'сообщения', 'сообщений')} · {timeAgo(c.updatedAt)}</div>
               </div>
             </button>
           ))}
@@ -198,7 +198,7 @@ export function HomeView() {
               <Zap size={14} style={{ color: 'var(--accent-text)', flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                 <div style={{ fontWeight: 600, fontSize: 13.5 }}>{p.name}</div>
-                <div className="muted">{p.steps.length} {plural(p.steps.length, 'шаг', 'шага', 'шагов')} · запусков: {p.runCount}</div>
+                <div className="muted">{p.steps.length} {plural(p.steps.length, 'шаг', 'шага', 'шагов')} · запусков: {p.runCount ?? 0}</div>
               </div>
               <button className="icon-btn" title="Запустить" onClick={() => void run(p.id)}>
                 <Play size={14} />

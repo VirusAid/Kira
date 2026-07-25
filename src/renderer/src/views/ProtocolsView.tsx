@@ -8,6 +8,7 @@ import { useProtocolStore } from '@/state/dataStores'
 import { kira } from '@/api'
 import { timeAgo } from './HomeView'
 import { overlayStyle } from './MemoryView'
+import { plural } from '@shared/plural'
 import type { Protocol, ProtocolStep, ProtocolStepType } from '@shared/types'
 
 const STEP_TYPES: { id: ProtocolStepType; label: string; targetHint: string; paramHint?: string }[] = [
@@ -41,7 +42,7 @@ export function ProtocolsView() {
             <Upload size={14} /> Импорт
           </button>
           <button className="btn btn-primary" onClick={() => setEditing('new')}>
-            <Plus size={15} /> Создать протокол
+            <Plus size={15} /> Создать сценарий
           </button>
         </div>
       </div>
@@ -71,7 +72,7 @@ export function ProtocolsView() {
                 <div style={{ minWidth: 0 }}>
                   <div style={{ fontWeight: 700, fontSize: 14.5 }}>{p.name}</div>
                   <div className="muted" style={{ fontSize: 11.5 }}>
-                    {p.steps.length} шагов · запусков: {p.runCount}
+                    {p.steps.length} {plural(p.steps.length, 'шаг', 'шага', 'шагов')} · запусков: {p.runCount ?? 0}
                     {p.lastRunAt && ` · ${timeAgo(p.lastRunAt)}`}
                   </div>
                 </div>
@@ -168,7 +169,7 @@ function ProtocolEditor({ protocol, onClose, onSave }: {
       <div className="panel anim-in" style={{ width: 640, maxHeight: '84vh', padding: 24, display: 'flex', flexDirection: 'column' }}
         onClick={(e) => e.stopPropagation()}>
         <div style={{ display: 'flex', alignItems: 'center', marginBottom: 16 }}>
-          <h3>{protocol ? 'Редактор протокола' : 'Новый протокол'}</h3>
+          <h3>{protocol ? 'Редактор сценария' : 'Новый сценарий'}</h3>
           <button className="icon-btn" style={{ marginLeft: 'auto' }} onClick={onClose}><X size={16} /></button>
         </div>
 
@@ -238,7 +239,7 @@ function ProtocolEditor({ protocol, onClose, onSave }: {
           <button className="btn btn-ghost" onClick={onClose}>Отмена</button>
           <button className="btn btn-primary" disabled={!name.trim() || steps.length === 0}
             onClick={() => onSave({ ...(protocol ?? {}), id: protocol?.id, name: name.trim(), description, steps })}>
-            Сохранить протокол
+            Сохранить сценарий
           </button>
         </div>
       </div>
