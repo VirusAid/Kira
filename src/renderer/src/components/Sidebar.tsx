@@ -40,11 +40,13 @@ export function Sidebar({ voiceState, voiceLevel, onToggleVoice }: Props) {
             <button
               key={id}
               onClick={() => setView(id)}
+              className={active ? 'nav-active' : undefined}
               style={{
                 ...styles.item,
                 background: active ? 'var(--accent-soft)' : 'transparent',
                 color: active ? 'var(--accent-text)' : 'var(--text-1)',
-                borderLeft: active ? '2px solid var(--accent)' : '2px solid transparent'
+                // подсветку кромки в активном состоянии рисует .nav-active (свечение)
+                borderLeft: '2px solid transparent'
               }}
             >
               <Icon size={17} strokeWidth={active ? 2.4 : 1.9} />

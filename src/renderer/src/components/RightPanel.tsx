@@ -36,8 +36,8 @@ export function RightPanel() {
   return (
     <aside style={styles.panel}>
       {/* Состояние Kira */}
-      <div style={styles.block}>
-        <div style={styles.blockTitle}><Activity size={13} /> Состояние</div>
+      <div className="hud-frame" style={styles.block}>
+        <div className="hud-label" style={styles.blockTitle}><Activity size={13} /> Состояние</div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
           <span style={{
             width: 9, height: 9, borderRadius: '50%',
@@ -60,8 +60,8 @@ export function RightPanel() {
       </div>
 
       {/* Медиа */}
-      <div style={styles.block}>
-        <div style={styles.blockTitle}>Музыка и медиа</div>
+      <div className="hud-frame" style={styles.block}>
+        <div className="hud-label" style={styles.blockTitle}>Музыка и медиа</div>
         <form style={{ display: 'flex', gap: 6, marginBottom: 10 }}
           onSubmit={(e) => {
             e.preventDefault()
@@ -90,8 +90,8 @@ export function RightPanel() {
       </div>
 
       {/* Быстрые действия */}
-      <div style={styles.block}>
-        <div style={styles.blockTitle}>Быстрые действия</div>
+      <div className="hud-frame" style={styles.block}>
+        <div className="hud-label" style={styles.blockTitle}>Быстрые действия</div>
         <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr)', gap: 7 }}>
           <QuickBtn icon={<MessageSquarePlus size={14} />} label="Новый чат"
             onClick={() => { void newChat(); setView('chat') }} />
@@ -110,8 +110,8 @@ export function RightPanel() {
 
       {/* Отмена последнего действия */}
       {undoList.length > 0 && (
-        <div style={styles.block}>
-          <div style={styles.blockTitle}>Можно отменить</div>
+        <div className="hud-frame" style={styles.block}>
+          <div className="hud-label" style={styles.blockTitle}>Можно отменить</div>
           <button className="btn btn-ghost press" style={{ width: '100%', justifyContent: 'flex-start', fontSize: 12 }}
             onClick={() => void kira.undo.last()}>
             <Undo2 size={14} /> Отменить: {undoList[0].label}
@@ -123,8 +123,8 @@ export function RightPanel() {
 
       {/* Действия текущей задачи */}
       {actionEvents.length > 0 && (
-        <div style={styles.block}>
-          <div style={styles.blockTitle}>Текущая задача</div>
+        <div className="hud-frame" style={styles.block}>
+          <div className="hud-label" style={styles.blockTitle}>Текущая задача</div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {actionEvents.slice(-5).map((a, i) => (
               <div key={i} style={{ fontSize: 12, display: 'flex', gap: 7, alignItems: 'baseline' }}>
@@ -137,8 +137,8 @@ export function RightPanel() {
       )}
 
       {/* История */}
-      <div style={styles.block}>
-        <div style={styles.blockTitle}>Недавние диалоги</div>
+      <div className="hud-frame" style={styles.block}>
+        <div className="hud-label" style={styles.blockTitle}>Недавние диалоги</div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
           {recentChats.length === 0 && <span className="muted">Пока пусто</span>}
           {recentChats.map((c) => (
@@ -152,7 +152,7 @@ export function RightPanel() {
 
       {/* Последние действия */}
       <div style={{ ...styles.block, flex: 1, minHeight: 0, overflow: 'hidden' }}>
-        <div style={styles.blockTitle}>Последние действия</div>
+        <div className="hud-label" style={styles.blockTitle}>Последние действия</div>
         <div style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 7 }}>
           {recentActions.map((l) => (
             <div key={l.id} style={{ fontSize: 11.5, color: 'var(--text-2)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -173,13 +173,13 @@ function Meter({ icon, label, percent }: { icon: React.ReactNode; label: string;
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11.5, color: 'var(--text-2)', marginBottom: 3 }}>
         <span style={{ display: 'flex', alignItems: 'center', gap: 5 }}>{icon} {label}</span>
-        <span>{percent}%</span>
+        <span style={{ fontVariantNumeric: 'tabular-nums' }}>{percent}%</span>
       </div>
-      <div style={{ height: 4, borderRadius: 4, background: 'var(--bg-2)' }}>
-        <div style={{
+      <div style={{ height: 5, borderRadius: 4, background: 'var(--bg-2)', overflow: 'hidden' }}>
+        <div className="meter-fill" style={{
           height: '100%', borderRadius: 4, width: `${percent}%`,
           background: percent > 85 ? 'var(--err)' : 'linear-gradient(90deg, var(--accent), #a78bfa)',
-          transition: 'width 0.6s ease'
+          transition: 'width 0.6s var(--ease-soft)'
         }} />
       </div>
     </div>

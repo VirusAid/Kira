@@ -269,6 +269,145 @@
   box-shadow: 0 0 18px rgba(139, 92, 246, 0.35);
 }
 
+/* ── HUD-слой: телеметрия, рамки, бегущий свет ─────────────────────────── */
+
+/* Полоска нагрузки как живой поток энергии: внутри заливки текут диагональные
+   импульсы, на острие — светящийся наконечник. Статичная полоска выглядит
+   «мёртвой», эта читается как реальный поток данных. */
+.meter-fill {
+  position: relative;
+  overflow: hidden;
+}
+.meter-fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    115deg,
+    rgba(255, 255, 255, 0.22) 0 5px,
+    transparent 5px 13px
+  );
+  background-size: 18px 100%;
+  animation: meterFlow 0.9s linear infinite;
+}
+.meter-fill::before {
+  content: '';
+  position: absolute;
+  top: -1px; bottom: -1px; right: -1px;
+  width: 5px;
+  background: rgba(255, 255, 255, 0.75);
+  filter: blur(2.5px);
+}
+@keyframes meterFlow {
+  from { background-position: 0 0; }
+  to { background-position: 18px 0; }
+}
+
+/* HUD-рамка: тонкие уголки по четырём углам панели. Восемь фоновых слоёв —
+   чётко, без лишних DOM-элементов. */
+.hud-frame {
+  position: relative;
+}
+.hud-frame::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0.4;
+  background:
+    linear-gradient(var(--accent), var(--accent)) top left / 11px 1px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) top left / 1px 11px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) top right / 11px 1px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) top right / 1px 11px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) bottom left / 11px 1px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) bottom left / 1px 11px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) bottom right / 11px 1px no-repeat,
+    linear-gradient(var(--accent), var(--accent)) bottom right / 1px 11px no-repeat;
+  transition: opacity 0.3s ease;
+}
+.hud-frame:hover::after { opacity: 0.75; }
+
+/* Заголовок HUD-блока: короткая светящаяся риска перед текстом */
+.hud-label {
+  position: relative;
+  padding-left: 11px;
+}
+.hud-label::before {
+  content: '';
+  position: absolute;
+  left: 0; top: 50%;
+  width: 4px; height: 4px;
+  margin-top: -2px;
+  border-radius: 1px;
+  background: var(--accent);
+  box-shadow: 0 0 7px var(--accent-glow);
+}
+
+/* Бегущий свет по контуру активного элемента — «под напряжением» */
+.lit-border {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+.lit-border::before {
+  content: '';
+  position: absolute;
+  inset: -140%;
+  z-index: -1;
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    var(--accent) 18deg,
+    rgba(196, 181, 253, 0.9) 30deg,
+    transparent 55deg,
+    transparent 360deg
+  );
+  animation: litSpin 3.6s linear infinite;
+  opacity: 0.55;
+}
+/* маска-«подложка» оставляет свет только на кромке (1px) */
+.lit-border::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--panel-solid);
+}
+@keyframes litSpin {
+  to { transform: rotate(360deg); }
+}
+
+/* Активный пункт меню: светящаяся кромка слева и редкий световой пробег.
+   Полноценный вращающийся контур здесь был бы визуальным шумом — пункт меню
+   маленький и постоянно в поле зрения. */
+.nav-active {
+  position: relative;
+  overflow: hidden;
+  box-shadow: inset 2px 0 0 var(--accent), -8px 0 20px -10px var(--accent-glow);
+}
+.nav-active::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(100deg, transparent, rgba(196, 181, 253, 0.16), transparent);
+  transform: translateX(-100%);
+  animation: navSweep 4.2s ease-in-out infinite;
+}
+@keyframes navSweep {
+  0% { transform: translateX(-100%); }
+  55%, 100% { transform: translateX(100%); }
+}
+html[data-anim='reduced'] .nav-active::after,
+html[data-anim='off'] .nav-active::after { animation: none; opacity: 0; }
+
+html[data-anim='reduced'] .meter-fill::after,
+html[data-anim='off'] .meter-fill::after { animation: none; }
+html[data-anim='reduced'] .lit-border::before { animation-duration: 9s; }
+html[data-anim='off'] .lit-border::before { animation: none; opacity: 0.3; }
+
 /* ── Герой главного экрана ─────────────────────────────────────────────── */
 
 /* Медленная световая развёртка за приветствием: конический градиент
