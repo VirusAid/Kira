@@ -189,7 +189,7 @@ export function HomeView() {
           ))}
         </section>
 
-        {/* Быстрые протоколы */}
+        {/* Быстрые сценарии */}
         <section className="card anim-in">
           <SectionHeader title="Сценарии" onMore={() => setView('protocols')} />
           {protocols.length === 0 && <Empty text="Сценарии — последовательности действий одним кликом" />}

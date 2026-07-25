@@ -100,7 +100,7 @@ export function GlobalSearch() {
           <input
             ref={inputRef}
             style={styles.input}
-            placeholder="Искать по чатам, проектам, памяти, протоколам, логам…"
+            placeholder="Искать по диалогам, проектам, памяти, сценариям, журналу…"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={onKey}

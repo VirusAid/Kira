@@ -32,14 +32,14 @@ export function AutomationView() {
         <h2 className="section-title">Расписание</h2>
         <span className="badge">{automations.filter((a) => a.enabled).length} активных</span>
         <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setEditing('new')}>
-          <Plus size={15} /> Новый сценарий
+          <Plus size={15} /> Новое правило
         </button>
       </div>
 
       {protocols.length === 0 && (
         <div className="card" style={{ marginBottom: 16, borderColor: 'rgba(251,191,36,0.3)' }}>
           <span style={{ fontSize: 13, color: 'var(--warn)' }}>
-            Сначала создай хотя бы один протокол — автоматизация запускает именно протоколы.
+            Сначала создай хотя бы один сценарий — правила расписания запускают именно их.
           </span>
         </div>
       )}
@@ -47,8 +47,8 @@ export function AutomationView() {
       {automations.length === 0 && (
         <div className="empty-state">
           <Clock size={40} strokeWidth={1.2} />
-          <p>Сценариев нет. Например: «Каждый день в 9 утра — протокол „Рабочее утро"»<br />
-            или «Новый файл в Downloads — протокол сортировки».</p>
+          <p>Правил пока нет. Например: «Каждый день в 9 утра — сценарий „Рабочее утро"»<br />
+            или «Появился файл в Загрузках — сценарий сортировки».</p>
         </div>
       )}
 
@@ -73,7 +73,7 @@ export function AutomationView() {
                   {meta.label}
                   {a.trigger !== 'app_start' && ` · ${a.triggerParam}`}
                   {' → '}
-                  <span style={{ color: 'var(--accent-text)' }}>{protocol?.name ?? '⚠ протокол удалён'}</span>
+                  <span style={{ color: 'var(--accent-text)' }}>{protocol?.name ?? '⚠ сценарий удалён'}</span>
                 </div>
                 <div className="muted" style={{ fontSize: 11 }}>
                   Срабатываний: {a.fireCount}{a.lastFiredAt && ` · последний раз ${timeAgo(a.lastFiredAt)}`}
@@ -126,9 +126,9 @@ function AutomationEditor({ automation, onClose, onSave }: {
   return (
     <div style={overlayStyle} onClick={onClose}>
       <div className="panel anim-in" style={{ width: 500, padding: 24 }} onClick={(e) => e.stopPropagation()}>
-        <h3 style={{ marginBottom: 16 }}>{automation ? 'Изменить сценарий' : 'Новый сценарий'}</h3>
+        <h3 style={{ marginBottom: 16 }}>{automation ? 'Изменить правило' : 'Новое правило'}</h3>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 13 }}>
-          <input placeholder="Название сценария" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+          <input placeholder="Название правила" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
 
           <div>
             <div className="muted" style={{ marginBottom: 7 }}>Триггер</div>
@@ -184,9 +184,9 @@ function AutomationEditor({ automation, onClose, onSave }: {
           )}
 
           <div>
-            <div className="muted" style={{ marginBottom: 7 }}>Запускать протокол</div>
+            <div className="muted" style={{ marginBottom: 7 }}>Какой сценарий запускать</div>
             <select style={{ width: '100%' }} value={protocolId} onChange={(e) => setProtocolId(e.target.value)}>
-              {protocols.length === 0 && <option value="">— нет протоколов —</option>}
+              {protocols.length === 0 && <option value="">— сценариев пока нет —</option>}
               {protocols.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
