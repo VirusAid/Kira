@@ -5,7 +5,7 @@ import { registerIpc } from './modules/ipc'
 import { initAutomations, shutdownAutomations } from './modules/automation'
 import { initReminders, shutdownReminders } from './modules/reminders'
 import { initClipboardHistory, shutdownClipboardHistory } from './modules/clipboardHistory'
-import { initScreenWatch, shutdownScreenWatch } from './modules/screenWatch'
+import { initVision, shutdownVision } from './modules/vision'
 import { registerHotkey } from './modules/window'
 import { createTray, destroyTray, isQuitting, setQuitting } from './modules/tray'
 import { createOverlay, destroyOverlay } from './modules/overlay'
@@ -171,7 +171,7 @@ if (!gotLock) {
     void import('./modules/routines').then((m) => m.initRoutines()).catch(() => {})
     registerHotkey()
     initPulse(() => mainWindow)
-    initScreenWatch(() => mainWindow)
+    initVision(() => mainWindow)
     initDiscordMonitor(() => mainWindow)
     initTelegram(() => mainWindow)
     void initTelegramUser(() => mainWindow)
@@ -199,7 +199,7 @@ app.on('before-quit', () => {
   shutdownAutomations()
   shutdownReminders()
   shutdownClipboardHistory()
-  shutdownScreenWatch()
+  shutdownVision()
   shutdownPulse()
   shutdownDiscordMonitor()
   shutdownTelegram()

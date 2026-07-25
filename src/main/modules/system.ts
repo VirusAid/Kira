@@ -303,6 +303,47 @@ async function captureSources(width: number, height: number): Promise<Electron.D
   ])
 }
 
+/**
+ * Дешёвый «отпечаток» экрана для постоянного наблюдения.
+ *
+ * Снимает крошечную картинку (160×90) и сворачивает её в короткую строку.
+ * Нужен, чтобы понимать «экран изменился или нет», НЕ запуская дорогое
+ * распознавание текста. На статичном экране это единственная работа, которую
+ * Kira делает — доли миллисекунды CPU вместо запуска PowerShell каждые 3 сек.
+ *
+ * Возвращает строку-отпечаток и грубую «непохожесть» на предыдущий (0..1).
+ */
+let lastFingerprintBytes: Buffer | null = null
+export async function screenFingerprint(): Promise<{ hash: string; diff: number }> {
+  const sources = await captureSources(160, 90)
+  const src = sources.find((s) => !s.thumbnail.isEmpty()) ?? sources[0]
+  if (!src) return { hash: '', diff: 0 }
+  const bytes = src.thumbnail.toBitmap() // RGBA, 160*90*4
+  // усредняем блоками — устойчиво к мелкому шуму (курсор, часы, каретка)
+  const buckets = 64
+  const step = Math.max(1, Math.floor(bytes.length / buckets / 4) * 4)
+  const digest = Buffer.alloc(buckets)
+  for (let b = 0; b < buckets; b++) {
+    let sum = 0
+    let n = 0
+    for (let i = b * step; i < (b + 1) * step && i < bytes.length; i += 4) {
+      sum += bytes[i] + bytes[i + 1] + bytes[i + 2]
+      n++
+    }
+    digest[b] = n ? Math.round(sum / n / 3) : 0
+  }
+  let diff = 0
+  if (lastFingerprintBytes && lastFingerprintBytes.length === digest.length) {
+    let delta = 0
+    for (let i = 0; i < digest.length; i++) delta += Math.abs(digest[i] - lastFingerprintBytes[i])
+    diff = Math.min(1, delta / (digest.length * 60)) // 60 ≈ заметная разница яркости
+  } else {
+    diff = 1
+  }
+  lastFingerprintBytes = digest
+  return { hash: digest.toString('hex'), diff }
+}
+
 export async function captureScreenBase64(): Promise<string> {
   const display = screen.getPrimaryDisplay()
   const scale = Math.min(1, 1440 / display.size.width)

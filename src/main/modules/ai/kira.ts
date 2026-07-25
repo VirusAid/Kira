@@ -56,6 +56,22 @@ const ADDRESS_MAP: Record<string, string> = {
   hero: 'Обращайся к пользователю «герой»/«босс», с восхищением и лёгким юмором.'
 }
 
+/**
+ * Что Kira видит на экране прямо сейчас. Модуль зрения держит контекст в памяти
+ * и обновляет его, когда картинка меняется — поэтому вставка бесплатна.
+ * Требуется синхронность (промпт собирается синхронно), поэтому читаем через
+ * require: модуль лёгкий и уже загружен при старте.
+ */
+function screenBlock(): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const v = require('../vision') as typeof import('../vision')
+    return v.screenContextForPrompt()
+  } catch {
+    return ''
+  }
+}
+
 export function buildSystemPrompt(options?: { withTools?: boolean; extraContext?: string }): string {
   const s = getSettings()
   const name = s.userName.trim()
@@ -177,6 +193,9 @@ export function buildSystemPrompt(options?: { withTools?: boolean; extraContext?
     memoryBlock,
     abilitiesPromptBlock(),
     options?.withTools !== false ? TOOL_GUIDE : '',
+    // что Kira видит на экране прямо сейчас (если зрение включено) — благодаря
+    // этому она отвечает про экран мгновенно, без отдельного «посмотри»
+    screenBlock(),
     options?.extraContext ?? ''
   ]
   return parts.filter(Boolean).join('\n\n')
