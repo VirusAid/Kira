@@ -42,10 +42,12 @@ export function HomeView() {
   return (
     <div className="view-container">
       {/* Приветствие */}
-      <div className="anim-in" style={styles.hero}>
-        <KiraEmblem size={66} state="idle" />
+      <div className="anim-in hero-panel" style={styles.hero}>
+        <div className="hero-emblem">
+          <KiraEmblem size={66} state="idle" />
+        </div>
         <div>
-          <h1 style={{ fontSize: 26, fontWeight: 750, letterSpacing: 0.3 }}>{greeting}</h1>
+          <h1 className="hero-title" style={{ fontSize: 27, fontWeight: 750, letterSpacing: 0.3 }}>{greeting}</h1>
           <p style={{ color: 'var(--text-1)', marginTop: 5, fontSize: 14 }}>
             Все системы в норме. Чем займёмся?
           </p>
@@ -69,11 +71,15 @@ export function HomeView() {
         <StatCard icon={<Brain size={18} />} value={memory.length} label="записей памяти"
           onClick={() => setView('memory')} />
         {stats && (
-          <div className="card" style={{ flex: 1.4, display: 'flex', flexDirection: 'column', gap: 4, justifyContent: 'center' }}>
-            <span className="muted">Система</span>
-            <span style={{ fontSize: 13.5 }}>
-              CPU {stats.cpuPercent}% · RAM {stats.memUsedGB}/{stats.memTotalGB} ГБ · {stats.uptimeHours} ч
-            </span>
+          // занимает две колонки сетки: раньше метрики сжимались в узкий столбик
+          // и ломались на четыре строки
+          <div className="card" style={{ gridColumn: 'span 2', display: 'flex', flexDirection: 'column', gap: 7, justifyContent: 'center' }}>
+            <span className="muted" style={{ letterSpacing: 0.6, fontSize: 11, textTransform: 'uppercase' }}>Система</span>
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, fontVariantNumeric: 'tabular-nums' }}>
+              <Metric label="CPU" value={`${stats.cpuPercent}%`} />
+              <Metric label="RAM" value={`${stats.memUsedGB}/${stats.memTotalGB} ГБ`} />
+              <Metric label="Аптайм" value={`${stats.uptimeHours} ч`} />
+            </div>
           </div>
         )}
       </div>
@@ -186,19 +192,30 @@ export function HomeView() {
   )
 }
 
+/** Одна метрика системы: подпись сверху, значение крупно — не «ломается». */
+function Metric({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <span style={{ fontSize: 10.5, color: 'var(--text-2)', letterSpacing: 0.4 }}>{label}</span>
+      <span style={{ fontSize: 14, fontWeight: 650 }}>{value}</span>
+    </div>
+  )
+}
+
 function StatCard({ icon, value, label, onClick }: {
   icon: React.ReactNode; value: number; label: string; onClick: () => void
 }) {
   return (
-    <button className="card clickable" style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 13, textAlign: 'left' }} onClick={onClick}>
-      <div style={{
+    <button className="card clickable" style={{ display: 'flex', alignItems: 'center', gap: 13, textAlign: 'left' }} onClick={onClick}>
+      <div className="stat-icon" style={{
         width: 40, height: 40, borderRadius: 11, flexShrink: 0,
         background: 'var(--accent-soft)', color: 'var(--accent-text)',
         display: 'flex', alignItems: 'center', justifyContent: 'center'
       }}>{icon}</div>
-      <div>
-        <div style={{ fontSize: 21, fontWeight: 750 }}>{value}</div>
-        <div className="muted">{label}</div>
+      <div style={{ minWidth: 0 }}>
+        {/* tabular-nums — цифры не «прыгают» при обновлении счётчиков */}
+        <div style={{ fontSize: 22, fontWeight: 750, lineHeight: 1.1, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
+        <div className="muted" style={{ lineHeight: 1.25, marginTop: 2 }}>{label}</div>
       </div>
     </button>
   )
@@ -240,7 +257,14 @@ const styles: Record<string, React.CSSProperties> = {
     backdropFilter: 'blur(16px)'
   },
   heroOrb: { width: 52, height: 52, flexShrink: 0 },
-  statsRow: { display: 'flex', gap: 14 },
+  // сетка вместо flex: карточки не сжимаются в нечитаемые столбики, а
+  // переносятся на следующую строку, сохраняя минимальную комфортную ширину
+  statsRow: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+    gap: 14,
+    alignItems: 'stretch'
+  },
   listItem: {
     display: 'flex', alignItems: 'center', gap: 11, width: '100%',
     padding: '9px 10px', borderRadius: 9, transition: 'background 0.13s',

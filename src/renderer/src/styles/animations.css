@@ -11,6 +11,16 @@
   z-index: -1;
   overflow: hidden;
   pointer-events: none;
+  /* Параллакс: слой света смещается ПРОТИВ курсора — глаз читает это как
+     глубину сцены. --mx/--my (0..1) обновляет App.tsx через rAF.
+     Смещаем контейнер, а не сами пятна: у них свои transform-анимации. */
+  transform: translate3d(
+    calc((var(--mx) - 0.5) * -26px),
+    calc((var(--my) - 0.5) * -20px),
+    0
+  );
+  transition: transform 0.7s var(--ease-soft);
+  will-change: transform;
 }
 .aurora span {
   position: absolute;
@@ -92,7 +102,21 @@
   to { opacity: 1; transform: translateX(0); }
 }
 
-.view-enter { animation: fadeUp 0.32s cubic-bezier(0.22, 1, 0.36, 1) both; }
+/* Вход экрана: не просто выезд, а «наведение резкости» — контент приходит
+   из лёгкой расфокусировки и глубины. Читается кинематографично. */
+@keyframes viewIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.994);
+    filter: blur(6px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+    filter: blur(0);
+  }
+}
+.view-enter { animation: viewIn 0.42s var(--ease-soft) both; }
 .pop-in { animation: fadeScale 0.24s cubic-bezier(0.22, 1, 0.36, 1) both; }
 
 /* Каскадная задержка для сеток карточек */
@@ -133,8 +157,23 @@
   border-color: var(--border-strong);
 }
 
-.press { transition: transform 0.1s ease; }
-.press:active { transform: scale(0.95); }
+/* Нажатие: быстрый «уход» под палец и пружинный возврат — тактильное ощущение */
+.press { transition: transform 0.32s var(--ease-spring); }
+.press:active { transform: scale(0.94); transition-duration: 0.08s; }
+
+/* Кнопки: подъём к курсору + усиление свечения. Ощущение отклика материала. */
+.btn { transition: transform 0.3s var(--ease-spring), box-shadow 0.28s var(--ease-soft), background 0.2s, border-color 0.2s, filter 0.2s; }
+.btn:hover:not(:disabled) { transform: translateY(-2px); }
+.btn:active:not(:disabled) { transform: translateY(0) scale(0.97); transition-duration: 0.08s; }
+
+.btn-primary:hover:not(:disabled) {
+  box-shadow: 0 8px 26px rgba(139, 92, 246, 0.5), 0 0 0 1px rgba(196, 181, 253, 0.25) inset;
+}
+
+/* Иконочные кнопки — мягкий подсвет и лёгкий подъём */
+.icon-btn { transition: transform 0.3s var(--ease-spring), background 0.18s, color 0.18s; }
+.icon-btn:hover { transform: translateY(-1px) scale(1.06); }
+.icon-btn:active { transform: scale(0.92); transition-duration: 0.08s; }
 
 /* Плавное появление акцентной линии под активным пунктом навигации */
 @keyframes navGlow {
@@ -219,17 +258,107 @@
   letter-spacing: 0.3px;
 }
 
-/* Карточки — тонкая градиентная рамка + мягкое внутреннее свечение */
+/* Иконка в плитке статистики: при наведении на карточку «оживает» —
+   подсвечивается и слегка увеличивается. Мелочь, но делает интерфейс отзывчивым. */
+.stat-icon {
+  transition: transform 0.35s var(--ease-spring), background 0.25s, box-shadow 0.3s;
+}
+.card.clickable:hover .stat-icon {
+  transform: scale(1.08) rotate(-3deg);
+  background: rgba(139, 92, 246, 0.26);
+  box-shadow: 0 0 18px rgba(139, 92, 246, 0.35);
+}
+
+/* ── Герой главного экрана ─────────────────────────────────────────────── */
+
+/* Медленная световая развёртка за приветствием: конический градиент
+   вращается позади контента. Один transform — дёшево для GPU, а ощущение
+   «панель под напряжением, внутри что-то живёт». */
+.hero-panel {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  box-shadow: var(--elev-2), var(--glass-hi);
+}
+.hero-panel::before {
+  content: '';
+  position: absolute;
+  inset: -70%;
+  z-index: -1;
+  pointer-events: none;
+  /* мягкие стопы + размытие: без них у конического градиента видна резкая
+     диагональная кромка — она читалась как «артефакт», а не как свет */
+  background: conic-gradient(
+    from 0deg,
+    transparent 0deg,
+    rgba(139, 92, 246, 0.05) 20deg,
+    rgba(139, 92, 246, 0.16) 45deg,
+    rgba(196, 181, 253, 0.09) 75deg,
+    rgba(139, 92, 246, 0.04) 105deg,
+    transparent 140deg,
+    transparent 360deg
+  );
+  filter: blur(34px);
+  animation: heroSweep 16s linear infinite;
+}
+@keyframes heroSweep {
+  to { transform: rotate(360deg); }
+}
+
+/* Заголовок приветствия — градиентный текст с мягким свечением */
+.hero-title {
+  background: linear-gradient(120deg, #fff 10%, var(--accent-text) 55%, #a78bfa 95%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  filter: drop-shadow(0 2px 14px rgba(139, 92, 246, 0.28));
+}
+
+/* Ореол под эмблемой в герое — «источник энергии» */
+.hero-emblem {
+  position: relative;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+}
+.hero-emblem::after {
+  content: '';
+  position: absolute;
+  inset: -22%;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-glow), transparent 68%);
+  filter: blur(14px);
+  opacity: 0.55;
+  z-index: -1;
+  animation: glowPulse 4.5s ease-in-out infinite;
+}
+
+html[data-anim='reduced'] .hero-panel::before,
+html[data-anim='off'] .hero-panel::before { animation: none; }
+html[data-anim='off'] .hero-emblem::after { animation: none; }
+
+/* Карточки — градиентная рамка, стекло и настоящая глубина.
+   Фон в два слоя: сверху лёгкий световой градиент (как будто на стекло падает
+   свет), под ним основа панели. Рамка — градиентная, через border-box. */
 .card {
   position: relative;
   background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0) 45%) padding-box,
     linear-gradient(var(--panel), var(--panel)) padding-box,
-    linear-gradient(135deg, rgba(139, 92, 246, 0.35), rgba(139, 92, 246, 0.04) 45%, transparent 70%) border-box;
+    linear-gradient(135deg, rgba(196, 181, 253, 0.4), rgba(139, 92, 246, 0.06) 45%, transparent 70%) border-box;
   border: 1px solid transparent !important;
-  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+  box-shadow: var(--elev-1), var(--glass-hi);
 }
 .card.clickable:hover {
-  box-shadow: var(--shadow), 0 10px 34px rgba(139, 92, 246, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  /* при наведении карточка «всплывает»: дальняя тень растёт, кромка светлеет */
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0) 45%) padding-box,
+    linear-gradient(var(--panel), var(--panel)) padding-box,
+    linear-gradient(135deg, rgba(196, 181, 253, 0.75), rgba(139, 92, 246, 0.14) 45%, transparent 72%) border-box;
+  box-shadow:
+    var(--elev-3),
+    var(--glass-hi-strong),
+    0 0 34px rgba(139, 92, 246, 0.18);
 }
 
 /* Панели — светящаяся акцентная линия сверху */
@@ -303,10 +432,33 @@ input:focus, textarea:focus, select:focus {
   -webkit-mask-image: radial-gradient(circle at 50% 45%, #000 30%, transparent 78%);
   animation: gridDrift 40s linear infinite;
   opacity: 0.5;
+  /* сетка едет ЗА курсором, аврора — против: разнонаправленность слоёв
+     читается как объём (ближний план / дальний план) */
+  transform: translate3d(
+    calc((var(--mx) - 0.5) * 14px),
+    calc((var(--my) - 0.5) * 10px),
+    0
+  );
+  transition: transform 0.9s var(--ease-soft);
 }
 @keyframes gridDrift {
   from { background-position: 0 0, 0 0; }
   to { background-position: 46px 46px, 46px 46px; }
+}
+
+/* Мягкий свет, следующий за курсором — сцена «оживает» под рукой.
+   Один слой на весь экран, без событий мыши, дешёвый для GPU. */
+.cursor-glow {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(
+    420px circle at calc(var(--mx) * 100%) calc(var(--my) * 100%),
+    rgba(139, 92, 246, 0.09),
+    transparent 68%
+  );
+  transition: opacity 0.4s ease;
 }
 
 /* Угловые HUD-скобки по краям экрана */
@@ -360,6 +512,16 @@ html[data-anim='reduced'] .kira-orb::after {
   animation: none;
 }
 html[data-anim='reduced'] .stagger > * { animation-delay: 0s !important; }
+
+/* Параллакс и свет под курсором — только в полном режиме: в «приглушённом»
+   слои замирают, в «выключенном» световой слой убирается совсем */
+html[data-anim='reduced'] .aurora,
+html[data-anim='reduced'] .hud-grid,
+html[data-anim='off'] .aurora,
+html[data-anim='off'] .hud-grid {
+  transform: none !important;
+}
+html[data-anim='off'] .cursor-glow { display: none; }
 
 html[data-anim='off'] *,
 html[data-anim='off'] *::before,

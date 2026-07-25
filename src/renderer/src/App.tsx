@@ -119,6 +119,27 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [setSearchOpen])
 
+  // Параллакс и свет под курсором: пишем позицию мыши (0..1) в CSS-переменные,
+  // а всю отрисовку делает CSS. Обновляем не чаще кадра (rAF) — иначе на каждом
+  // движении мыши дёргался бы layout. Значения читают .aurora/.hud-grid/.cursor-glow.
+  useEffect(() => {
+    let frame = 0
+    const onMove = (e: MouseEvent): void => {
+      if (frame) return
+      frame = requestAnimationFrame(() => {
+        frame = 0
+        const root = document.documentElement
+        root.style.setProperty('--mx', (e.clientX / window.innerWidth).toFixed(4))
+        root.style.setProperty('--my', (e.clientY / window.innerHeight).toFixed(4))
+      })
+    }
+    window.addEventListener('mousemove', onMove, { passive: true })
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      if (frame) cancelAnimationFrame(frame)
+    }
+  }, [])
+
   if (!settings) {
     return (
       <div style={{ height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -135,6 +156,7 @@ export default function App() {
         <span className="a3" />
       </div>
       <div className="hud-grid" aria-hidden />
+      <div className="cursor-glow" aria-hidden />
       <div className="hud-corners" aria-hidden>
         <span className="tl" /><span className="tr" /><span className="bl" /><span className="br" />
       </div>
