@@ -15,6 +15,7 @@ import { initTelegram, shutdownTelegram } from './modules/telegram'
 import { initTelegramUser, shutdownTelegramUser } from './modules/telegramUser'
 import { initKiraCore, coreFlushSync } from './core'
 import { flushAllSync } from './modules/db'
+import { flushAllCollectionsSync } from './modules/storage'
 import { logger } from './modules/logger'
 import { getSettings } from './modules/settings'
 import { extractAiFile, extractFileText } from './modules/shellIntegration'
@@ -214,4 +215,8 @@ app.on('before-quit', () => {
   destroyTray()
   destroyOverlay()
   flushAllSync()
+  // страховка: сбрасываем ВСЕ коллекции (reminders, snippets, routines и др.),
+  // а не только перечисленные вручную — запись отложена на 400 мс, и созданное
+  // прямо перед закрытием иначе терялось
+  flushAllCollectionsSync()
 })

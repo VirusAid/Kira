@@ -200,15 +200,26 @@ export async function downloadOllama(
   try {
     mkdirSync(dir, { recursive: true })
     onProgress(0, 'Скачиваю движок Ollama…')
+    logger.info('local-llm', 'Скачиваю движок Ollama…')
     const r = await fetch(OLLAMA_ZIP_URL)
     if (!r.ok || !r.body) return { ok: false, message: `Не удалось скачать движок (${r.status})` }
     const total = Number(r.headers.get('content-length') ?? 0)
     let got = 0
     // считаем байты в проходном потоке — backpressure соблюдается через pipeline
+    const mb = (n: number): number => Math.round(n / 1048576)
+    let lastEmit = 0
     const counter = new Transform({
       transform(chunk, _enc, cb) {
         got += chunk.length
-        if (total) onProgress(Math.round((got / total) * 100), 'Скачиваю движок Ollama…')
+        // не чаще ~4 раз/сек, чтобы не заваливать IPC событиями
+        const now = Date.now()
+        if (now - lastEmit >= 250 || got === total) {
+          lastEmit = now
+          const pct = total ? Math.round((got / total) * 100) : 0
+          // показываем МБ и ПРОЦЕНТ — движок ~1.4 ГБ, иначе прогресс «замершим»
+          const label = total ? `Движок Ollama: ${mb(got)} / ${mb(total)} МБ (${pct}%)` : `Движок Ollama: ${mb(got)} МБ`
+          onProgress(pct, label)
+        }
         cb(null, chunk)
       }
     })
@@ -229,23 +240,26 @@ export async function downloadOllama(
 
 /**
  * Настроить офлайн-мозг «за один клик»: докачать движок (если нужно) и модель
- * под железо (или заданную), с общим прогрессом 0..100. Первые ~15% — движок,
- * остальное — модель (она в разы больше). Idempotent: если всё уже есть — ок.
+ * под железо (или заданную). Прогресс — ЧЕСТНЫЙ процент по каждому этапу
+ * (движок 0..100%, затем модель 0..100%), а не общий, иначе движок «полз» в
+ * 0..15% и казался замершим. Idempotent: если всё уже есть — ок.
  */
 export async function setupBrain(
   onProgress: (percent: number, status: string) => void,
   tag?: string
 ): Promise<{ ok: boolean; message: string; tag: string }> {
   const model = tag ?? (await recommendModel()).tag
-  // 1. движок (0..15%)
+  logger.info('local-llm', `Настройка офлайн-мозга: модель ${model}, движок ${managedExe() ? 'на месте' : 'нужно скачать'}`)
+  // 1. движок — свой процент 0..100 (текст этапа поясняет, что это движок)
   if (!managedExe() && !(await isInstalled())) {
-    const dl = await downloadOllama((p, s) => onProgress(Math.round(p * 0.15), s))
-    if (!dl.ok) return { ok: false, message: dl.message, tag: model }
+    const dl = await downloadOllama(onProgress)
+    if (!dl.ok) { logger.warn('local-llm', `Движок не установлен: ${dl.message}`); return { ok: false, message: dl.message, tag: model } }
   }
   if (!(await ensureRunning())) {
+    logger.warn('local-llm', 'Движок Ollama не запустился')
     return { ok: false, message: 'Не удалось запустить движок Ollama', tag: model }
   }
-  // 2. модель (15..100%) — если уже есть, не качаем повторно
+  // 2. модель — свой процент 0..100. Если уже есть, не качаем повторно
   const have = await installedModels()
   // ТОЧНОЕ совпадение тега: иначе наличие любой qwen3:* (напр. 4b) ошибочно
   // считало бы скачанной рекомендованную qwen3:8b → делали её активной, а её нет
@@ -254,7 +268,7 @@ export async function setupBrain(
     onProgress(100, 'Модель уже загружена')
     return { ok: true, message: `Офлайн-мозг готов: ${model}`, tag: model }
   }
-  const pull = await pullModel(model, (p, s) => onProgress(15 + Math.round(p * 0.85), s))
+  const pull = await pullModel(model, onProgress)
   if (!pull.ok) return { ok: false, message: pull.message, tag: model }
   return { ok: true, message: `Офлайн-мозг готов: ${model}`, tag: model }
 }
@@ -303,7 +317,12 @@ export async function pullModel(
           const m = JSON.parse(line) as { status?: string; total?: number; completed?: number; error?: string }
           if (m.error) return { ok: false, message: m.error }
           const pct = m.total && m.completed ? Math.round((m.completed / m.total) * 100) : 0
-          onProgress(pct, m.status ?? 'загрузка…')
+          // показываем ГБ и ПРОЦЕНТ — модель большая, иначе прогресс «замершим»
+          const gb = (n?: number): string => ((n ?? 0) / 1073741824).toFixed(1)
+          const label = m.total && m.completed
+            ? `Модель ${tag}: ${gb(m.completed)} / ${gb(m.total)} ГБ (${pct}%)`
+            : (m.status ?? 'загрузка…')
+          onProgress(pct, label)
         } catch { /* неполная строка */ }
       }
     }

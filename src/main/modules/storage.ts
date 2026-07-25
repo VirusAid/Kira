@@ -32,6 +32,21 @@ async function atomicWrite(file: string, content: string): Promise<void> {
   await fsp.rename(tmp, file)
 }
 
+/**
+ * Реестр всех созданных коллекций. Запись на диск отложена (FLUSH_DELAY), и
+ * раньше при выходе сбрасывались только коллекции из db.ts + пара «ручных» —
+ * а reminders/snippets/routines НЕТ: созданное за 400 мс до закрытия Kira
+ * терялось. Реестр гарантирует, что сбросятся ВСЕ, включая будущие.
+ */
+const registry = new Set<{ flushSync: () => void; name: string }>()
+
+/** Сбросить на диск все несохранённые коллекции (вызывается при выходе). */
+export function flushAllCollectionsSync(): void {
+  for (const c of registry) {
+    try { c.flushSync() } catch { /* одна битая коллекция не мешает остальным */ }
+  }
+}
+
 /** Типизированная коллекция записей с id. */
 export class Collection<T extends { id: string }> {
   private items = new Map<string, T>()
@@ -42,6 +57,7 @@ export class Collection<T extends { id: string }> {
   constructor(public readonly name: string) {
     this.file = join(dataDir(), `${name}.json`)
     this.load()
+    registry.add(this)
   }
 
   private load(): void {

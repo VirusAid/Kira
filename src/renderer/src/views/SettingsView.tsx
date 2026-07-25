@@ -122,6 +122,9 @@ function OfflineBrainCard({ settings, update }: SectionProps) {
   const [models, setModels] = useState<LocalModel[]>([])
   const [pulling, setPulling] = useState<{ tag: string; percent: number; status: string } | null>(null)
   const [busy, setBusy] = useState(false)
+  // результат последней настройки/загрузки — показываем и УСПЕХ, и ОШИБКУ, иначе
+  // при сбое (нет сети, GitHub недоступен, антивирус, распаковка) кнопка «немела»
+  const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null)
 
   const refresh = async (): Promise<void> => {
     const [st, ms] = await Promise.all([kira.local.status(), kira.local.models()])
@@ -131,30 +134,40 @@ function OfflineBrainCard({ settings, update }: SectionProps) {
   useEffect(() => kira.local.onPullProgress((p) => setPulling(p)), [])
 
   const pull = async (tag: string): Promise<void> => {
-    setBusy(true); setPulling({ tag, percent: 0, status: 'подготовка…' })
-    const r = await kira.local.pull(tag)
-    setPulling(null); setBusy(false)
-    if (r.ok) {
-      // выбираем скачанную модель как активную для Ollama + включаем офлайн-мозг
-      update({
-        providers: { ...settings.providers, ollama: { ...settings.providers.ollama, model: tag } },
-        preferLocal: true
-      })
+    setBusy(true); setNotice(null); setPulling({ tag, percent: 0, status: 'подготовка…' })
+    try {
+      const r = await kira.local.pull(tag)
+      setNotice({ ok: r.ok, text: r.message })
+      if (r.ok) {
+        // выбираем скачанную модель как активную для Ollama + включаем офлайн-мозг
+        update({
+          providers: { ...settings.providers, ollama: { ...settings.providers.ollama, model: tag } },
+          preferLocal: true
+        })
+      }
+    } catch (e) {
+      setNotice({ ok: false, text: `Сбой загрузки: ${(e as Error).message}` })
     }
+    setPulling(null); setBusy(false)
     await refresh()
   }
 
   // Один клик: докачать движок Ollama + модель под железо и включить офлайн-мозг
   const setup = async (): Promise<void> => {
-    setBusy(true); setPulling({ tag: 'setup', percent: 0, status: 'подготовка…' })
-    const r = await kira.local.setup()
-    setPulling(null); setBusy(false)
-    if (r.ok) {
-      update({
-        providers: { ...settings.providers, ollama: { ...settings.providers.ollama, model: r.tag } },
-        preferLocal: true
-      })
+    setBusy(true); setNotice(null); setPulling({ tag: 'setup', percent: 0, status: 'подготовка…' })
+    try {
+      const r = await kira.local.setup()
+      setNotice({ ok: r.ok, text: r.message })
+      if (r.ok) {
+        update({
+          providers: { ...settings.providers, ollama: { ...settings.providers.ollama, model: r.tag } },
+          preferLocal: true
+        })
+      }
+    } catch (e) {
+      setNotice({ ok: false, text: `Сбой настройки: ${(e as Error).message}` })
     }
+    setPulling(null); setBusy(false)
     await refresh()
   }
 
@@ -185,6 +198,17 @@ function OfflineBrainCard({ settings, update }: SectionProps) {
         </div>
       )}
 
+      {notice && (
+        <div style={{
+          fontSize: 12, lineHeight: 1.5, padding: '9px 12px', borderRadius: 9, marginBottom: 12,
+          background: notice.ok ? 'rgba(34,197,94,0.10)' : 'rgba(239,68,68,0.10)',
+          border: `1px solid ${notice.ok ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.35)'}`,
+          color: notice.ok ? '#22c55e' : '#f87171'
+        }}>
+          {notice.ok ? '✅ ' : '⚠️ '}{notice.text}
+        </div>
+      )}
+
       {!installed ? (
         <div style={{ background: 'var(--bg-3)', borderRadius: 10, padding: '12px 14px', fontSize: 12.5, lineHeight: 1.5 }}>
           Настрою офлайн-мозг за один клик — скачаю движок и модель под твоё железо
@@ -197,16 +221,20 @@ function OfflineBrainCard({ settings, update }: SectionProps) {
               <RefreshCw size={14} /> Обновить статус
             </button>
           </div>
-          {pulling?.tag === 'setup' && (
+          {(busy || pulling?.tag === 'setup') && (
             <div style={{ marginTop: 10 }}>
-              <div style={{ height: 5, borderRadius: 4, background: 'var(--bg-2)', overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${pulling.percent}%`, background: 'var(--accent)', transition: 'width 0.3s' }} />
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 4 }}>
+                <span style={{ fontSize: 11.5, color: 'var(--accent-text)' }}>{pulling?.status ?? 'Подготовка…'}</span>
+                <b style={{ fontSize: 15, color: 'var(--accent-text)' }}>{pulling?.percent ?? 0}%</b>
               </div>
-              <span className="muted" style={{ fontSize: 10.5 }}>{pulling.status} {pulling.percent}%</span>
+              <div style={{ height: 8, borderRadius: 5, background: 'var(--bg-2)', overflow: 'hidden' }}>
+                <div style={{ height: '100%', width: `${pulling?.percent ?? 0}%`, background: 'var(--accent)', transition: 'width 0.3s', minWidth: 3 }} />
+              </div>
             </div>
           )}
           <span className="muted" style={{ fontSize: 11, display: 'block', marginTop: 8 }}>
-            Загрузка большая (движок + модель, ~несколько ГБ). Можно пользоваться облаком, пока качается.
+            Загрузка большая: движок ~1.4 ГБ + модель ~5 ГБ. На небыстром интернете это надолго —
+            можно свернуть и пользоваться облаком, скачивание идёт в фоне.
           </span>
         </div>
       ) : (
@@ -223,10 +251,13 @@ function OfflineBrainCard({ settings, update }: SectionProps) {
                     <div className="muted" style={{ fontSize: 10.5 }}>{m.tag} · ~{m.sizeGb} ГБ · {m.note}</div>
                     {isPulling && (
                       <div style={{ marginTop: 5 }}>
-                        <div style={{ height: 4, borderRadius: 4, background: 'var(--bg-3)', overflow: 'hidden' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
+                          <span className="muted" style={{ fontSize: 10 }}>{pulling!.status}</span>
+                          <b style={{ fontSize: 12, color: 'var(--accent-text)' }}>{pulling!.percent}%</b>
+                        </div>
+                        <div style={{ height: 5, borderRadius: 4, background: 'var(--bg-3)', overflow: 'hidden' }}>
                           <div style={{ height: '100%', width: `${pulling!.percent}%`, background: 'var(--accent)', transition: 'width 0.3s' }} />
                         </div>
-                        <span className="muted" style={{ fontSize: 10 }}>{pulling!.status} {pulling!.percent}%</span>
                       </div>
                     )}
                   </div>

@@ -41,8 +41,12 @@ const api = {
     pull: (tag: string) => invoke('local:pull', tag),
     setup: (tag?: string) => invoke('local:setup', tag),
     delete: (tag: string) => invoke('local:delete', tag),
+    // ВАЖНО: хелпер on() уже срезает объект события и отдаёт слушателю только
+    // аргументы. Здесь раньше стояло (_e, p) — то есть payload попадал в «_e»,
+    // а в cb уходил undefined → прогресс загрузки НИКОГДА не доходил до UI
+    // (полоска вечно висела на «Подготовка… 0%»).
     onPullProgress: (cb: (p: { tag: string; percent: number; status: string }) => void) =>
-      on('local:pull-progress', (_e, p) => cb(p as { tag: string; percent: number; status: string }))
+      on('local:pull-progress', (p) => cb(p as { tag: string; percent: number; status: string }))
   },
 
   tts: {

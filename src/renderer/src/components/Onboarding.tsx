@@ -179,10 +179,13 @@ export function Onboarding({ onDone }: { onDone: () => void }) {
                         </button>
                         {brain.running && (
                           <div style={{ marginTop: 8 }}>
-                            <div style={{ height: 5, borderRadius: 4, background: 'var(--bg-2)', overflow: 'hidden' }}>
-                              <div style={{ height: '100%', width: `${brain.percent}%`, background: 'var(--accent)', transition: 'width 0.3s' }} />
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
+                              <span className="muted" style={{ fontSize: 10.5 }}>{brain.status}</span>
+                              <b style={{ fontSize: 12, color: 'var(--accent)' }}>{brain.percent}%</b>
                             </div>
-                            <span className="muted" style={{ fontSize: 10.5 }}>{brain.status} {brain.percent}%</span>
+                            <div style={{ height: 6, borderRadius: 4, background: 'var(--bg-2)', overflow: 'hidden' }}>
+                              <div style={{ height: '100%', width: `${brain.percent}%`, background: 'var(--accent)', transition: 'width 0.3s', minWidth: 3 }} />
+                            </div>
                           </div>
                         )}
                         {!brain.running && brain.status && !brain.done && (
