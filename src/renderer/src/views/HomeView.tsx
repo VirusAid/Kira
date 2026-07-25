@@ -1,6 +1,7 @@
-/** Главный экран: приветствие, статистика, активные задачи, быстрый доступ. */
-import { useEffect, useMemo } from 'react'
-import { MessageSquare, FolderKanban, Zap, Brain, ArrowRight, Play, Sparkles, UserCircle } from 'lucide-react'
+/** Командный центр: приветствие, что Kira видит, состояние, быстрый доступ. */
+import { useEffect, useMemo, useState } from 'react'
+import { MessageSquare, FolderKanban, Zap, Brain, ArrowRight, Play, Sparkles, UserCircle, Eye, EyeOff } from 'lucide-react'
+import { kira } from '@/api'
 import { useAppStore } from '@/state/appStore'
 import { useChatStore } from '@/state/chatStore'
 import { useProjectStore, useProtocolStore, useMemoryStore, useLogStore, useAbilityStore } from '@/state/dataStores'
@@ -16,6 +17,11 @@ export function HomeView() {
   const logs = useLogStore((s) => s.logs)
 
   useEffect(() => { void refreshStats() }, [refreshStats])
+
+  // что Kira видит прямо сейчас — приходит из модуля зрения, когда экран меняется
+  const [seeing, setSeeing] = useState<{ title: string; app: string; preview: string; at: number } | null>(null)
+  useEffect(() => kira.on('vision:context', (p) =>
+    setSeeing(p as { title: string; app: string; preview: string; at: number })), [])
 
   const greeting = useMemo(() => {
     const h = new Date().getHours()
@@ -83,6 +89,36 @@ export function HomeView() {
           </div>
         )}
       </div>
+
+      {/* Что Kira видит прямо сейчас — «живой» блок командного центра */}
+      <section className="card anim-in hud-frame" style={{ marginTop: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <div className="stat-icon" style={{
+            width: 36, height: 36, borderRadius: 10, flexShrink: 0,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: settings?.screenAssist ? 'rgba(52,211,153,0.14)' : 'var(--bg-2)',
+            color: settings?.screenAssist ? 'var(--ok)' : 'var(--text-2)'
+          }}>
+            {settings?.screenAssist ? <Eye size={18} /> : <EyeOff size={18} />}
+          </div>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 13.5, fontWeight: 700 }}>
+              {settings?.screenAssist ? 'Вижу твой экран' : 'Зрение выключено'}
+            </div>
+            <div className="muted" style={{ fontSize: 11.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {settings?.screenAssist
+                ? (seeing
+                    ? `${seeing.title.slice(0, 60)}${seeing.preview ? ` — ${seeing.preview.slice(0, 70)}…` : ''}`
+                    : 'Осматриваюсь…')
+                : 'Включи — и можно будет спросить «что тут на экране?» в любой момент'}
+            </div>
+          </div>
+          <button className="btn btn-ghost press" style={{ fontSize: 12, padding: '6px 12px', flexShrink: 0 }}
+            onClick={() => setView('settings')}>
+            {settings?.screenAssist ? 'Настроить' : 'Включить'}
+          </button>
+        </div>
+      </section>
 
       {/* Профиль: то, что Kira узнала о тебе — растёт со временем */}
       <section className="card anim-in" style={{ marginTop: 16 }}>

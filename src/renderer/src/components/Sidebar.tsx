@@ -1,4 +1,11 @@
-/** Левая навигационная панель. */
+/**
+ * Навигация Kira.
+ *
+ * Раньше это был плоский список из двенадцати вкладок — глаз не за что
+ * зацепить. Теперь пункты собраны в четыре смысловые группы: сама Kira, её
+ * знания, её действия и настройка. Так интерфейс читается за секунду, а не
+ * перебирается по одному пункту.
+ */
 import {
   Home, MessageSquare, FolderKanban, Zap, Brain,
   HardDrive, Clock, Settings, ScrollText, Mic, MicOff, Activity, Plug, Sparkles
@@ -6,19 +13,42 @@ import {
 import { useAppStore, type ViewId } from '@/state/appStore'
 import type { VoiceState } from '@/voice/useVoice'
 
-const NAV: { id: ViewId; label: string; icon: typeof Home }[] = [
-  { id: 'home', label: 'Главная', icon: Home },
-  { id: 'chat', label: 'Чат', icon: MessageSquare },
-  { id: 'projects', label: 'Проекты', icon: FolderKanban },
-  { id: 'protocols', label: 'Протоколы', icon: Zap },
-  { id: 'abilities', label: 'Навыки', icon: Sparkles },
-  { id: 'memory', label: 'Память', icon: Brain },
-  { id: 'files', label: 'Файлы', icon: HardDrive },
-  { id: 'automation', label: 'Автоматизация', icon: Clock },
-  { id: 'integrations', label: 'Интеграции', icon: Plug },
-  { id: 'systems', label: 'Способности', icon: Activity },
-  { id: 'settings', label: 'Настройки', icon: Settings },
-  { id: 'logs', label: 'Логи', icon: ScrollText }
+interface NavItem { id: ViewId; label: string; icon: typeof Home }
+interface NavGroup { title: string; items: NavItem[] }
+
+const GROUPS: NavGroup[] = [
+  {
+    title: 'Кира',
+    items: [
+      { id: 'home', label: 'Командный центр', icon: Home },
+      { id: 'chat', label: 'Диалог', icon: MessageSquare }
+    ]
+  },
+  {
+    title: 'Знания',
+    items: [
+      { id: 'memory', label: 'Память', icon: Brain },
+      { id: 'files', label: 'Файлы', icon: HardDrive },
+      { id: 'projects', label: 'Проекты', icon: FolderKanban }
+    ]
+  },
+  {
+    title: 'Действия',
+    items: [
+      { id: 'abilities', label: 'Навыки', icon: Sparkles },
+      { id: 'protocols', label: 'Сценарии', icon: Zap },
+      { id: 'automation', label: 'Расписание', icon: Clock }
+    ]
+  },
+  {
+    title: 'Настройка',
+    items: [
+      { id: 'systems', label: 'Способности', icon: Activity },
+      { id: 'integrations', label: 'Связи', icon: Plug },
+      { id: 'settings', label: 'Настройки', icon: Settings },
+      { id: 'logs', label: 'Журнал', icon: ScrollText }
+    ]
+  }
 ]
 
 interface Props {
@@ -33,27 +63,32 @@ export function Sidebar({ voiceState, voiceLevel, onToggleVoice }: Props) {
 
   return (
     <nav style={styles.nav}>
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 3 }}>
-        {NAV.map(({ id, label, icon: Icon }) => {
-          const active = view === id
-          return (
-            <button
-              key={id}
-              onClick={() => setView(id)}
-              className={active ? 'nav-active' : undefined}
-              style={{
-                ...styles.item,
-                background: active ? 'var(--accent-soft)' : 'transparent',
-                color: active ? 'var(--accent-text)' : 'var(--text-1)',
-                // подсветку кромки в активном состоянии рисует .nav-active (свечение)
-                borderLeft: '2px solid transparent'
-              }}
-            >
-              <Icon size={17} strokeWidth={active ? 2.4 : 1.9} />
-              <span style={{ fontWeight: active ? 650 : 450 }}>{label}</span>
-            </button>
-          )
-        })}
+      <div style={styles.scroll}>
+        {GROUPS.map((group) => (
+          <div key={group.title} style={{ marginBottom: 14 }}>
+            <div className="hud-label" style={styles.groupTitle}>{group.title}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+              {group.items.map(({ id, label, icon: Icon }) => {
+                const active = view === id
+                return (
+                  <button
+                    key={id}
+                    onClick={() => setView(id)}
+                    className={active ? 'nav-active' : undefined}
+                    style={{
+                      ...styles.item,
+                      background: active ? 'var(--accent-soft)' : 'transparent',
+                      color: active ? 'var(--accent-text)' : 'var(--text-1)'
+                    }}
+                  >
+                    <Icon size={16} strokeWidth={active ? 2.4 : 1.9} />
+                    <span style={{ fontWeight: active ? 650 : 450 }}>{label}</span>
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+        ))}
       </div>
 
       <button
@@ -61,16 +96,17 @@ export function Sidebar({ voiceState, voiceLevel, onToggleVoice }: Props) {
         style={{
           ...styles.voiceBtn,
           background: voiceOn
-            ? `linear-gradient(135deg, var(--accent), #6d28d9)`
+            ? 'linear-gradient(135deg, var(--accent), #6d28d9)'
             : 'var(--bg-2)',
           borderColor: voiceOn ? 'transparent' : 'var(--border)',
-          boxShadow: voiceOn ? `0 0 ${14 + voiceLevel * 30}px var(--accent-glow)` : 'none'
+          // свечение дышит в такт голосу — кнопка живая, а не просто подсвеченная
+          boxShadow: voiceOn ? `0 0 ${14 + voiceLevel * 34}px var(--accent-glow)` : 'none'
         }}
-        title={voiceOn ? 'Выключить голосовой режим' : 'Включить голосовой режим'}
+        title={voiceOn ? 'Выключить голос' : 'Говорить с Kira'}
       >
         {voiceOn ? <Mic size={17} /> : <MicOff size={17} />}
         <span style={{ fontSize: 12.5, fontWeight: 600 }}>
-          {voiceOn ? voiceLabel(voiceState) : 'Голос'}
+          {voiceOn ? voiceLabel(voiceState) : 'Говорить'}
         </span>
       </button>
     </nav>
@@ -84,7 +120,7 @@ function voiceLabel(s: VoiceState): string {
     case 'transcribing': return 'Распознаю…'
     case 'thinking': return 'Думаю…'
     case 'speaking': return 'Говорю'
-    default: return 'Голос'
+    default: return 'Говорить'
   }
 }
 
@@ -99,13 +135,22 @@ const styles: Record<string, React.CSSProperties> = {
     background: 'rgba(12, 12, 22, 0.5)',
     backdropFilter: 'blur(20px)'
   },
+  scroll: { flex: 1, minHeight: 0, overflowY: 'auto' },
+  groupTitle: {
+    fontSize: 10,
+    fontWeight: 700,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    color: 'var(--text-2)',
+    padding: '0 0 6px 11px'
+  },
   item: {
     display: 'flex',
     alignItems: 'center',
-    gap: 11,
-    padding: '10px 12px',
+    gap: 10,
+    padding: '9px 12px',
     borderRadius: 10,
-    fontSize: 13.5,
+    fontSize: 13,
     transition: 'all 0.15s ease',
     textAlign: 'left'
   },
@@ -118,6 +163,7 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: 12,
     border: '1px solid',
     color: '#fff',
+    marginTop: 10,
     transition: 'all 0.2s ease'
   }
 }
