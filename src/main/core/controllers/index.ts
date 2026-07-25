@@ -133,6 +133,20 @@ export function knownFolder(nameOrPath: string): string {
 }
 
 export const FileController = {
+  /** Показать содержимое папки. Kira умела открывать папку, но не «заглянуть» в неё. */
+  listDir: async (nameOrPath: string): Promise<ExecResult> => {
+    const dir = knownFolder(nameOrPath)
+    try {
+      const items = await fs.listDir(dir)
+      if (!items.length) return { ok: true, message: `В папке «${dir}» пусто`, data: '' }
+      const lines = items.slice(0, 100).map((i) =>
+        i.isDirectory ? `[папка] ${i.name}` : `${i.name} · ${(i.size / 1024).toFixed(0)} КБ`)
+      const more = items.length > 100 ? `\n…и ещё ${items.length - 100}` : ''
+      return { ok: true, message: `В папке «${dir}»: ${items.length}`, data: lines.join('\n') + more }
+    } catch (e) {
+      return { ok: false, message: `Не удалось открыть папку: ${(e as Error).message}` }
+    }
+  },
   createFolder: (path: string): Promise<ExecResult> => fs.createFolder(path),
   deleteToTrash: (path: string): Promise<ExecResult> => fs.deleteToTrash(path),
   move: (from: string, to: string): Promise<ExecResult> => fs.moveFile(from, to),

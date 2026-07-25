@@ -513,7 +513,25 @@ export async function executeAction(a: ParsedAction): Promise<ActionResult> {
           const res = await commandEngine.executeById(a.name, named, { source: 'llm' })
           if (res) return res
         }
-        return { ok: false, message: `Неизвестное действие: ${a.name}` }
+        // Модель выдумала инструмент. Подсказываем ей ПОХОЖИЕ реальные действия,
+        // чтобы она исправилась сама, а не повторяла несуществующий вызов.
+        // Пользователю показываем нейтральный текст — сырые имена инструментов
+        // ему ни о чём не говорят и выглядят как поломка.
+        const near = registry.list()
+          .map((x) => x.id)
+          .filter((id) => {
+            const n = a.name.toLowerCase()
+            return id.includes(n.split('_')[0]) || n.includes(id.split('_')[0])
+          })
+          .slice(0, 6)
+        logger.warn('kira', `Модель вызвала несуществующее действие: ${a.name}`)
+        return {
+          ok: false,
+          message: 'Такого умения у меня нет — пробую иначе',
+          data: `ВНИМАНИЕ: действия «${a.name}» не существует. НЕ вызывай его снова.` +
+            (near.length ? ` Похожие доступные: ${near.join(', ')}.` : '') +
+            ' Возьми подходящее действие из списка инструментов или ответь пользователю словами.'
+        }
       }
     }
   } catch (err) {

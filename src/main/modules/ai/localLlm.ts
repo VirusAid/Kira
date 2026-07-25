@@ -79,17 +79,27 @@ export interface LocalModel {
   vision?: boolean
 }
 
-/** Курируемый список — Qwen3 отлично знает русский, силён в коде и рассуждениях. */
+/**
+ * Курируемый список моделей.
+ *
+ * ВАЖНО: теги и размеры сверены с реестром Ollama
+ * (registry.ollama.ai/v2/library/<имя>/manifests/<тег>). Раньше здесь стояли
+ * несуществующие `qwen2.5-vl:*` — Ollama отвечала «pull model manifest: file
+ * does not exist», и загрузка молча падала. Перед добавлением нового тега
+ * ОБЯЗАТЕЛЬНО проверь, что манифест отдаёт 200.
+ *
+ * Названия — человеческие, без моделей и терминов: пользователю не нужно знать,
+ * что внутри Qwen или сколько там миллиардов параметров.
+ */
 export const RECOMMENDED_MODELS: LocalModel[] = [
-  { tag: 'qwen3:14b', label: 'Максимум (Qwen3 14B)', sizeGb: 9.3, note: 'Самый умный. Нужно ≥10 ГБ VRAM или выгрузка в ОЗУ (медленнее).', minVramGb: 10 },
-  { tag: 'qwen3:8b', label: 'Сбалансированный (Qwen3 8B)', sizeGb: 5.2, note: 'Лучший баланс качества и скорости. Рекомендуется для 6+ ГБ VRAM.', minVramGb: 6 },
-  { tag: 'qwen3:4b', label: 'Быстрый (Qwen3 4B)', sizeGb: 2.5, note: 'Шустрый, контекст 256K. Хорош для 4 ГБ VRAM и слабых ПК.', minVramGb: 4 },
-  { tag: 'qwen3:1.7b', label: 'Лёгкий (Qwen3 1.7B)', sizeGb: 1.4, note: 'Для очень слабого железа / только CPU.', minVramGb: 0 },
-  // Vision-модели: «видят» экран и картинки офлайн. Умеют и текст, и зрение —
-  // можно сделать основным «мозгом». Не выбираются автоподбором (recommendModel):
-  // это осознанный выбор ради офлайн-зрения.
-  { tag: 'qwen2.5-vl:7b', label: 'Зрение (Qwen2.5-VL 7B)', sizeGb: 6.0, note: '👁 Видит экран и картинки офлайн + хороший текст. Нужно 6+ ГБ VRAM.', minVramGb: 6, vision: true },
-  { tag: 'qwen2.5-vl:3b', label: 'Зрение лёгкое (Qwen2.5-VL 3B)', sizeGb: 3.2, note: '👁 Видит экран офлайн, для 4 ГБ VRAM и слабых ПК.', minVramGb: 4, vision: true }
+  { tag: 'qwen3:14b', label: 'Максимальный', sizeGb: 8.6, note: 'Самый умный. Нужен мощный компьютер.', minVramGb: 10 },
+  { tag: 'qwen3:8b', label: 'Оптимальный', sizeGb: 4.9, note: 'Лучшее сочетание ума и скорости. Подходит большинству.', minVramGb: 6 },
+  { tag: 'qwen3:4b', label: 'Быстрый', sizeGb: 2.3, note: 'Шустрый и лёгкий. Для обычных компьютеров.', minVramGb: 4 },
+  { tag: 'qwen3:1.7b', label: 'Лёгкий', sizeGb: 1.3, note: 'Для слабых компьютеров и работы без видеокарты.', minVramGb: 0 },
+  // Модели со зрением: понимают картинки и экран офлайн. Автоподбором не
+  // выбираются — это осознанный выбор пользователя ради офлайн-зрения.
+  { tag: 'qwen3-vl:8b', label: 'Оптимальный + зрение', sizeGb: 5.7, note: 'Всё умеет и вдобавок видит экран и картинки.', minVramGb: 6, vision: true },
+  { tag: 'qwen3-vl:4b', label: 'Быстрый + зрение', sizeGb: 3.1, note: 'Полегче и тоже видит экран. Для обычных компьютеров.', minVramGb: 4, vision: true }
 ]
 
 export interface HardwareInfo {
@@ -167,8 +177,13 @@ export async function ensureRunning(): Promise<boolean> {
   try {
     if (managed) mkdirSync(modelsDir(), { recursive: true })
     const exe = managed ?? 'ollama'
+    // ВАЖНО: НЕ ставить detached:true на Windows. detached → DETACHED_PROCESS,
+    // а при нём флаг CREATE_NO_WINDOW (windowsHide) ИГНОРИРУЕТСЯ системой —
+    // движок получал собственное консольное окно, которое периодически
+    // выскакивало у пользователя. unref() и так отвязывает процесс от нашего
+    // событийного цикла, а Windows не убивает детей при выходе родителя.
     const proc = spawn(exe, ['serve'], {
-      detached: true, stdio: 'ignore', windowsHide: true,
+      stdio: 'ignore', windowsHide: true,
       env: managed ? managedEnv() : process.env
     })
     proc.unref()
@@ -293,7 +308,7 @@ export async function pullModel(
   onProgress: (percent: number, status: string) => void
 ): Promise<{ ok: boolean; message: string }> {
   if (!(await ensureRunning())) {
-    return { ok: false, message: 'Ollama не запущена. Установи её и попробуй снова.' }
+    return { ok: false, message: 'Не удалось запустить движок. Попробуй ещё раз или перезапусти Kira.' }
   }
   try {
     const res = await fetch(`${OLLAMA_URL}/api/pull`, {
@@ -315,22 +330,50 @@ export async function pullModel(
         if (!line.trim()) continue
         try {
           const m = JSON.parse(line) as { status?: string; total?: number; completed?: number; error?: string }
-          if (m.error) return { ok: false, message: m.error }
+          if (m.error) return { ok: false, message: humanPullError(m.error) }
           const pct = m.total && m.completed ? Math.round((m.completed / m.total) * 100) : 0
           // показываем ГБ и ПРОЦЕНТ — модель большая, иначе прогресс «замершим»
           const gb = (n?: number): string => ((n ?? 0) / 1073741824).toFixed(1)
           const label = m.total && m.completed
-            ? `Модель ${tag}: ${gb(m.completed)} / ${gb(m.total)} ГБ (${pct}%)`
-            : (m.status ?? 'загрузка…')
+            ? `Загружаю: ${gb(m.completed)} / ${gb(m.total)} ГБ (${pct}%)`
+            : humanStatus(m.status)
           onProgress(pct, label)
         } catch { /* неполная строка */ }
       }
     }
     logger.info('local-llm', `Модель загружена: ${tag}`)
-    return { ok: true, message: `Модель ${tag} загружена и готова` }
+    return { ok: true, message: 'Готово — Kira теперь думает на твоём компьютере' }
   } catch (e) {
-    return { ok: false, message: `Ошибка загрузки: ${(e as Error).message}` }
+    return { ok: false, message: `Загрузка прервалась: ${(e as Error).message}` }
   }
+}
+
+/**
+ * Технические ошибки загрузчика → человеческий текст. Пользователю незачем
+ * видеть «pull model manifest: file does not exist» — это ничего не объясняет.
+ */
+function humanPullError(raw: string): string {
+  const e = raw.toLowerCase()
+  if (e.includes('manifest') || e.includes('not exist') || e.includes('not found')) {
+    return 'Эта версия мозга недоступна для загрузки. Выбери другую в списке — остальные работают.'
+  }
+  if (e.includes('no space') || e.includes('disk')) {
+    return 'Не хватает места на диске. Освободи несколько гигабайт и попробуй снова.'
+  }
+  if (e.includes('connection') || e.includes('timeout') || e.includes('network') || e.includes('eof')) {
+    return 'Прервалась связь при загрузке. Проверь интернет и нажми ещё раз — продолжу с места остановки.'
+  }
+  return `Не удалось загрузить: ${raw}`
+}
+
+/** Статусы загрузчика → понятные формулировки (без внутренних терминов). */
+function humanStatus(s?: string): string {
+  const t = (s ?? '').toLowerCase()
+  if (t.includes('manifest')) return 'Подключаюсь к хранилищу…'
+  if (t.includes('verif')) return 'Проверяю целостность…'
+  if (t.includes('writ')) return 'Сохраняю на диск…'
+  if (t.includes('success')) return 'Готово'
+  return 'Загружаю…'
 }
 
 /** Удалить модель. */
