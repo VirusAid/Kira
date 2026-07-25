@@ -1,5 +1,6 @@
 /** Память — долговременная память Kira с редактированием через интерфейс. */
 import { useEffect, useMemo, useState } from 'react'
+import { plural } from '@shared/plural'
 import { Plus, Pencil, Trash2, Pin, PinOff, Brain, Search, Sparkles, Loader2 } from 'lucide-react'
 import { useMemoryStore } from '@/state/dataStores'
 import { kira } from '@/api'
@@ -63,7 +64,7 @@ export function MemoryView() {
     <div className="view-container">
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 18 }}>
         <h2 className="section-title">Память Kira</h2>
-        <span className="badge">{entries.length} записей</span>
+        <span className="badge">{entries.length} {plural(entries.length, 'запись', 'записи', 'записей')}</span>
         <div style={{ position: 'relative', marginLeft: 'auto' }}>
           <Search size={14} style={{ position: 'absolute', left: 11, top: 10, color: 'var(--text-2)' }} />
           <input style={{ paddingLeft: 32, width: 220 }} placeholder="Поиск в памяти"

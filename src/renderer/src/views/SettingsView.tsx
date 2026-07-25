@@ -28,7 +28,7 @@ const PROVIDERS: {
     id: 'groq', name: 'Groq', free: 'Бесплатно · очень быстро', url: 'https://console.groq.com/keys',
     needsKey: true,
     models: ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3-32b'],
-    note: 'Рекомендуется. Бесплатный ключ за минуту. Также включает распознавание речи распознавание речи для голосового режима.'
+    note: 'Рекомендуется. Бесплатный ключ за минуту. Заодно даёт распознавание речи для голосового режима.'
   },
   {
     id: 'openrouter', name: 'OpenRouter', free: 'Есть бесплатные модели (:free)', url: 'https://openrouter.ai/keys',
