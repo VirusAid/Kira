@@ -76,14 +76,14 @@ export function MemoryView() {
 
       {semReady === true && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 16, fontSize: 12.5, color: 'var(--ok)' }}>
-          <Sparkles size={14} /> Семантическая память активна — Kira ищет по смыслу, а не только по словам.
+          <Sparkles size={14} /> Память по смыслу работает — Kira ищет по смыслу, а не только по словам.
         </div>
       )}
       {semReady === false && (
         <div className="card" style={{ marginBottom: 16, background: 'var(--bg-2)' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
             <Sparkles size={15} style={{ color: 'var(--accent-text)' }} />
-            <span style={{ fontWeight: 650, fontSize: 13 }}>Семантическая память</span>
+            <span style={{ fontWeight: 650, fontSize: 13 }}>Память по смыслу</span>
           </div>
           <div style={{ fontSize: 12, color: 'var(--text-1)', marginBottom: 10, lineHeight: 1.5 }}>
             Поиск по <b>смыслу</b>, а не по словам: спросишь «что я говорил про работу?» — Kira найдёт нужный

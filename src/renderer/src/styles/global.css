@@ -345,6 +345,26 @@ select option {
   animation: fadeUp 0.3s ease both;
 }
 
+/* Вращение для иконок-индикаторов (<Loader2 className="spin" />).
+   Класс использовался в семи местах, но НИКОГДА не был определён — все эти
+   индикаторы просто висели неподвижно, и загрузка выглядела «зависшей». */
+.spin {
+  animation: spin 0.8s linear infinite;
+}
+
+/* Ссылка-кнопка внутри текста (например, в мастере знакомства) */
+.btn-link {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  color: var(--accent-text);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.btn-link:hover { color: #fff; }
+
 .spinner {
   width: 16px;
   height: 16px;

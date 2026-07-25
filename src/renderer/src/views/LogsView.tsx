@@ -45,7 +45,7 @@ export function LogsView() {
   return (
     <div className="view-container" style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 16 }}>
-        <h2 className="section-title">Логи</h2>
+        <h2 className="section-title">Журнал</h2>
         <span className="badge">{logs.length}</span>
         <div style={{ position: 'relative', marginLeft: 'auto' }}>
           <Search size={14} style={{ position: 'absolute', left: 11, top: 10, color: 'var(--text-2)' }} />

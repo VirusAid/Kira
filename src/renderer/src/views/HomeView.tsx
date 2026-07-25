@@ -70,7 +70,7 @@ export function HomeView() {
           onClick={() => setView('chat')} />
         <StatCard icon={<FolderKanban size={18} />} value={activeProjects.length} label="активных проектов"
           onClick={() => setView('projects')} />
-        <StatCard icon={<Zap size={18} />} value={protocols.length} label="протоколов"
+        <StatCard icon={<Zap size={18} />} value={protocols.length} label="сценариев"
           onClick={() => setView('protocols')} />
         <StatCard icon={<Sparkles size={18} />} value={abilities.length} label="навыков"
           onClick={() => setView('abilities')} />
@@ -190,8 +190,8 @@ export function HomeView() {
 
         {/* Быстрые протоколы */}
         <section className="card anim-in">
-          <SectionHeader title="Протоколы" onMore={() => setView('protocols')} />
-          {protocols.length === 0 && <Empty text="Протоколы — последовательности действий одним кликом" />}
+          <SectionHeader title="Сценарии" onMore={() => setView('protocols')} />
+          {protocols.length === 0 && <Empty text="Сценарии — последовательности действий одним кликом" />}
           {protocols.slice(0, 4).map((p) => (
             <div key={p.id} style={styles.listItem}>
               <Zap size={14} style={{ color: 'var(--accent-text)', flexShrink: 0 }} />

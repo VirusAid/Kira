@@ -43,7 +43,7 @@ export function IntegrationsView() {
     <div className="view-container">
       <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 8 }}>
         <Plug size={22} style={{ color: 'var(--accent-text)' }} />
-        <h2 className="section-title">Интеграции</h2>
+        <h2 className="section-title">Связи</h2>
       </div>
       <p className="muted" style={{ marginBottom: 22 }}>
         Подключи сервисы — и Kira будет работать с твоими заметками, календарём и задачами. Всё подключается тобой, ключи хранятся локально.

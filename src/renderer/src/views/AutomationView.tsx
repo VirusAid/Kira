@@ -29,7 +29,7 @@ export function AutomationView() {
   return (
     <div className="view-container">
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
-        <h2 className="section-title">Автоматизация</h2>
+        <h2 className="section-title">Расписание</h2>
         <span className="badge">{automations.filter((a) => a.enabled).length} активных</span>
         <button className="btn btn-primary" style={{ marginLeft: 'auto' }} onClick={() => setEditing('new')}>
           <Plus size={15} /> Новый сценарий

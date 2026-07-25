@@ -34,7 +34,7 @@ export function ProtocolsView() {
   return (
     <div className="view-container">
       <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 20 }}>
-        <h2 className="section-title">Протоколы</h2>
+        <h2 className="section-title">Сценарии</h2>
         <span className="badge">{protocols.length}</span>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <button className="btn btn-ghost" onClick={() => void kira.protocols.import().then(() => load())}>
@@ -49,7 +49,7 @@ export function ProtocolsView() {
       {protocols.length === 0 && (
         <div className="empty-state">
           <Zap size={40} strokeWidth={1.2} />
-          <p>Протокол — последовательность действий одним кликом.<br />
+          <p>Сценарий — последовательность действий одним кликом.<br />
             Например: «Рабочее утро» — открыть браузер, Discord и проект.</p>
         </div>
       )}
