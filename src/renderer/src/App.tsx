@@ -119,6 +119,16 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey)
   }, [setSearchOpen])
 
+  // Сцена реагирует на Киру: состояние голоса уходит в data-voice, громкость —
+  // в --voice-level. Дальше всё делает CSS (аврора, ореол эмблемы, свет).
+  // Так «живость» не требует пробрасывать голос через пропсы во все экраны.
+  useEffect(() => {
+    document.documentElement.dataset.voice = voice.state
+  }, [voice.state])
+  useEffect(() => {
+    document.documentElement.style.setProperty('--voice-level', voice.level.toFixed(3))
+  }, [voice.level])
+
   // Параллакс и свет под курсором: пишем позицию мыши (0..1) в CSS-переменные,
   // а всю отрисовку делает CSS. Обновляем не чаще кадра (rAF) — иначе на каждом
   // движении мыши дёргался бы layout. Значения читают .aurora/.hud-grid/.cursor-glow.

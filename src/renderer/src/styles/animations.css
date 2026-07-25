@@ -269,6 +269,74 @@
   box-shadow: 0 0 18px rgba(139, 92, 246, 0.35);
 }
 
+/* ── Реактивность: сцена дышит вместе с Кирой ──────────────────────────── */
+/* App.tsx пишет состояние в data-voice, а громкость (0..1) в --voice-level.
+   Дальше всё делает CSS — поэтому «живость» доступна на любом экране, без
+   проброса голоса через пропсы. Меняем только composite-свойства
+   (opacity/filter/transform), чтобы не трогать layout. */
+
+.aurora span {
+  transition: opacity 0.35s ease, filter 0.45s ease;
+}
+
+/* слушает — сцена чуть светлеет, Кира «внимательна» */
+html[data-voice='listening'] .aurora span { opacity: 0.62; }
+
+/* пользователь говорит — свет пульсирует в такт голосу */
+html[data-voice='recording'] .aurora span {
+  opacity: calc(0.5 + var(--voice-level, 0) * 0.85);
+  filter: blur(80px) brightness(calc(1 + var(--voice-level, 0) * 0.7));
+  transition: opacity 0.12s linear, filter 0.12s linear;
+}
+
+/* думает — холодный сдвиг оттенка: видно, что идёт обработка */
+html[data-voice='thinking'] .aurora span,
+html[data-voice='transcribing'] .aurora span {
+  filter: blur(80px) hue-rotate(-30deg) saturate(1.2);
+  opacity: 0.58;
+}
+
+/* говорит — тёплое усиление */
+html[data-voice='speaking'] .aurora span {
+  filter: blur(80px) brightness(1.28);
+  opacity: 0.7;
+}
+
+/* Угловые HUD-скобки как индикатор состояния: рамка всего приложения
+   реагирует на голос. Ноль нового DOM — переиспользуем то, что уже есть. */
+.hud-corners span { transition: opacity 0.3s ease, border-color 0.35s ease, filter 0.2s ease; }
+html[data-voice='listening'] .hud-corners span { opacity: 0.8; }
+html[data-voice='recording'] .hud-corners span {
+  opacity: calc(0.6 + var(--voice-level, 0) * 0.4);
+  filter: drop-shadow(0 0 calc(6px + var(--voice-level, 0) * 16px) var(--accent-glow));
+  transition: opacity 0.1s linear, filter 0.1s linear;
+}
+html[data-voice='thinking'] .hud-corners span,
+html[data-voice='transcribing'] .hud-corners span { border-color: var(--info); opacity: 0.75; }
+html[data-voice='speaking'] .hud-corners span { border-color: #a78bfa; opacity: 0.9; }
+
+/* Ореол под эмблемой на главной — пульсирует вместе с голосом */
+html[data-voice='listening'] .hero-emblem::after { opacity: 0.8; }
+html[data-voice='recording'] .hero-emblem::after {
+  opacity: calc(0.55 + var(--voice-level, 0) * 0.5);
+  transform: scale(calc(1 + var(--voice-level, 0) * 0.35));
+  animation: none;
+  transition: transform 0.1s linear, opacity 0.1s linear;
+}
+html[data-voice='thinking'] .hero-emblem::after,
+html[data-voice='transcribing'] .hero-emblem::after {
+  background: radial-gradient(circle, rgba(96, 165, 250, 0.5), transparent 68%);
+}
+html[data-voice='speaking'] .hero-emblem::after { opacity: 0.95; }
+
+/* в выключенном режиме анимаций реактивность не нужна */
+html[data-anim='off'] .aurora span,
+html[data-anim='off'] .hud-corners span,
+html[data-anim='off'] .hero-emblem::after {
+  filter: none !important;
+  transform: none !important;
+}
+
 /* ── HUD-слой: телеметрия, рамки, бегущий свет ─────────────────────────── */
 
 /* Полоска нагрузки как живой поток энергии: внутри заливки текут диагональные
