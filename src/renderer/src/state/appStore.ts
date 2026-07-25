@@ -37,7 +37,7 @@ interface AppState {
 }
 
 export const useAppStore = create<AppState>((set, get) => ({
-  view: 'memory',
+  view: 'home',
   rightPanelOpen: true,
   searchOpen: false,
   settings: null,

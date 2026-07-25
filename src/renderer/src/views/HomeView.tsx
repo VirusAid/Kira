@@ -6,6 +6,7 @@ import { useAppStore } from '@/state/appStore'
 import { useChatStore } from '@/state/chatStore'
 import { useProjectStore, useProtocolStore, useMemoryStore, useLogStore, useAbilityStore } from '@/state/dataStores'
 import { KiraEmblem } from '@/components/KiraEmblem'
+import { plural } from '@shared/plural'
 
 export function HomeView() {
   const { settings, setView, stats, refreshStats, setOpenProject } = useAppStore()
@@ -66,15 +67,15 @@ export function HomeView() {
 
       {/* Статистика */}
       <div className="stagger" style={styles.statsRow}>
-        <StatCard icon={<MessageSquare size={18} />} value={chats.length} label="диалогов"
+        <StatCard icon={<MessageSquare size={18} />} value={chats.length} label={plural(chats.length, 'диалог', 'диалога', 'диалогов')}
           onClick={() => setView('chat')} />
-        <StatCard icon={<FolderKanban size={18} />} value={activeProjects.length} label="активных проектов"
+        <StatCard icon={<FolderKanban size={18} />} value={activeProjects.length} label={`${plural(activeProjects.length, 'активный', 'активных', 'активных')} ${plural(activeProjects.length, 'проект', 'проекта', 'проектов')}`}
           onClick={() => setView('projects')} />
-        <StatCard icon={<Zap size={18} />} value={protocols.length} label="сценариев"
+        <StatCard icon={<Zap size={18} />} value={protocols.length} label={plural(protocols.length, 'сценарий', 'сценария', 'сценариев')}
           onClick={() => setView('protocols')} />
-        <StatCard icon={<Sparkles size={18} />} value={abilities.length} label="навыков"
+        <StatCard icon={<Sparkles size={18} />} value={abilities.length} label={plural(abilities.length, 'навык', 'навыка', 'навыков')}
           onClick={() => setView('abilities')} />
-        <StatCard icon={<Brain size={18} />} value={memory.length} label="записей памяти"
+        <StatCard icon={<Brain size={18} />} value={memory.length} label={`${plural(memory.length, 'запись', 'записи', 'записей')} в памяти`}
           onClick={() => setView('memory')} />
         {stats && (
           // занимает две колонки сетки: раньше метрики сжимались в узкий столбик
@@ -182,7 +183,7 @@ export function HomeView() {
               <MessageSquare size={14} style={{ color: 'var(--accent-text)', flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                 <div style={{ fontWeight: 600, fontSize: 13.5, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{c.title}</div>
-                <div className="muted">{c.messageCount} сообщений · {timeAgo(c.updatedAt)}</div>
+                <div className="muted">{c.messageCount} {plural(c.messageCount, 'сообщение', 'сообщения', 'сообщений')} · {timeAgo(c.updatedAt)}</div>
               </div>
             </button>
           ))}
@@ -197,7 +198,7 @@ export function HomeView() {
               <Zap size={14} style={{ color: 'var(--accent-text)', flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
                 <div style={{ fontWeight: 600, fontSize: 13.5 }}>{p.name}</div>
-                <div className="muted">{p.steps.length} шагов · запусков: {p.runCount}</div>
+                <div className="muted">{p.steps.length} {plural(p.steps.length, 'шаг', 'шага', 'шагов')} · запусков: {p.runCount}</div>
               </div>
               <button className="icon-btn" title="Запустить" onClick={() => void run(p.id)}>
                 <Play size={14} />

@@ -177,6 +177,8 @@ function OfflineBrainCard({ settings, update }: SectionProps) {
 
   const hw = status?.hardware
   const installed = status?.installed
+  // показываем ЧЕЛОВЕЧЕСКОЕ имя модели, а не технический тег вида «qwen3:8b»
+  const recommendedLabel = models.find((m) => m.tag === status?.recommended)?.label ?? ''
   const ready = status?.running && (status?.models.length ?? 0) > 0
 
   return (
@@ -212,7 +214,7 @@ function OfflineBrainCard({ settings, update }: SectionProps) {
       {!installed ? (
         <div style={{ background: 'var(--bg-3)', borderRadius: 10, padding: '12px 14px', fontSize: 12.5, lineHeight: 1.5 }}>
           Настрою за один клик — подберу и загружу подходящий разум под твой компьютер
-          {status?.recommended && <b> ({status.recommended})</b>}. Один раз, дальше работает без интернета.
+          {recommendedLabel && <b> — «{recommendedLabel}»</b>}. Один раз, дальше работает без интернета.
           <div style={{ marginTop: 10 }}>
             <button className="btn btn-primary press" disabled={busy} onClick={() => void setup()}>
               {busy ? <Loader2 size={14} className="spin" /> : <Download size={14} />} Настроить
@@ -248,7 +250,7 @@ function OfflineBrainCard({ settings, update }: SectionProps) {
                 <div key={m.tag} style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 10px', borderRadius: 9, background: 'var(--bg-2)', border: isRec ? '1px solid var(--accent)' : '1px solid var(--border)' }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ fontSize: 12.5, fontWeight: 600 }}>{m.label} {isRec && <span style={{ fontSize: 10, color: 'var(--accent-text)' }}>· рекомендую</span>}{m.vision && <span style={{ fontSize: 10, color: '#22c55e' }}> · 👁 видит экран</span>}</div>
-                    <div className="muted" style={{ fontSize: 10.5 }}>{m.tag} · ~{m.sizeGb} ГБ · {m.note}</div>
+                    <div className="muted" style={{ fontSize: 10.5 }}>~{m.sizeGb} ГБ · {m.note}</div>
                     {isPulling && (
                       <div style={{ marginTop: 5 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 3 }}>
