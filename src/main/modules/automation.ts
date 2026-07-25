@@ -8,6 +8,7 @@ import cron, { ScheduledTask } from 'node-cron'
 import chokidar, { FSWatcher } from 'chokidar'
 import { db } from './db'
 import { logger } from './logger'
+import { plural } from '../../shared/plural'
 import { runProtocol } from './protocols'
 import type { Automation } from '../../shared/types'
 
@@ -87,7 +88,8 @@ export function initAutomations(): void {
       setTimeout(() => fire(a, 'запуск Kira'), 4000)
     }
   }
-  logger.info('automation', `Автоматизация активна: ${automations.filter((a) => a.enabled).length} сценариев`)
+  const activeCount = automations.filter((a) => a.enabled).length
+  logger.info('automation', `Расписание активно: ${activeCount} ${plural(activeCount, 'правило', 'правила', 'правил')}`)
 }
 
 export function shutdownAutomations(): void {

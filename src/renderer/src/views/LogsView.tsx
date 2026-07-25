@@ -21,6 +21,41 @@ const LEVEL_COLOR: Record<LogLevel, string> = {
   error: 'var(--err)'
 }
 
+/**
+ * Внутреннее имя подсистемы → понятное пользователю.
+ * В журнале светились «silero», «vosk-stt», «local-llm» — названия движков,
+ * знать которые пользователю незачем. Неизвестные источники показываем как есть.
+ */
+const SOURCE_NAMES: Record<string, string> = {
+  kira: 'Kira',
+  core: 'ядро',
+  silero: 'голос',
+  'vosk-stt': 'слух',
+  wake: 'слух',
+  'local-llm': 'разум',
+  chat: 'диалог',
+  vision: 'зрение',
+  ocr: 'зрение',
+  semantic: 'память',
+  memory: 'память',
+  pulse: 'забота',
+  routines: 'привычки',
+  reminders: 'напоминания',
+  automation: 'расписание',
+  clipboard: 'буфер',
+  system: 'система',
+  files: 'файлы',
+  worker: 'фон',
+  speaker: 'узнавание',
+  tts: 'голос',
+  obsidian: 'заметки',
+  telegram: 'Telegram',
+  discord: 'Discord'
+}
+function sourceName(s: string): string {
+  return SOURCE_NAMES[s] ?? s
+}
+
 export function LogsView() {
   const { logs, clear } = useLogStore()
   const [filter, setFilter] = useState<LogLevel | 'all'>('all')
@@ -31,7 +66,7 @@ export function LogsView() {
     if (filter !== 'all') list = list.filter((l) => l.level === filter)
     if (query.trim()) {
       const q = query.toLowerCase()
-      list = list.filter((l) => `${l.message} ${l.source}`.toLowerCase().includes(q))
+      list = list.filter((l) => `${l.message} ${sourceName(l.source)}`.toLowerCase().includes(q))
     }
     return list
   }, [logs, filter, query])
@@ -49,7 +84,7 @@ export function LogsView() {
         <span className="badge">{logs.length}</span>
         <div style={{ position: 'relative', marginLeft: 'auto' }}>
           <Search size={14} style={{ position: 'absolute', left: 11, top: 10, color: 'var(--text-2)' }} />
-          <input style={{ paddingLeft: 32, width: 240 }} placeholder="Поиск по логам"
+          <input style={{ paddingLeft: 32, width: 240 }} placeholder="Поиск по журналу"
             value={query} onChange={(e) => setQuery(e.target.value)} />
         </div>
         <button className="btn btn-danger" onClick={() => void clear()}>
@@ -91,7 +126,7 @@ export function LogsView() {
             <span style={{ color: LEVEL_COLOR[l.level], flexShrink: 0, width: 62, fontWeight: 600 }}>
               {l.level.toUpperCase()}
             </span>
-            <span style={{ color: 'var(--text-2)', flexShrink: 0, width: 78 }}>{l.source}</span>
+            <span style={{ color: 'var(--text-2)', flexShrink: 0, width: 78 }}>{sourceName(l.source)}</span>
             <span style={{ color: 'var(--text-1)', wordBreak: 'break-word' }} className="selectable">{l.message}</span>
           </div>
         ))}

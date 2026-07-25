@@ -177,7 +177,7 @@ if (!gotLock) {
     void initTelegramUser(() => mainWindow)
 
     const s = getSettings()
-    logger.info('kira', `Kira запущена. Провайдер: ${s.provider}, модель: ${s.providers[s.provider].model}`)
+    logger.info('kira', `Kira готова к работе. Думает ${s.preferLocal ? 'на этом компьютере' : 'через облако'}`)
 
     app.on('activate', () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow()
