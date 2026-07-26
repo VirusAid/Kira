@@ -14,6 +14,7 @@ import { registry } from './registry'
 import { contentOf } from './types'
 import { semanticIntent } from './semanticIntent'
 import { exactLearned } from './learning'
+import { livelyReply } from './persona'
 import type { ActionContext, ExecResult, Intent, KiraAction } from './types'
 
 export interface HandleOutcome {
@@ -344,9 +345,15 @@ class CommandEngine {
     // confirmText (свой готовый ответ действия) имеет приоритет.
     const body = contentOf(result)
     const dataStr = body ? `\n${body}` : ''
+    // Готовую фразу действия произносим ГОЛОСОМ выбранного характера: раньше
+    // тут звучала одна и та же константа независимо от того, какую Киру человек
+    // себе выбрал, — а именно этот путь и есть большая часть общения.
+    const confirm = action.confirmText?.(args)
     return {
       handled: true, intent: 'local', actionId: action.id, result,
-      reply: result.ok ? (action.confirmText?.(args) ?? result.message + dataStr) : result.message
+      reply: result.ok
+        ? (confirm !== undefined ? livelyReply(confirm) : result.message + dataStr)
+        : result.message
     }
   }
 }

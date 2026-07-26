@@ -9,6 +9,7 @@ import {
   noteMiss, listLearned, learnedDocs, forgetLearned, noteCorrection, looksLikeCorrection, exactLearned
 } from '../src/main/core/learning'
 import { contentOf } from '../src/main/core/types'
+import { pickReply, resetPersonaState, hasVariants } from '../src/main/core/persona'
 import { transcribeHint } from '../src/main/core/sttHint'
 import { nameMatches } from '../src/main/modules/telegramUser'
 import * as fs from 'fs'
@@ -391,6 +392,72 @@ async function level2(): Promise<void> {
   await commandEngine.executeById('snippet_save', { name: newSnip, text: 'разовый' }, { source: 'agent' })
   await commandEngine.undoLast({ source: 'chat' })
   t('отмена: новый сниппет удалён, а не оставлен пустым', getSnippet(newSnip).ok === false)
+
+  // ХАРАКТЕР. Local First сделал команды мгновенными ценой безликости: ядро
+  // отвечало одной и той же константой, каким бы ни был выбранный характер.
+  {
+    resetPersonaState()
+    const ctx = { streak: 1, hour: 12, firstInAWhile: false }
+    t('характер: «деловая» и «минимализм» остаются сухими',
+      pickReply('Открываю', 'сухой', ctx) === 'Открываю' && pickReply('Готово', 'сухой', ctx) === 'Готово')
+
+    // подряд идущие ответы не должны повторяться — именно повтор читается
+    // как «заело», поэтому варианты перебираются по кругу, а не случайно
+    const row = [0, 1, 2].map(() => pickReply('Готово', 'тёплый', ctx))
+    t('характер: подряд не повторяется', new Set(row).size === row.length, '-> ' + row.join(' / '))
+
+    // Продолжение фразы сохраняется, и вариант с ним СОГЛАСУЕТСЯ: короткий
+    // отклик уместен сам по себе, но «Момент корзину» — брак.
+    resetPersonaState()
+    const withTail = [0, 1, 2, 3].map(() => pickReply('Открываю корзину', 'озорной', ctx))
+    t('характер: продолжение фразы не теряется',
+      withTail.every((r) => r.endsWith(' корзину')), '-> ' + withTail.join(' / '))
+    t('характер: с дополнением остаются только глаголы',
+      withTail.every((r) => /^(Открываю|Открыла|Уже открываю|Оп, открыла|Сейчас открою|Секунду — открываю) корзину$/.test(r)),
+      '-> ' + withTail.join(' / '))
+
+    // очередь команд: человек работает, а не общается — самое короткое
+    resetPersonaState()
+    const busy = { streak: 6, hour: 12, firstInAWhile: false }
+    const quick = [0, 1, 2].map(() => pickReply('Готово', 'тёплый', busy))
+    t('характер: в очереди команд отвечает коротко и одинаково',
+      quick.every((r) => r === 'Готово'), '-> ' + quick.join(' / '))
+
+    // Встреча после перерыва: здоровается один раз и только там, где это
+    // свойственно характеру. «Деловой» приветствие — лишний шум.
+    resetPersonaState()
+    const backMorning = pickReply('Готово', 'тёплый', { streak: 1, hour: 9, firstInAWhile: true })
+    const backEvening = pickReply('Готово', 'озорной', { streak: 1, hour: 20, firstInAWhile: true })
+    t('контекст: после перерыва здоровается по времени суток',
+      backMorning.startsWith('Доброе утро') && backEvening.startsWith('Вечер добрый'),
+      '-> ' + backMorning + ' / ' + backEvening)
+    t('контекст: следом уже не здоровается',
+      !pickReply('Готово', 'тёплый', ctx).includes('утро'))
+    t('контекст: деловой характер не здоровается',
+      pickReply('Готово', 'обычный', { streak: 1, hour: 9, firstInAWhile: true }) === 'Готово' ||
+      !pickReply('Готово', 'обычный', { streak: 1, hour: 9, firstInAWhile: true }).includes('утро'))
+    t('контекст: длинную фразу приветствием не утяжеляет',
+      !pickReply('Индексирую документы, это займёт немного времени', 'тёплый',
+        { streak: 1, hour: 9, firstInAWhile: true }).startsWith('Доброе'))
+
+    // незнакомая фраза остаётся собой — безопасное поведение по умолчанию
+    t('характер: незнакомую фразу не выдумывает',
+      pickReply('Перевожу в гибернацию', 'озорной', ctx) === 'Перевожу в гибернацию')
+
+    // Таблица привязана к фразам действий по тексту, и разойтись они могут
+    // молча: характер просто перестанет звучать, и никто не заметит.
+    const spoken = new Set<string>()
+    for (const a of actions) {
+      const phrase = a.confirmText?.({})
+      if (phrase) spoken.add(phrase)
+    }
+    // параметрические фразы («Громкость N%») привязать по тексту нельзя —
+    // считаем только постоянные
+    const missing = [...spoken].filter((p) => !p.includes('undefined') && !hasVariants(p))
+    t('характер: звучит в большинстве ответов действий',
+      missing.length <= spoken.size / 4,
+      `без вариантов ${missing.length} из ${spoken.size}: ${missing.join(', ')}`)
+  }
 
   // Не хватает обязательного аргумента — ядро спрашивает и показывает пример,
   // а не подставляет что-нибудь на своё усмотрение: угаданный файл или

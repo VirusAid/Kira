@@ -1,7 +1,12 @@
 const path = require('path')
 const os = require('os')
 module.exports = {
-  app: { getPath: (n) => path.join(os.tmpdir(), 'kira-core-test', n), isPackaged: false },
+  app: {
+    getPath: (n) => path.join(os.tmpdir(), 'kira-core-test', n),
+    isPackaged: false,
+    // настройки при сохранении трогают автозапуск — в тестах это пустышка
+    setLoginItemSettings: () => {}
+  },
   shell: {
     openPath: async () => '',
     openExternal: async () => {},
