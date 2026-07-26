@@ -62,6 +62,76 @@ export function recentDecisions(limit = 20): Decision[] {
   return [...decisions].reverse().slice(0, limit)
 }
 
+/** Слова-связки, которые никогда не являются аргументом сами по себе. */
+const FILLER = new Set([
+  'мне', 'мне-ка', 'ка', 'пожалуйста', 'плиз', 'давай', 'быстро', 'сейчас', 'потом',
+  'что', 'чтото', 'нибудь', 'какой', 'какую', 'какие', 'там', 'тут', 'вот', 'бы',
+  'же', 'ну', 'а', 'и', 'в', 'на', 'по', 'для', 'про', 'о', 'об', 'с', 'у', 'к'
+])
+
+/**
+ * Достать аргумент из фразы, вычтя «командную» часть.
+ *
+ * Смысловой слой сказал, ЧТО делать, но не сказал, с чем. Берём исходную фразу
+ * и убираем слова команды и связки. Остаток — то, ради чего команда:
+ * «поищи-ка в сети рецепт борща» → «рецепт борща».
+ *
+ * ВАЖНО: вычитаем не только совпавшую фразу, но ВЕСЬ словарь действия (его
+ * примеры, псевдонимы, фразы). Иначе синоним, которого не было в совпавшей
+ * фразе, оставался бы в аргументе: совпало «найди в интернете», а человек
+ * сказал «поищи» — и поиск уходил бы по «поищи рецепт борща».
+ *
+ * Регистр сохраняем (названия треков, папок): режем оригинал, сравниваем по
+ * свёрнутой форме.
+ */
+export function extractArg(rawText: string, actionWords: Iterable<string>): string {
+  // Сравниваем по ОСНОВЕ: русская морфология («папка/папку», «музыка/музыку»)
+  // рушит точное совпадение, а полноценная лемматизация здесь избыточна.
+  // Частицы через дефис («поищи-ка») тоже отбрасываем.
+  const fold = (w: string): string => w.toLowerCase().replace(/ё/g, 'е').replace(/[^\wа-я]/gi, '')
+  const stem = (w: string): string => {
+    const f = fold(w.split('-')[0])
+    // 4 символа — минимум, при котором «папка»/«папку» и «музыка»/«музыку»
+    // сходятся, а разные слова ещё не начинают склеиваться
+    return f.length > 4 ? f.slice(0, 4) : f
+  }
+
+  /*
+   * Командное слово — то, что НАЧИНАЕТ какую-то фразу действия (глагол) либо
+   * встречается в НЕСКОЛЬКИХ фразах (служебный каркас вроде «в интернете»).
+   *
+   * Простое «все слова из примеров» не годится: в примерах сидят образцы
+   * аргументов («открой загрузки», «загугли рецепт борща») — по ним мы бы
+   * срезали сам аргумент. Одноразовое слово из одного примера почти всегда
+   * образец аргумента, а не команда.
+   */
+  const seen = new Map<string, number>()
+  const starters = new Set<string>()
+  for (const phrase of actionWords) {
+    const words = phrase.split(/\s+/).map(stem).filter(Boolean)
+    if (words[0]) starters.add(words[0])
+    for (const w of new Set(words)) seen.set(w, (seen.get(w) ?? 0) + 1)
+  }
+  const commandWords = new Set<string>(starters)
+  for (const [w, n] of seen) if (n >= 2) commandWords.add(w)
+
+  // Срезаем командный ПРЕФИКС и останавливаемся на первом «своём» слове.
+  // Вычитать слова по всей фразе нельзя: в примерах действий сидят образцы
+  // аргументов («загугли рецепт борща»), и такой поиск съел бы сам аргумент.
+  // В русских командах аргумент всегда идёт после глагола, поэтому префикс —
+  // надёжный и предсказуемый признак.
+  const words = rawText.trim().split(/\s+/)
+  let start = 0
+  while (start < words.length) {
+    const f = fold(words[start])
+    const st = stem(words[start])
+    if (!f) { start++; continue }
+    if (commandWords.has(st) || FILLER.has(f)) { start++; continue }
+    break
+  }
+  return words.slice(start).join(' ').replace(/^[\s,.!?—-]+|[\s,.!?]+$/g, '').trim()
+}
+
 /** Последнее отменяемое действие — для «отмени»/undo_last. */
 interface UndoableRun {
   action: KiraAction
@@ -103,9 +173,28 @@ class CommandEngine {
       if (probe.match) {
         const action = registry.get(probe.match.actionId)
         if (action) {
-          const outcome = await this.run(action, {}, ctx)
+          // Действию нужен аргумент — достаём его из фразы. Не достали (человек
+          // сказал только «поищи») — выполнять нечего, пусть спросит облако.
+          const args: Record<string, string> = {}
+          const argName = probe.match.needsArg
+          if (argName) {
+            // весь словарь действия: примеры, псевдонимы, фразы и совпавшая фраза
+            const vocabulary = [
+              ...action.examples, ...action.aliases, ...(action.phrases ?? []),
+              probe.match.docText ?? ''
+            ]
+            const value = extractArg(text, vocabulary)
+            if (!value) {
+              trace({ at: Date.now(), text, route: 'облако', actionId: action.id, semantic: sem, why: `по смыслу это «${action.id}», но не видно, с чем работать` })
+              return { handled: false, intent: 'ai' }
+            }
+            args[argName] = value
+          }
+
+          const outcome = await this.run(action, args, ctx)
           if (outcome.result?.ok || !action.softFail) {
-            trace({ at: Date.now(), text, route: 'смысл', actionId: action.id, semantic: sem, why: 'понято по смыслу' })
+            const withArg = argName ? ` · ${argName}=«${args[argName]}»` : ''
+            trace({ at: Date.now(), text, route: 'смысл', actionId: action.id, semantic: sem, why: `понято по смыслу${withArg}` })
             return outcome
           }
           trace({ at: Date.now(), text, route: 'облако', actionId: action.id, semantic: sem, why: 'по смыслу нашлось, но действие отказалось' })

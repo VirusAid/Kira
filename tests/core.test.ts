@@ -1,5 +1,5 @@
 /** Полный тестовый прогон Kira Core (временный файл, удаляется после). */
-import { commandEngine } from '../src/main/core/engine'
+import { commandEngine, extractArg } from '../src/main/core/engine'
 import { registry } from '../src/main/core/registry'
 import { actions } from '../src/main/core/actions'
 import { actionHistory } from '../src/main/core/history'
@@ -179,13 +179,44 @@ import { semanticIntent } from '../src/main/core/semanticIntent'
   const ids = new Set(docs.map((d) => d.id))
   // опасные и требующие обяз. аргументов действия НЕ должны попадать в индекс
   t('semanticDocs без опасных (shutdown)', !ids.has('shutdown_pc') && !ids.has('restart_pc'))
-  t('semanticDocs без обяз.-арг (open_url/create_folder)', !ids.has('open_url') && !ids.has('create_folder'))
+  t('semanticDocs включает действия с ОДНИМ аргументом', ids.has('open_url') && ids.has('web_search'))
   t('semanticDocs содержит безопасные (weather/volume_up)', ids.has('weather') && ids.has('volume_up'))
+  // Инвариант безопасности: смыслу доступны только безопасные действия и не
+  // более ОДНОГО обязательного аргумента — угадать сразу два слота нельзя.
   const allEligible = docs.every((d) => {
     const a = registry.get(d.id)!
-    return a && !a.dangerous && !a.args.some((arg) => arg.required)
+    return a && !a.dangerous && !a.noSemantic && a.args.filter((arg) => arg.required).length <= 1
   })
-  t('semanticDocs: все действия безопасны и без обяз. аргументов', allEligible)
+  t('semanticDocs: безопасны и максимум один обязательный аргумент', allEligible)
+  const withArg = docs.filter((d) => registry.get(d.id)!.args.some((a) => a.required))
+  t('semanticDocs: действия с аргументом реально появились', withArg.length > 0,
+    'таких фраз: ' + withArg.length)
+
+  // Извлечение аргумента: смысл сказал ЧТО делать, а «с чем» вычитается из
+  // фразы. Проверяем НАСТОЯЩУЮ функцию движка, а не её копию в тесте —
+  // копия однажды уже разошлась с реальностью и дала ложный провал.
+  {
+    const ws = registry.get('web_search')!
+    const searchWords = [...ws.examples, ...ws.aliases, ...(ws.phrases ?? [])]
+    t('аргумент: синоним глагола не попадает в запрос',
+      extractArg('поищи-ка в интернете рецепт борща', searchWords) === 'рецепт борща',
+      '-> ' + extractArg('поищи-ка в интернете рецепт борща', searchWords))
+
+    const pm = registry.get('play_music')!
+    const musicWords = [...pm.examples, ...pm.aliases, ...(pm.phrases ?? [])]
+    t('аргумент: регистр названия сохраняется',
+      extractArg('включи мне музыку Hollywood Undead', musicWords) === 'Hollywood Undead',
+      '-> ' + extractArg('включи мне музыку Hollywood Undead', musicWords))
+
+    const of = registry.get('open_folder')!
+    const folderWords = [...of.examples, ...of.aliases, ...(of.phrases ?? [])]
+    t('аргумент: связки отбрасываются',
+      extractArg('открой пожалуйста папку Загрузки', folderWords) === 'Загрузки',
+      '-> ' + extractArg('открой пожалуйста папку Загрузки', folderWords))
+
+    t('аргумент: пустой остаток = не выполняем',
+      extractArg('поищи в интернете', searchWords) === '')
+  }
 }
 
 // === УРОВЕНЬ 1f: семантика — быстрые отсечки (без модели) ===

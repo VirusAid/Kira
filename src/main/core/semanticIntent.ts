@@ -22,9 +22,24 @@ import { registry } from './registry'
  */
 const THRESHOLD = 0.84
 
+/**
+ * Планка для действий С АРГУМЕНТОМ. Выше обычной: если ошибиться в
+ * безаргументной команде — максимум лишний скриншот, а тут Kira поищет не то
+ * или откроет не ту папку. Лучше отдать такой запрос облаку.
+ */
+const ARG_THRESHOLD = 0.88
+
 export interface SemanticMatch {
   actionId: string
   score: number
+  /**
+   * Фраза действия, с которой совпал запрос. По ней движок вычитает «командную»
+   * часть и получает аргумент: «поищи в сети рецепт борща» минус «поищи в сети»
+   * = «рецепт борща».
+   */
+  docText?: string
+  /** Действию нужен аргумент — движок обязан его извлечь, иначе не выполнять. */
+  needsArg?: string
 }
 
 /**
@@ -89,11 +104,21 @@ export async function semanticIntent(raw: string): Promise<SemanticProbe> {
 
   const top = results[0]
   if (!top) return nope('нет кандидатов')
-  const best: SemanticMatch = { actionId: top.id, score: top.score }
+
+  // Действию нужен аргумент → планка выше: ошибиться с «что именно сделать»
+  // дороже, чем с безаргументной командой (там максимум лишний скриншот, тут —
+  // поиск не того или открытие не той папки).
+  const action = registry.get(top.id)
+  const requiredArg = action?.args.find((a) => a.required)?.name
+  const need = requiredArg ? ARG_THRESHOLD : THRESHOLD
+
+  const best: SemanticMatch = {
+    actionId: top.id, score: top.score, docText: top.text, needsArg: requiredArg
+  }
   return {
-    match: top.score >= THRESHOLD ? best : null,
+    match: top.score >= need ? best : null,
     best,
-    threshold: THRESHOLD,
-    skipped: top.score >= THRESHOLD ? undefined : 'ниже порога уверенности'
+    threshold: need,
+    skipped: top.score >= need ? undefined : 'ниже порога уверенности'
   }
 }

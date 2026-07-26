@@ -784,6 +784,7 @@ export const actions: KiraAction[] = [
     aliases: ['загугли', 'погугли', 'поиск в интернете'],
     patterns: [/^(?:загугли|погугли|найди в (?:интернете|гугле)|поищи в (?:интернете|гугле)|поиск)\s+(?<query>.+)$/],
     examples: ['загугли рецепт борща'],
+    phrases: ['поищи в интернете', 'найди в интернете', 'поищи в сети', 'найди в сети', 'поиск в гугле', 'посмотри в интернете'],
     args: [{ name: 'query', description: 'Что искать', required: true }],
     execute: (a) => SearchController.web(a.query ?? ''),
     confirmText: (a) => `Ищу: ${a.query}`

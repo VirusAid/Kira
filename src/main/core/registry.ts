@@ -63,7 +63,13 @@ class CommandRegistry {
     const docs: { id: string; text: string; label: string }[] = []
     for (const a of this.ordered) {
       if (a.dangerous || a.noSemantic) continue
-      if (a.args.some((arg) => arg.required)) continue
+      // Действия с ОДНИМ обязательным аргументом теперь тоже доступны смыслу:
+      // раньше их было 17 из 86, и «поищи-ка в сети рецепт борща» уходило в
+      // облако, хотя ядро умеет это мгновенно. Аргумент извлекается отдельно
+      // (см. engine), и для таких действий порог уверенности выше.
+      // С несколькими обязательными аргументами пока не работаем: угадать сразу
+      // два слота по смыслу слишком рискованно.
+      if (a.args.filter((arg) => arg.required).length > 1) continue
       const phrases = [...new Set([
         a.title.toLowerCase(), ...a.aliases, ...a.examples, ...(a.phrases ?? [])
       ])]
