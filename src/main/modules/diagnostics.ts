@@ -164,5 +164,25 @@ export async function diagnose(topicText?: string): Promise<{ checks: DiagCheck[
 export async function diagnoseReport(topicText?: string): Promise<ActionResult> {
   const { checks, summary } = await diagnose(topicText)
   const lines = checks.map((c) => `${c.ok ? '✅' : '⚠️'} ${c.name}: ${c.detail}${!c.ok && c.fix ? `\n   → ${c.fix}` : ''}`)
+
+  // Если спрашивают именно «почему не сработало/не поняла» — показываем, как
+  // ядро приняло последние решения. Раньше на такой вопрос ответить было нечем.
+  const t = (topicText ?? '').toLowerCase()
+  if (/не\s*(сработал|поняла|понял|распозна|выполнил)|почему.*(не|плохо)|мимо/.test(t)) {
+    try {
+      const { recentDecisions } = await import('../core/engine')
+      const recent = recentDecisions(6)
+      if (recent.length) {
+        lines.push('', 'Как я разбирала последние запросы:')
+        for (const d of recent) {
+          const sem = d.semantic
+            ? ` (по смыслу ближе всего «${d.semantic.actionId}», уверенность ${d.semantic.score.toFixed(2)} при нужных ${d.semantic.threshold})`
+            : ''
+          lines.push(`• «${d.text.slice(0, 45)}» → ${d.route}${sem} — ${d.why}`)
+        }
+      }
+    } catch { /* трассировка не критична для отчёта */ }
+  }
+
   return { ok: true, message: summary, content: lines.join('\n') }
 }

@@ -27,6 +27,41 @@ export interface HandleOutcome {
   denied?: boolean
 }
 
+/**
+ * След принятия решения по одному запросу.
+ *
+ * Раньше было невозможно ответить, ПОЧЕМУ запрос ушёл в облако: шаблон не
+ * подошёл? смысл не понял? понял, но чуть ниже порога? Из-за этого подбор
+ * порога был гаданием, а на жалобу «не сработало» нечего было ответить.
+ */
+export interface Decision {
+  at: number
+  text: string
+  /** Куда в итоге ушёл запрос. */
+  route: 'шаблон' | 'смысл' | 'облако' | 'агент'
+  actionId?: string
+  /** Лучший смысловой кандидат и его балл — даже если не сработал. */
+  semantic?: { actionId: string; score: number; threshold: number }
+  /** Человеческое объяснение. */
+  why: string
+}
+
+/** Кольцо последних решений — для диагностики и подбора порога. */
+const decisions: Decision[] = []
+const MAX_DECISIONS = 50
+
+function trace(d: Decision): void {
+  decisions.push(d)
+  if (decisions.length > MAX_DECISIONS) decisions.shift()
+  const sem = d.semantic ? ` · смысл ${d.semantic.actionId} ${d.semantic.score.toFixed(2)}/${d.semantic.threshold}` : ''
+  logger.info('core', `решение: «${d.text.slice(0, 40)}» → ${d.route}${d.actionId ? ` (${d.actionId})` : ''}${sem} — ${d.why}`)
+}
+
+/** Последние решения ядра (новые сверху) — для диагностики «почему не сработало». */
+export function recentDecisions(limit = 20): Decision[] {
+  return [...decisions].reverse().slice(0, limit)
+}
+
 /** Последнее отменяемое действие — для «отмени»/undo_last. */
 interface UndoableRun {
   action: KiraAction
@@ -42,33 +77,46 @@ class CommandEngine {
     const intent = parseIntent(text, registry.intentSpecs())
     if (intent.kind === 'local') {
       const action = registry.get(intent.actionId)
-      if (!action) return { handled: false, intent: 'ai' }
+      if (!action) {
+        trace({ at: Date.now(), text, route: 'облако', why: 'шаблон указал на неизвестное действие' })
+        return { handled: false, intent: 'ai' }
+      }
 
       const outcome = await this.run(action, intent.args, ctx)
       // мягкий отказ: эвристика не подтвердилась — пусть решает AI
       // (но отказ ПОЛЬЗОВАТЕЛЯ от опасного — окончателен, в AI не уходит)
       if (!outcome.result?.ok && action.softFail && !outcome.denied) {
-        logger.info('core', `«${action.id}» не сработал локально — передаю AI`)
+        trace({ at: Date.now(), text, route: 'облако', actionId: action.id, why: 'действие мягко отказалось — передаю дальше' })
         return { handled: false, intent: 'ai' }
       }
+      trace({ at: Date.now(), text, route: 'шаблон', actionId: action.id, why: 'точное совпадение шаблона' })
       return outcome
     }
 
     // regex промахнулся, но фраза может быть командой в непредусмотренной форме
     // — пробуем понять её СМЫСЛ через эмбеддинги (только для 'ai', не 'agent')
     if (intent.kind === 'ai') {
-      const sem = await semanticIntent(text)
-      if (sem) {
-        const action = registry.get(sem.actionId)
+      const probe = await semanticIntent(text)
+      const sem = probe.best
+        ? { actionId: probe.best.actionId, score: probe.best.score, threshold: probe.threshold }
+        : undefined
+      if (probe.match) {
+        const action = registry.get(probe.match.actionId)
         if (action) {
-          logger.info('core', `семантика: «${text}» → ${action.id} (${sem.score.toFixed(2)})`)
           const outcome = await this.run(action, {}, ctx)
-          // локально не вышло и действие «мягкое» — всё равно отдадим AI
-          if (outcome.result?.ok || !action.softFail) return outcome
+          if (outcome.result?.ok || !action.softFail) {
+            trace({ at: Date.now(), text, route: 'смысл', actionId: action.id, semantic: sem, why: 'понято по смыслу' })
+            return outcome
+          }
+          trace({ at: Date.now(), text, route: 'облако', actionId: action.id, semantic: sem, why: 'по смыслу нашлось, но действие отказалось' })
+          return { handled: false, intent: 'ai' }
         }
       }
+      trace({ at: Date.now(), text, route: 'облако', semantic: sem, why: probe.skipped ?? 'ядро не распознало' })
+      return { handled: false, intent: intent.kind }
     }
 
+    trace({ at: Date.now(), text, route: 'агент', why: 'похоже на составную задачу для агента' })
     return { handled: false, intent: intent.kind }
   }
 

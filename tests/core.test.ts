@@ -163,10 +163,16 @@ import { semanticIntent } from '../src/main/core/semanticIntent'
 // === УРОВЕНЬ 1f: семантика — быстрые отсечки (без модели) ===
 async function levelSemanticGuards(): Promise<void> {
   // эти вызовы обязаны вернуть null ДО обращения к модели (короткие отсечки)
-  t('семантика: пустая строка -> null', (await semanticIntent('')) === null)
-  t('семантика: составное «и» -> null', (await semanticIntent('выключи звук и свет')) === null)
-  t('семантика: перечисление через запятую -> null', (await semanticIntent('скриншот, потом отправь')) === null)
-  t('семантика: слишком длинно -> null', (await semanticIntent('а'.repeat(70))) === null)
+  t('семантика: пустая строка -> не выполняем', (await semanticIntent('')).match === null)
+  t('семантика: составное «и» -> не выполняем', (await semanticIntent('выключи звук и свет')).match === null)
+  t('семантика: перечисление через запятую -> не выполняем', (await semanticIntent('скриншот, потом отправь')).match === null)
+  t('семантика: слишком длинно -> не выполняем', (await semanticIntent('а'.repeat(70))).match === null)
+
+  // Трассировка: на каждый отказ должна быть внятная причина, иначе «почему не
+  // сработало» снова превращается в гадание
+  const probe = await semanticIntent('выключи звук и свет')
+  t('трассировка: отказ объяснён причиной', typeof probe.skipped === 'string' && probe.skipped.length > 3, '-> ' + probe.skipped)
+  t('трассировка: порог доступен для настройки', typeof probe.threshold === 'number' && probe.threshold > 0)
 }
 
 // === УРОВЕНЬ 2: Command Engine — реальные действия ===
