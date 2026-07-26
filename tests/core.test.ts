@@ -5,6 +5,7 @@ import { actions } from '../src/main/core/actions'
 import { actionHistory } from '../src/main/core/history'
 import { bus } from '../src/main/core/bus'
 import { parseIntent } from '../src/main/core/intent'
+import { noteMiss, listLearned, learnedDocs, forgetLearned } from '../src/main/core/learning'
 import { contentOf } from '../src/main/core/types'
 import * as fs from 'fs'
 import * as path from 'path'
@@ -217,6 +218,41 @@ import { semanticIntent } from '../src/main/core/semanticIntent'
     t('аргумент: пустой остаток = не выполняем',
       extractArg('поищи в интернете', searchWords) === '')
   }
+
+// ─── Обучение на промахах ───────────────────────────────────────────────────
+// Выученная ерунда будет срабатывать МОЛЧА, поэтому проверяем осторожность
+// не менее тщательно, чем само обучение.
+{
+  forgetLearned()
+  const before = registry.semanticDocs().length
+
+  // одно подтверждение — рано: случайность не должна закрепляться
+  noteMiss('врубай погромче звук', 'volume_up')
+  t('обучение: с первого раза фраза НЕ активна',
+    listLearned().every((p) => !p.active) && learnedDocs().length === 0)
+
+  // второе подтверждение — фраза начинает работать
+  noteMiss('врубай погромче звук', 'volume_up')
+  const active = listLearned().filter((p) => p.active)
+  t('обучение: со второго раза фраза активируется', active.length === 1,
+    '-> ' + JSON.stringify(active.map((p) => p.phrase + ' → ' + p.actionId)))
+  t('обучение: выученное попадает в смысловой индекс', learnedDocs().length === 1)
+
+  // опасное не учим никогда, сколько ни повторяй
+  noteMiss('снеси всё к чертям', 'shutdown_pc')
+  noteMiss('снеси всё к чертям', 'shutdown_pc')
+  t('обучение: опасное действие не выучивается',
+    listLearned().every((p) => p.actionId !== 'shutdown_pc'))
+
+  // длинные тексты — не команды
+  noteMiss('вот это очень длинная фраза которую я говорю просто так и она точно не команда', 'volume_up')
+  t('обучение: длинный текст не выучивается', listLearned().length === 1)
+
+  // забывание работает и чистит индекс
+  const forgotten = forgetLearned()
+  t('обучение: забывание убирает всё', forgotten === 1 && learnedDocs().length === 0)
+  t('обучение: индекс вернулся к исходному', registry.semanticDocs().length === before)
+}
 }
 
 // === УРОВЕНЬ 1f: семантика — быстрые отсечки (без модели) ===

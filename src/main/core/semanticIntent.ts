@@ -12,6 +12,7 @@
  */
 import { normalize } from './intent'
 import { registry } from './registry'
+import { learnedDocs, setLearningChangeHook } from './learning'
 
 /**
  * Порог косинусной близости (модель paraphrase-multilingual-MiniLM-L12-v2).
@@ -62,14 +63,22 @@ export interface SemanticProbe {
 
 let docsCache: { id: string; text: string; label: string }[] | null = null
 function docs(): { id: string; text: string; label: string }[] {
-  if (!docsCache) docsCache = registry.semanticDocs()
+  if (!docsCache) {
+    // К встроенным фразам добавляем ВЫУЧЕННЫЕ у этого пользователя — так Kira
+    // со временем начинает понимать именно его формулировки и всё реже ходит
+    // в облако. Кэш сбрасывается, когда выучена новая фраза (setLearningChangeHook).
+    docsCache = [...registry.semanticDocs(), ...learnedDocs()]
+  }
   return docsCache
 }
 
-/** Сбросить кэш документов (после регистрации новых действий). */
+/** Сбросить кэш документов (после регистрации действий или нового обучения). */
 export function resetSemanticIndex(): void {
   docsCache = null
 }
+
+// выучили новую фразу — индекс должен её подхватить
+setLearningChangeHook(resetSemanticIndex)
 
 /**
  * Пытается семантически распознать локальную команду.

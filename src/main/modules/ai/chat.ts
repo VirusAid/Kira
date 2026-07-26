@@ -209,6 +209,8 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
   // «громче», «скриншот»…) выполняются мгновенно и БЕЗ LLM. LLM — только
   // AI Router для того, что ядро не смогло обработать само.
   const lastUser = [...req.messages].reverse().find((m) => m.role === 'user')
+  /** Фраза, которую ядро НЕ поняло — материал для обучения (см. ниже). */
+  let missedPhrase = ''
   if (!req.imageBase64 && req.withTools !== false && typeof lastUser?.content === 'string') {
     try {
       const { commandEngine, initKiraCore } = await import('../../core')
@@ -229,6 +231,9 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
     } catch (err) {
       logger.warn('core', `Ядро пропустило запрос: ${(err as Error).message}`)
     }
+    // ядро не справилось — фраза станет материалом для обучения, если ниже
+    // нейросеть выполнит ровно одно действие успешно
+    missedPhrase = lastUser.content
   }
 
   const history: AIMessage[] = [
@@ -279,6 +284,10 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
   let idleRounds = 0
   const lastUserMsg = [...req.messages].reverse().find((m) => m.role === 'user')
   const userGoal = typeof lastUserMsg?.content === 'string' ? lastUserMsg.content.slice(0, 300) : ''
+  // Обучение на промахах: если ядро не поняло фразу, а нейросеть выполнила
+  // РОВНО ОДНО действие успешно — запоминаем пару «фраза → действие».
+  // Несколько действий за запрос не учим: непонятно, какое из них было смыслом.
+  const successfulActions: string[] = []
 
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -359,6 +368,7 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
         }
         const result = await executeAction(action)
         executedInRound = true
+        if (result.ok) successfulActions.push(action.name)
         send(win, 'ai:action', {
           requestId: req.requestId,
           name: action.name,
@@ -436,6 +446,17 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
       model: endpoint.model
     })
     logger.ai('chat', `Ответ сгенерирован (${endpoint.model}, ${fullVisible.length} симв.)`)
+
+    // Обучение: ядро не поняло фразу, а нейросеть выполнила РОВНО ОДНО действие
+    // успешно — значит это и был смысл фразы. Запоминаем пару; со второго
+    // подтверждения Kira начнёт понимать такую формулировку сама.
+    // Несколько действий не учим: непонятно, какое из них отражает фразу.
+    if (missedPhrase && successfulActions.length === 1) {
+      try {
+        const { noteMiss } = await import('../../core/learning')
+        noteMiss(missedPhrase, successfulActions[0])
+      } catch { /* обучение не должно влиять на ответ */ }
+    }
   } catch (err) {
     const message = (err as Error).message
     logger.error('chat', message)

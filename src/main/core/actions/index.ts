@@ -1157,6 +1157,50 @@ export const actions: KiraAction[] = [
     args: [{ name: 'topic', description: 'Что проверить (голос/мозг/память…)' }],
     execute: (a) => DiagnosticsController.run(a.topic)
   },
+  {
+    id: 'learned_list',
+    title: 'Чему я научилась',
+    description: 'Показывает фразы, которые Kira запомнила из твоей речи',
+    category: 'system',
+    aliases: ['чему научилась', 'что ты выучила'],
+    patterns: [/^(?:чему (?:ты )?(?:на)?училась|что ты (?:вы)?учила|выученные фразы|мои формулировки)$/],
+    examples: ['чему ты научилась'],
+    phrases: ['что ты запомнила из моих слов', 'покажи выученные фразы', 'какие мои формулировки ты знаешь'],
+    args: [],
+    execute: async () => {
+      const { listLearned } = await import('../learning')
+      const all = listLearned()
+      if (!all.length) {
+        return { ok: true, message: 'Пока ничего не выучила — но я запоминаю, как ты формулируешь.' }
+      }
+      const active = all.filter((p) => p.active)
+      const lines = all.map((p) =>
+        `${p.active ? '✓' : '·'} «${p.phrase}» → ${p.actionId}${p.active ? '' : ' (жду подтверждения)'}`)
+      return {
+        ok: true,
+        message: `Запомнила формулировок: ${active.length} (в работе) из ${all.length}`,
+        content: lines.join('\n')
+      }
+    }
+  },
+  {
+    id: 'learned_forget',
+    title: 'Забыть выученное',
+    description: 'Убирает запомненные формулировки — все или по слову',
+    category: 'system',
+    aliases: ['забудь выученное'],
+    patterns: [/^забудь (?:выученное|что выучила|формулировк[иу])(?:\s+(?<what>.+))?$/],
+    examples: ['забудь выученное'],
+    phrases: ['перестань использовать выученные фразы', 'сотри выученное'],
+    args: [{ name: 'what', description: 'Какую фразу забыть (пусто — все)' }],
+    execute: async (a) => {
+      const { forgetLearned } = await import('../learning')
+      const n = forgetLearned(a.what)
+      return n
+        ? { ok: true, message: `Забыла формулировок: ${n}` }
+        : { ok: true, message: 'Нечего забывать' }
+    }
+  },
 
   // ─── Приложения (универсальный — ПОСЛЕДНИМ) ──────────────────────────────
   {
