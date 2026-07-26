@@ -193,6 +193,19 @@ import { semanticIntent } from '../src/main/core/semanticIntent'
   t('semanticDocs: действия с аргументом реально появились', withArg.length > 0,
     'таких фраз: ' + withArg.length)
 
+  // Приоритет: универсальные «ловушки» обязаны проверяться ПОСЛЕ конкретных
+  // команд, иначе «открой браузер» уйдёт в общий запуск приложений.
+  {
+    const order = registry.intentSpecs().map((s) => s.id)
+    const fallback = order.indexOf('launch_app')
+    const specific = ['open_browser', 'play_music', 'play_video', 'open_folder', 'task_manager']
+      .map((id) => order.indexOf(id))
+      .filter((i) => i >= 0)
+    t('приоритет: ловушка проверяется после конкретных команд',
+      fallback >= 0 && specific.every((i) => i < fallback),
+      `ловушка на ${fallback}, конкретные на ${specific.join(',')}`)
+  }
+
   // Извлечение аргумента: смысл сказал ЧТО делать, а «с чем» вычитается из
   // фразы. Проверяем НАСТОЯЩУЮ функцию движка, а не её копию в тесте —
   // копия однажды уже разошлась с реальностью и дала ложный провал.

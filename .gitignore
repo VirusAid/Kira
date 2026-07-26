@@ -26,3 +26,4 @@ resources/*.zip
 # Артефакты тестов
 tests/.build/
 resources/vosk-model/
+tests/.tmp/
