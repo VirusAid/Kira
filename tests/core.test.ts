@@ -307,6 +307,30 @@ async function level2(): Promise<void> {
   const un2 = await commandEngine.tryHandle('отмени', { source: 'chat' })
   t('повторная отмена -> «нечего отменять»', !!(un2.handled && un2.result && un2.result.ok === false))
 
+  // Отмена шире файлов: громкость, буфер и сниппеты тоже возвращаются.
+  // Раньше отменялись только файловые операции — «сделай потише, нет, верни
+  // как было» ядро не умело, хотя это самая частая просьба вернуть назад.
+  const { clipboard } = await import('electron')
+  clipboard.writeText('было в буфере')
+  await commandEngine.executeById('clipboard_write', { text: 'стало в буфере' }, { source: 'agent' })
+  const unClip = await commandEngine.undoLast({ source: 'chat' })
+  t('отмена: буфер вернулся к прежнему тексту',
+    unClip.ok === true && clipboard.readText() === 'было в буфере')
+
+  const snipName = 'KiraTestSnip_' + Date.now()
+  await commandEngine.executeById('snippet_save', { name: snipName, text: 'первый' }, { source: 'agent' })
+  await commandEngine.executeById('snippet_save', { name: snipName, text: 'второй' }, { source: 'agent' })
+  const unSnip = await commandEngine.undoLast({ source: 'chat' })
+  const { getSnippet } = await import('../src/main/modules/snippets')
+  const snipBack = getSnippet(snipName)
+  t('отмена: перезаписанный сниппет вернул прежний текст',
+    unSnip.ok === true && contentOf(snipBack) === 'первый', '-> ' + contentOf(snipBack))
+
+  const newSnip = 'KiraTestSnipNew_' + Date.now()
+  await commandEngine.executeById('snippet_save', { name: newSnip, text: 'разовый' }, { source: 'agent' })
+  await commandEngine.undoLast({ source: 'chat' })
+  t('отмена: новый сниппет удалён, а не оставлен пустым', getSnippet(newSnip).ok === false)
+
   const d1 = await commandEngine.tryHandle('выключи компьютер', { source: 'chat' })
   t('опасное без confirm -> отклонено', d1.handled === true && d1.result !== undefined && d1.result.ok === false)
 

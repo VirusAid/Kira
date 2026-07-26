@@ -37,6 +37,8 @@ export const MediaController = {
   volumeUp: (): Promise<ExecResult> => sys.mediaControl('volup'),
   volumeDown: (): Promise<ExecResult> => sys.mediaControl('voldown'),
   setVolume: (percent: number): Promise<ExecResult> => sys.setVolume(percent),
+  /** Текущая громкость 0–100 — нужна, чтобы «отмени» вернула звук как было. */
+  getVolume: (): Promise<number | null> => sys.getVolume(),
   mute: (on: boolean): Promise<ExecResult> => sys.setMute(on),
   playMusic: (query: string): Promise<ExecResult> => sys.playMusic(query),
   playVideo: (query: string): Promise<ExecResult> => sys.playVideo(query)

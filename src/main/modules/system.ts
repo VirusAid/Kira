@@ -243,6 +243,17 @@ public class Audio {
 '@
 `
 
+/**
+ * Текущая громкость в процентах (0–100), либо null если не удалось прочитать.
+ * Нужна для отмены: чтобы вернуть звук как было, надо знать, как было.
+ */
+export async function getVolume(): Promise<number | null> {
+  const r = await runPowerShell(`${VOLUME_CS}\n[Audio]::GetVolume()`)
+  if (r.code !== 0) return null
+  const v = Number(r.stdout.trim().replace(',', '.'))
+  return Number.isFinite(v) ? Math.round(v * 100) : null
+}
+
 export async function setVolume(percent: number): Promise<ActionResult> {
   const level = Math.max(0, Math.min(100, Math.round(percent))) / 100
   logger.action('system', `Громкость: ${Math.round(level * 100)}%`)

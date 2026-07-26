@@ -8,7 +8,11 @@ module.exports = {
     // в тестах «корзина» = реальное удаление внутри tmpdir
     trashItem: async (p) => { require('fs').rmSync(p, { recursive: true, force: true }) }
   },
-  clipboard: { readText: () => '', writeText: () => {} },
+  // настоящий буфер в памяти: иначе отмену записи в буфер нечем проверить
+  clipboard: (() => {
+    let text = ''
+    return { readText: () => text, writeText: (v) => { text = String(v ?? '') } }
+  })(),
   Notification: class { show() {} },
   BrowserWindow: class { static getAllWindows() { return [] } },
   screen: { getPrimaryDisplay: () => ({ workAreaSize: { width: 1920, height: 1080 } }) },

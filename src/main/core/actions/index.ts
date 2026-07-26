@@ -31,6 +31,30 @@ function durationMs(dur: string, unit: string): number {
   return n * mult
 }
 
+/**
+ * Состояние, которое действие меняет и должно уметь вернуть.
+ *
+ * Отмена раньше умела только файловые операции: громкость и буфер обмена
+ * менялись безвозвратно, хотя это ровно то, что чаще всего хочется вернуть
+ * («сделай потише» → «нет, верни как было»). Действие запоминает прежнее
+ * значение при выполнении и восстанавливает его в undo.
+ */
+const previous: { volume?: number; clipboard?: string; snippet?: { name: string; text: string | null } } = {}
+
+/** Запомнить громкость до изменения и вернуть её по «отмени». */
+async function rememberVolume(): Promise<void> {
+  previous.volume = (await MediaController.getVolume()) ?? undefined
+}
+
+/** Общая отмена для всех действий, меняющих громкость. */
+async function undoVolume(): Promise<{ ok: boolean; message: string }> {
+  if (previous.volume == null) return { ok: false, message: 'Не помню прежнюю громкость' }
+  const back = previous.volume
+  previous.volume = undefined
+  await MediaController.setVolume(back)
+  return { ok: true, message: `Вернула громкость ${back}%` }
+}
+
 const APP_STOPWORDS = /(^| )(сайт|страницу|файл|папку|музыку|песню|трек|фильм|видео|звук|громкость|свет|окно|его|ее|это|мой|моя|мое)( |$)/
 
 /** Путь папки для create_folder — ЕДИНАЯ логика для execute и undo. */
@@ -147,7 +171,11 @@ export const actions: KiraAction[] = [
     examples: ['громче'],
     phrases: ['сделай погромче', 'добавь звука', 'прибавь громкость', 'плохо слышно', 'увеличь звук'],
     args: [],
-    execute: () => MediaController.volumeUp(),
+    execute: async () => {
+      await rememberVolume()
+      return MediaController.volumeUp()
+    },
+    undo: undoVolume,
     confirmText: () => 'Громче'
   },
   {
@@ -160,7 +188,11 @@ export const actions: KiraAction[] = [
     examples: ['тише'],
     phrases: ['сделай потише', 'убавь звук', 'слишком громко', 'уменьши громкость', 'приглуши немного'],
     args: [],
-    execute: () => MediaController.volumeDown(),
+    execute: async () => {
+      await rememberVolume()
+      return MediaController.volumeDown()
+    },
+    undo: undoVolume,
     confirmText: () => 'Тише'
   },
   {
@@ -182,10 +214,12 @@ export const actions: KiraAction[] = [
       if (a.preset) return null
       return Number(a.level) >= 0 && Number(a.level) <= 100 ? null : 'Громкость — число 0–100'
     },
-    execute: (a) => {
+    execute: async (a) => {
+      await rememberVolume() // «отмени» вернёт именно прежний уровень
       const level = a.preset ? (a.preset === 'минимум' ? 0 : 100) : Number(a.level)
       return MediaController.setVolume(level)
     },
+    undo: undoVolume,
     confirmText: (a) => (a.preset ? `Громкость на ${a.preset}` : `Громкость ${a.level}%`)
   },
   {
@@ -464,7 +498,18 @@ export const actions: KiraAction[] = [
     aliases: ['скопируй в буфер'],
     examples: [],
     args: [{ name: 'text', description: 'Текст', required: true }],
-    execute: async (a) => ClipboardController.write(a.text ?? '')
+    execute: async (a) => {
+      // прежнее содержимое буфера — чтобы случайная перезапись не была потерей
+      previous.clipboard = ClipboardController.read()
+      return ClipboardController.write(a.text ?? '')
+    },
+    undo: async () => {
+      if (previous.clipboard == null) return { ok: false, message: 'Не помню прежний буфер' }
+      const back = previous.clipboard
+      previous.clipboard = undefined
+      ClipboardController.write(back)
+      return { ok: true, message: back ? 'Вернула прежнее содержимое буфера' : 'Буфер очищен как было' }
+    }
   },
   {
     id: 'notify',
@@ -1081,7 +1126,24 @@ export const actions: KiraAction[] = [
       { name: 'name', description: 'Имя сниппета', required: true },
       { name: 'text', description: 'Текст', required: true }
     ],
-    execute: async (a) => SnippetController.save(a.name ?? '', a.text ?? '')
+    execute: async (a) => {
+      // был ли сниппет с таким именем — чтобы отмена не стёрла чужую заготовку
+      const had = SnippetController.get(a.name ?? '')
+      previous.snippet = { name: a.name ?? '', text: had.ok ? String(had.data ?? '') : null }
+      return SnippetController.save(a.name ?? '', a.text ?? '')
+    },
+    undo: async (a) => {
+      const prev = previous.snippet
+      const name = a.name ?? prev?.name ?? ''
+      if (!name) return { ok: false, message: 'Не помню, какой сниппет сохраняла' }
+      previous.snippet = undefined
+      if (prev && prev.name === name && prev.text !== null) {
+        SnippetController.save(name, prev.text)
+        return { ok: true, message: `Вернула прежний сниппет «${name}»` }
+      }
+      SnippetController.remove(name)
+      return { ok: true, message: `Удалила сниппет «${name}»` }
+    }
   },
   {
     id: 'snippet_paste',
@@ -1291,7 +1353,7 @@ export const actions: KiraAction[] = [
   {
     id: 'undo_last',
     title: 'Отменить последнее действие',
-    description: 'Отменяет последнее отменяемое действие (папка, звук, файловые операции)',
+    description: 'Отменяет последнее действие: громкость, буфер обмена, сниппет, папку, файловые операции',
     category: 'system',
     aliases: ['отмена', 'undo'],
     patterns: [/^(?:отмени(?:\s+(?:последнее|это))?(?:\s+действие)?|отмена|верни\s+(?:как\s+было|обратно|назад))$/],
