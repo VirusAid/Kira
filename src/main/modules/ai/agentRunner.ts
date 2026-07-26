@@ -13,6 +13,7 @@
  */
 import { completeChatResilient, type AIMessage } from './client'
 import { logger } from '../logger'
+import { contentOf } from '../../core/types'
 
 export interface AgentActionOutcome { name: string; ok: boolean; message: string }
 export interface AgentStep { round: number; text: string; actions: AgentActionOutcome[] }
@@ -152,7 +153,9 @@ export async function runAgentLoop(opts: AgentRunOptions): Promise<AgentRunResul
       try {
         const res = await executeAction(action)
         outcome = { name: action.name, ok: res.ok, message: res.message }
-        const dataStr = res.data != null ? `\n${String(res.data).slice(0, 3000)}` : ''
+        // агенту отдаём содержимое действия, а не структурные данные
+        const body = contentOf(res)
+        const dataStr = body ? `\n${body.slice(0, 3000)}` : ''
         results.push(`${action.name}: ${res.ok ? 'OK' : 'ОШИБКА'} — ${res.message}${dataStr}`)
       } catch (err) {
         outcome = { name: action.name, ok: false, message: (err as Error).message }

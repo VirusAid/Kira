@@ -164,5 +164,5 @@ export async function diagnose(topicText?: string): Promise<{ checks: DiagCheck[
 export async function diagnoseReport(topicText?: string): Promise<ActionResult> {
   const { checks, summary } = await diagnose(topicText)
   const lines = checks.map((c) => `${c.ok ? '✅' : '⚠️'} ${c.name}: ${c.detail}${!c.ok && c.fix ? `\n   → ${c.fix}` : ''}`)
-  return { ok: true, message: summary, data: lines.join('\n') }
+  return { ok: true, message: summary, content: lines.join('\n') }
 }

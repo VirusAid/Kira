@@ -231,7 +231,7 @@ export function listTimers(): ActionResult {
     const m = Math.floor(left / 60), s = left % 60
     return `• ${t.label || 'таймер'}: осталось ${m}:${String(s).padStart(2, '0')}`
   })
-  return { ok: true, message: `Таймеров: ${active.length}`, data: lines.join('\n') }
+  return { ok: true, message: `Таймеров: ${active.length}`, content: lines.join('\n') }
 }
 
 export function cancelTimers(): ActionResult {

@@ -373,12 +373,12 @@ export async function processReport(filter?: string): Promise<ActionResult> {
       `if ($p) { $mb = [int]((@($p) | Measure-Object WS -Sum).Sum / 1MB); "$(@($p)[0].ProcessName)|$(@($p).Count)|$mb" } else { 'none' }`
     )
     const out = r.stdout.trim()
-    if (out === 'none' || !out) return { ok: true, message: `«${f}» не запущен`, data: `${f}: не запущен` }
+    if (out === 'none' || !out) return { ok: true, message: `«${f}» не запущен`, content: `${f}: не запущен` }
     const [name, count, mb] = out.split('|')
     return {
       ok: true,
       message: `«${name}» запущен (${count} ${Number(count) === 1 ? 'процесс' : 'процессов'}, ${mb} МБ)`,
-      data: `${name}: запущен, процессов ${count}, память ${mb} МБ`
+      content: `${name}: запущен, процессов ${count}, память ${mb} МБ`
     }
   }
   // общий отчёт: все процессы, сгруппированные по имени
@@ -395,7 +395,7 @@ export async function processReport(filter?: string): Promise<ActionResult> {
     return {
       ok: true,
       message: `Запущено программ: ${arr.length} (процессов всего ~${total})`,
-      data: `Запущенные процессы (по памяти):\n${lines.join('\n')}`
+      content: `Запущенные процессы (по памяти):\n${lines.join('\n')}`
     }
   } catch {
     return { ok: false, message: 'Не удалось получить список процессов' }
@@ -492,7 +492,7 @@ export async function readSelection(): Promise<ActionResult> {
     return { ok: false, message: 'Не удалось прочитать выделение (ничего не выделено?)' }
   }
   logger.action('system', 'Прочитано выделение')
-  return { ok: true, message: 'Прочитала выделенный текст', data: text.slice(0, 8000) }
+  return { ok: true, message: 'Прочитала выделенный текст', content: text.slice(0, 8000) }
 }
 
 export function notify(title: string, body: string): ActionResult {
@@ -643,7 +643,7 @@ export async function runCommand(command: string): Promise<ActionResult> {
   return {
     ok: r.code === 0,
     message: output || (r.code === 0 ? 'Команда выполнена' : `Код ошибки: ${r.code}`),
-    data: output
+    content: output
   }
 }
 
@@ -883,7 +883,7 @@ export async function searchWeb(query: string, limit = 6): Promise<ActionResult>
     const formatted = results
       .map((r, idx) => `${idx + 1}. ${r.title}\n   ${r.snippet}\n   ${r.url}`)
       .join('\n\n')
-    return { ok: true, message: `Нашла ${results.length} результатов по «${query}»`, data: formatted }
+    return { ok: true, message: `Нашла ${results.length} результатов по «${query}»`, content: formatted }
   } catch (err) {
     return { ok: false, message: `Ошибка поиска: ${(err as Error).message}`, data: '' }
   }
@@ -922,7 +922,7 @@ export async function readWebPage(url: string): Promise<ActionResult> {
     return {
       ok: true,
       message: `Прочитала: ${title || normalized}`,
-      data: `Заголовок: ${title}\nURL: ${normalized}\n\n${text}`
+      content: `Заголовок: ${title}\nURL: ${normalized}\n\n${text}`
     }
   } catch (err) {
     return { ok: false, message: `Ошибка чтения: ${(err as Error).message}` }
@@ -1108,7 +1108,7 @@ export async function ocrImage(imagePath: string): Promise<ActionResult> {
   if (out.startsWith('OCR_OK::')) {
     const text = out.slice('OCR_OK::'.length).trim()
     return text
-      ? { ok: true, message: 'Распознала текст', data: text }
+      ? { ok: true, message: 'Распознала текст', content: text }
       : { ok: true, message: 'На изображении текста не нашлось', data: '' }
   }
   if (out.includes('OCR_NO_ENGINE')) {
@@ -1194,7 +1194,7 @@ $items | Select-Object -Unique | ConvertTo-Json -Compress`
     const raw = JSON.parse(r.stdout || '[]'); const arr = Array.isArray(raw) ? raw : [raw]
     const names = arr.filter(Boolean)
     return names.length
-      ? { ok: true, message: `В автозагрузке: ${names.length}`, data: names.join('\n') }
+      ? { ok: true, message: `В автозагрузке: ${names.length}`, content: names.join('\n') }
       : { ok: true, message: 'В автозагрузке ничего нет' }
   } catch { return { ok: false, message: 'Не удалось прочитать автозагрузку' } }
 }

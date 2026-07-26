@@ -20,8 +20,31 @@ export interface ActionArg {
 
 export interface ExecResult {
   ok: boolean
+  /** Короткий статус: «Распознала текст», «В истории буфера: 5». НЕ содержимое. */
   message: string
+  /**
+   * СОДЕРЖИМОЕ для показа пользователю и передачи модели: текст с экрана,
+   * найденные фрагменты, список файлов.
+   *
+   * Появилось после двух одинаковых багов: содержимое лежало в `data`, а читали
+   * `message` — модель получала «Распознала текст» вместо самого текста, и
+   * локальный ответ терял содержимое. Теперь намерение выражено в типе:
+   * message — статус, content — то, что надо показать. Читать только через
+   * contentOf() (он же поддерживает старые действия, кладущие строку в data).
+   */
+  content?: string
+  /** Структурные данные для кода (объекты, пути, счётчики). Не для показа. */
   data?: unknown
+}
+
+/**
+ * Содержимое результата для показа/озвучки/передачи модели.
+ * Совместимо со старыми действиями, у которых текст лежал в `data` строкой.
+ */
+export function contentOf(r: { content?: string; data?: unknown }): string {
+  if (typeof r.content === 'string' && r.content.trim()) return r.content
+  if (typeof r.data === 'string' && r.data.trim()) return r.data
+  return ''
 }
 
 export interface ActionContext {

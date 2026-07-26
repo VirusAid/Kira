@@ -142,7 +142,7 @@ export const FileController = {
       const lines = items.slice(0, 100).map((i) =>
         i.isDirectory ? `[папка] ${i.name}` : `${i.name} · ${(i.size / 1024).toFixed(0)} КБ`)
       const more = items.length > 100 ? `\n…и ещё ${items.length - 100}` : ''
-      return { ok: true, message: `В папке «${dir}»: ${items.length}`, data: lines.join('\n') + more }
+      return { ok: true, message: `В папке «${dir}»: ${items.length}`, content: lines.join('\n') + more }
     } catch (e) {
       return { ok: false, message: `Не удалось открыть папку: ${(e as Error).message}` }
     }

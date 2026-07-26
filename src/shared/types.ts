@@ -351,6 +351,10 @@ export interface AIRequest {
 
 export interface ActionResult {
   ok: boolean
+  /** Короткий статус для пользователя. НЕ содержимое. */
   message: string
+  /** Содержимое для показа/озвучки (текст экрана, найденные фрагменты, списки). */
+  content?: string
+  /** Структурные данные для кода. Не для показа. */
   data?: unknown
 }

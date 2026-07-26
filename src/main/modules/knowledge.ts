@@ -185,7 +185,7 @@ export async function askDocs(query: string, limit = 6): Promise<ActionResult> {
   return {
     ok: true,
     message: `Нашла в документах (${strong.length})`,
-    data: blocks.join('\n\n---\n\n') +
+    content: blocks.join('\n\n---\n\n') +
       '\n\n(Ответь пользователю по этим фрагментам своими словами и укажи, из какого документа. Если данных не хватает — честно скажи.)'
   }
 }
@@ -195,7 +195,7 @@ export function knowledgeStatus(): ActionResult {
   const c = chunks().size
   if (!f) return { ok: true, message: 'База документов пуста — ничего не проиндексировано' }
   const names = files().all().slice(0, 12).map((x) => `• ${basename(x.path)}`)
-  return { ok: true, message: `В базе знаний: ${f} файлов, ${c} фрагментов`, data: names.join('\n') }
+  return { ok: true, message: `В базе знаний: ${f} файлов, ${c} фрагментов`, content: names.join('\n') }
 }
 
 export function clearKnowledge(): ActionResult {

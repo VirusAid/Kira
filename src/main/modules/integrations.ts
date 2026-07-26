@@ -64,7 +64,7 @@ export async function noteRead(name: string): Promise<ActionResult> {
   const file = files.find((f) => basename(f, '.md').toLowerCase() === q) ?? files.find((f) => basename(f, '.md').toLowerCase().includes(q))
   if (!file) return { ok: false, message: `Заметка «${name}» не найдена` }
   const content = await fsp.readFile(file, 'utf-8')
-  return { ok: true, message: basename(file), data: content.slice(0, 8000) }
+  return { ok: true, message: basename(file), content: content.slice(0, 8000) }
 }
 
 export async function noteWrite(name: string, content: string, append = false): Promise<ActionResult> {

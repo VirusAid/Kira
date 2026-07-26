@@ -11,6 +11,7 @@ import { bus } from './bus'
 import { actionHistory } from './history'
 import { parseIntent } from './intent'
 import { registry } from './registry'
+import { contentOf } from './types'
 import { semanticIntent } from './semanticIntent'
 import type { ActionContext, ExecResult, Intent, KiraAction } from './types'
 
@@ -154,13 +155,12 @@ class CommandEngine {
     bus.emit('action:executed', { action, args, result, source: ctx.source })
     logger.action('core', `${action.title}${result.ok ? '' : ' — ошибка: ' + result.message}`)
 
-    // Локальный ответ пользователю. Если у действия есть своё содержимое в
-    // result.data (строкой) — добавляем его к message, как это уже делает
-    // LLM-цикл (chat.ts). Иначе контент-действия (текст с экрана, история буфера,
-    // сниппеты, поиск по документам) показывали бы лишь статус («Распознала
-    // текст», «В истории буфера: 5») без самого содержимого. confirmText (свой
-    // готовый ответ действия) имеет приоритет и data к нему не клеим.
-    const dataStr = typeof result.data === 'string' && result.data.trim() ? `\n${result.data}` : ''
+    // Локальный ответ пользователю: статус + содержимое действия. Без второго
+    // контент-действия (текст с экрана, история буфера, сниппеты, поиск по
+    // документам) показывали бы лишь статус вроде «Распознала текст».
+    // confirmText (свой готовый ответ действия) имеет приоритет.
+    const body = contentOf(result)
+    const dataStr = body ? `\n${body}` : ''
     return {
       handled: true, intent: 'local', actionId: action.id, result,
       reply: result.ok ? (action.confirmText?.(args) ?? result.message + dataStr) : result.message

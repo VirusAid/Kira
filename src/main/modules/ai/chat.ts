@@ -10,6 +10,7 @@ import { BrowserWindow } from 'electron'
 import { streamChat, candidateProviders, visionCandidateProviders, visionAvailable, type AIMessage, resolveEndpoint } from './client'
 import { buildSystemPrompt, parseActions, stripActions, executeAction, isDangerous, describeAction, type ParsedAction } from './kira'
 import { logger } from '../logger'
+import { contentOf } from '../../core/types'
 import { getSettings } from '../settings'
 import type { AIProviderId, AIRequest, ChatRole } from '../../../shared/types'
 
@@ -257,7 +258,7 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
         try {
           const { ocrImageBase64 } = await import('../system')
           const r = await ocrImageBase64(req.imageBase64)
-          const text = String(r.data ?? '').trim() // OCR-текст лежит в data, не в message
+          const text = contentOf(r) // содержимое действия, а не статус
           const note = r.ok && text
             ? `\n\n[Офлайн-модель не видит изображения. Распознанный на нём текст]:\n${text.slice(0, 4000)}`
             : '\n\n[Офлайн-модель не видит изображения, а текста на нём не распознано. Скажи пользователю: для описания картинок нужен облачный ИИ (Gemini) или локальная vision-модель.]'
@@ -315,7 +316,7 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
               const { ocrScreen } = await import('../system')
               send(win, 'ai:action', { requestId: req.requestId, name: 'see_screen', ok: true, message: 'Читаю текст с экрана' })
               const r = await ocrScreen()
-              const text = String(r.data ?? '').trim() // OCR-текст в data, а не в message
+              const text = contentOf(r) // содержимое действия, а не статус
               results.push(r.ok && text
                 ? `see_screen (офлайн, OCR — вижу ТЕКСТ на экране):\n${text.slice(0, 4000)}`
                 : 'see_screen: на экране не распознан текст. Ты офлайн-модель и не видишь картинки — честно скажи это пользователю и предложи включить облачный ИИ (Gemini) или скачать локальную vision-модель для описания изображений.')
@@ -364,7 +365,10 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
           ok: result.ok,
           message: result.message
         })
-        const dataStr = result.data != null ? `\n${String(result.data).slice(0, 4000)}` : ''
+        // модели отдаём СОДЕРЖИМОЕ действия, а не структурные данные:
+        // contentOf берёт content, а у старых действий — строку из data
+        const body = contentOf(result)
+        const dataStr = body ? `\n${body.slice(0, 4000)}` : ''
         results.push(`${action.name}: ${result.ok ? 'OK' : 'ОШИБКА'} — ${result.message}${dataStr}`)
         // самоисправление: после клика/ввода прикладываем свежий скриншот, чтобы
         // Kira увидела результат и при ошибке поправилась
@@ -396,7 +400,7 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
             // офлайн: проверяем результат по тексту экрана (OCR)
             const { ocrScreen } = await import('../system')
             const r = await ocrScreen()
-            const text = String(r.data ?? '').trim() // OCR-текст в data
+            const text = contentOf(r) // содержимое действия, а не статус
             if (r.ok && text) results.push(`[после действий — текст на экране, OCR]:\n${text.slice(0, 3000)}`)
           }
         } catch { /* экран недоступен */ }

@@ -5,6 +5,7 @@ import { actions } from '../src/main/core/actions'
 import { actionHistory } from '../src/main/core/history'
 import { bus } from '../src/main/core/bus'
 import { parseIntent } from '../src/main/core/intent'
+import { contentOf } from '../src/main/core/types'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
@@ -228,7 +229,21 @@ async function level2(): Promise<void> {
 
   // процессы: реальный PowerShell — общий список
   const procs = await commandEngine.tryHandle('какие процессы запущены', { source: 'chat' })
-  t('процессы: реальный список системы', !!(procs.handled && procs.result && procs.result.ok && String(procs.result.data ?? '').includes('МБ')), '-> ' + (procs.reply ?? '').slice(0, 40))
+  t('процессы: реальный список системы', !!(procs.handled && procs.result && procs.result.ok && contentOf(procs.result).includes('МБ')), '-> ' + (procs.reply ?? '').slice(0, 40))
+
+  // Контракт содержимого: message — статус, content — то, что показываем.
+  // Регрессия за два реальных бага: содержимое лежало в data, а читали message,
+  // из-за чего модель получала «Распознала текст» вместо самого текста, а
+  // локальный ответ терял содержимое целиком.
+  t('контракт: contentOf читает content',
+    contentOf({ ok: true, message: 'статус', content: 'СОДЕРЖИМОЕ' } as never) === 'СОДЕРЖИМОЕ')
+  t('контракт: contentOf понимает старое data-строкой',
+    contentOf({ ok: true, message: 'статус', data: 'СТАРОЕ' } as never) === 'СТАРОЕ')
+  t('контракт: структурные data не считаются содержимым',
+    contentOf({ ok: true, message: 'статус', data: { a: 1 } } as never) === '')
+  const withBody = await commandEngine.tryHandle('какие процессы запущены', { source: 'chat' })
+  t('контракт: локальный ответ включает содержимое, а не только статус',
+    !!(withBody.reply && withBody.result && withBody.reply.length > withBody.result.message.length))
   // процессы: проверка конкретного (svchost точно есть в Windows)
   const svc = await commandEngine.tryHandle('запущен ли svchost', { source: 'chat' })
   t('процессы: «запущен ли svchost» -> да', !!(svc.result && svc.result.ok && String(svc.reply ?? '').includes('запущен')))

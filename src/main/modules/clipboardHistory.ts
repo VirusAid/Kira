@@ -70,7 +70,7 @@ export function historyReport(limit = 12): ActionResult {
     const oneLine = e.text.replace(/\s+/g, ' ').trim()
     return `${i + 1}. ${oneLine.slice(0, 90)}${oneLine.length > 90 ? '…' : ''}`
   })
-  return { ok: true, message: `В истории буфера: ${items.length}`, data: lines.join('\n') }
+  return { ok: true, message: `В истории буфера: ${items.length}`, content: lines.join('\n') }
 }
 
 /**

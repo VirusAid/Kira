@@ -53,7 +53,7 @@ export function listSnippets(): ActionResult {
   const all = col().all().sort((a, b) => a.name.localeCompare(b.name))
   if (!all.length) return { ok: true, message: 'Сниппетов пока нет. Скажи «сохрани сниппет <имя>: <текст>».' }
   const lines = all.map((s) => `• ${s.name}: ${s.text.replace(/\s+/g, ' ').slice(0, 60)}${s.text.length > 60 ? '…' : ''}`)
-  return { ok: true, message: `Сниппетов: ${all.length}`, data: lines.join('\n') }
+  return { ok: true, message: `Сниппетов: ${all.length}`, content: lines.join('\n') }
 }
 
 /** Положить сниппет в буфер и вставить в активное окно. */
