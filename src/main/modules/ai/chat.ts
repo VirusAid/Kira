@@ -308,7 +308,8 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
   // Обучение на промахах: если ядро не поняло фразу, а нейросеть выполнила
   // РОВНО ОДНО действие успешно — запоминаем пару «фраза → действие».
   // Несколько действий за запрос не учим: непонятно, какое из них было смыслом.
-  const successfulActions: string[] = []
+  /** Успешные действия запроса вместе с аргументами — материал для обучения. */
+  const successfulActions: { name: string; args: string[] }[] = []
 
   try {
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
@@ -389,7 +390,7 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
         }
         const result = await executeAction(action)
         executedInRound = true
-        if (result.ok) successfulActions.push(action.name)
+        if (result.ok) successfulActions.push({ name: action.name, args: action.args })
         send(win, 'ai:action', {
           requestId: req.requestId,
           name: action.name,
@@ -475,7 +476,8 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
     if (missedPhrase && successfulActions.length === 1) {
       try {
         const { noteMiss } = await import('../../core/learning')
-        noteMiss(missedPhrase, successfulActions[0])
+        // вместе с аргументами: «открой мою почту» без адреса — пустая форма
+        noteMiss(missedPhrase, successfulActions[0].name, successfulActions[0].args)
       } catch { /* обучение не должно влиять на ответ */ }
     }
   } catch (err) {

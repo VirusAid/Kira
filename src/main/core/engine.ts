@@ -13,6 +13,7 @@ import { parseIntent } from './intent'
 import { registry } from './registry'
 import { contentOf } from './types'
 import { semanticIntent } from './semanticIntent'
+import { exactLearned } from './learning'
 import type { ActionContext, ExecResult, Intent, KiraAction } from './types'
 
 export interface HandleOutcome {
@@ -38,7 +39,7 @@ export interface Decision {
   at: number
   text: string
   /** Куда в итоге ушёл запрос. */
-  route: 'шаблон' | 'смысл' | 'облако' | 'агент'
+  route: 'шаблон' | 'выучено' | 'смысл' | 'облако' | 'агент'
   actionId?: string
   /** Лучший смысловой кандидат и его балл — даже если не сработал. */
   semantic?: { actionId: string; score: number; threshold: number }
@@ -189,6 +190,23 @@ class CommandEngine {
     // regex промахнулся, но фраза может быть командой в непредусмотренной форме
     // — пробуем понять её СМЫСЛ через эмбеддинги (только для 'ai', не 'agent')
     if (intent.kind === 'ai') {
+      // Сначала — то, чему Kira научилась у ЭТОГО человека. Точное совпадение
+      // его собственной формулировки не требует ни облака, ни эмбеддингов и
+      // выполняется с теми аргументами, которые он сам подтвердил: «открой мою
+      // почту» у каждого своя.
+      const learned = exactLearned(text)
+      if (learned) {
+        const action = registry.get(learned.actionId)
+        if (action) {
+          const outcome = await this.run(action, learned.args, ctx)
+          if (outcome.result?.ok || !action.softFail) {
+            trace({ at: Date.now(), text, route: 'выучено', actionId: action.id, why: 'твоя формулировка, выученная раньше' })
+            this.lastLocal = { phrase: text, actionId: action.id, at: Date.now() }
+            return outcome
+          }
+        }
+      }
+
       const probe = await semanticIntent(text)
       const sem = probe.best
         ? { actionId: probe.best.actionId, score: probe.best.score, threshold: probe.threshold }

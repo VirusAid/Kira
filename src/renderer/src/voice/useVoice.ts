@@ -23,6 +23,13 @@ export type VoiceState = 'off' | 'listening' | 'recording' | 'transcribing' | 't
  * нужна только как страховка от полной тишины и может быть заметно мягче.
  */
 const SPEECH_THRESHOLD = 0.016
+/**
+ * Нижняя граница, пока Kira ГОВОРИТ. Здесь порог намеренно строже: её
+ * собственный голос из динамиков частично возвращается в микрофон, и слишком
+ * чуткая планка заставляла бы её перебивать саму себя. Раньше это прикрывалось
+ * общим порогом 0.030 — при его снижении защиту нужно оставить явной.
+ */
+const INTERRUPT_THRESHOLD = 0.030
 const SILENCE_MS = 1100 // тишина до конца фразы
 const MIN_SPEECH_MS = 450 // минимальная длительность речи
 const SPEECH_START_MS = 120 // сколько мс устойчивой громкости = начало речи
@@ -316,7 +323,8 @@ export function useVoice() {
     }
     // порог — от реального шума в комнате: так он подстраивается и под тихий
     // микрофон, и под шумную обстановку, а не под одно «среднее» устройство
-    const threshold = Math.max(SPEECH_THRESHOLD, noiseFloorRef.current * 3 + 0.004)
+    const floor = s0 === 'speaking' ? INTERRUPT_THRESHOLD : SPEECH_THRESHOLD
+    const threshold = Math.max(floor, noiseFloorRef.current * 3 + 0.004)
     const loud = rms > threshold
     const typing = now - lastTypeRef.current < TYPING_SUPPRESS_MS
 
@@ -496,6 +504,19 @@ export function useVoice() {
   }, [setVoiceState])
 
   useEffect(() => () => stop(), [stop])
+
+  // Сменили микрофон в настройках прямо во время разговора — переоткрываем
+  // поток. Иначе выбор вступал бы в силу только после ручного выключения
+  // голоса, и человек решил бы, что настройка не работает.
+  const micDeviceId = useAppStore((st) => st.settings?.micDeviceId ?? '')
+  const micRef = useRef(micDeviceId)
+  useEffect(() => {
+    if (micRef.current === micDeviceId) return
+    micRef.current = micDeviceId
+    if (stateRef.current === 'off') return
+    stop()
+    void start()
+  }, [micDeviceId, start, stop])
 
   // живые реакции: если Kira долго думает — короткая реплика «секунду…».
   // СТРОГО один раз на запрос: в многораундовом поиске состояние «думаю»

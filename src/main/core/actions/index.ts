@@ -1237,9 +1237,16 @@ export const actions: KiraAction[] = [
       if (!all.length) {
         return { ok: true, message: 'Пока ничего не выучила — но я запоминаю, как ты формулируешь.' }
       }
-      const active = all.filter((p) => p.active)
-      const lines = all.map((p) =>
-        `${p.active ? '✓' : '·'} «${p.phrase}» → ${p.actionId}${p.active ? '' : ' (жду подтверждения)'}`)
+      const active = all.filter((p) => p.active && !p.rejected)
+      const lines = all.map((p) => {
+        // отвергнутое нельзя показывать как «жду подтверждения»: человек уже
+        // сказал, что это не то, и обещание однажды это сделать — враньё
+        const state = p.rejected ? '✗' : p.active ? '✓' : '·'
+        const note = p.rejected ? ' (ты поправил — больше не предлагаю)' : p.active ? '' : ' (жду подтверждения)'
+        const args = Object.values(p.args ?? {}).filter(Boolean)
+        const withArgs = args.length && !p.rejected ? ` (${args.join(', ').slice(0, 60)})` : ''
+        return `${state} «${p.phrase}» → ${p.actionId}${withArgs}${note}`
+      })
       return {
         ok: true,
         message: `Запомнила формулировок: ${active.length} (в работе) из ${all.length}`,

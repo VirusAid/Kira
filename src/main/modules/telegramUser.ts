@@ -228,7 +228,9 @@ export async function sendUserMessage(peer: string, text: string): Promise<Actio
       const list = found.slice(0, 5).map((p) => p.username ? `${p.name} (@${p.username})` : p.name).join(', ')
       return { ok: false, message: `По имени «${target}» подходит несколько человек: ${list}. Кому именно написать?` }
     }
-    recipient = found[0].id
+    // @username надёжнее числового id: он резолвится всегда, а id — только
+    // пока собеседник есть в кэше сессии
+    recipient = found[0].username ? `@${found[0].username}` : found[0].id
     shown = found[0].username ? `${found[0].name} (@${found[0].username})` : found[0].name
   }
 

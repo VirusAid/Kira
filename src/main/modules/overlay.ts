@@ -29,6 +29,8 @@ const EMBLEM_R = 56
  * Проверка — одно обращение к позиции курсора, это доли микросекунды.
  */
 const HOVER_TICK_MS = 40
+/** Дольше этого эмблему не тащат — значит, отпускание потерялось. */
+const MAX_DRAG_MS = 30_000
 
 let overlay: BrowserWindow | null = null
 let voiceActive = false
@@ -181,8 +183,12 @@ export function startOverlayDrag(): void {
   const b = overlay.getBounds()
   const dx = start.x - b.x
   const dy = start.y - b.y
+  const startedAt = Date.now()
   dragTimer = setInterval(() => {
     if (!overlay || overlay.isDestroyed()) return endOverlayDrag()
+    // страховка: конец перетаскивания приходит из окна эмблемы, и если это
+    // событие потеряется, окно вечно бегало бы за курсором
+    if (Date.now() - startedAt > MAX_DRAG_MS) return endOverlayDrag()
     const pt = screen.getCursorScreenPoint()
     overlay.setBounds({ x: pt.x - dx, y: pt.y - dy, width: W, height: H })
   }, 16)

@@ -20,6 +20,13 @@
  * «нет, я не это просил», связка «фраза → действие» отмечается отвергнутой и
  * больше не восстанавливается сама: молча повторять уже опровергнутую ошибку —
  * худшее, что может делать обучение.
+ *
+ * ОБУЧЕНИЕ ПЕРСОНАЛЬНОЕ. Коллекция живёт в профиле конкретного пользователя
+ * Windows (userData → %APPDATA%\Kira), рядом с его памятью и настройками, и ни
+ * с кем не делится: у каждого свои формулировки и свои данные за ними. Поэтому
+ * запоминается не только форма команды, но и аргументы — «открой мою почту» у
+ * каждого ведёт на свой адрес. Разные аргументы у одной фразы означают, что она
+ * не про конкретную вещь: тогда остаётся только действие.
  */
 import { Collection } from '../modules/storage'
 import { logger } from '../modules/logger'
@@ -34,6 +41,12 @@ export interface LearnedPhrase {
   actionId: string
   /** Сколько раз эта пара подтверждалась. */
   count: number
+  /**
+   * Аргументы, с которыми действие сработало: «открой мою почту» у каждого
+   * своя. Без них выученной оставалась бы только форма команды, а не её смысл
+   * для конкретного человека.
+   */
+  args?: Record<string, string>
   /** Участвует ли в распознавании (включается со второго подтверждения). */
   active: boolean
   /** Пользователь явно сказал, что это не то — связку больше не оживляем. */
@@ -60,7 +73,7 @@ export function setLearningChangeHook(fn: () => void): void {
  * Зафиксировать пару «фраза → действие» после того, как ядро промахнулось,
  * а нейросеть выполнила действие успешно.
  */
-export function noteMiss(rawPhrase: string, actionId: string): void {
+export function noteMiss(rawPhrase: string, actionId: string, positionalArgs: string[] = []): void {
   const phrase = normalize(rawPhrase)
   // те же рамки, что у смыслового слоя: учить длинные тексты бессмысленно
   if (phrase.length < 4 || phrase.length > 64) return
@@ -70,19 +83,55 @@ export function noteMiss(rawPhrase: string, actionId: string): void {
   if (!action) return
   if (action.dangerous || action.noSemantic) return // опасное не учим никогда
 
+  const args = namedArgs(action, positionalArgs)
   const existing = col().all().find((p) => p.phrase === phrase && p.actionId === action.id)
   if (existing?.rejected) return // это уже опровергали — не навязываемся снова
   if (existing) {
+    // аргументы повторились — связка полная; разные аргументы у одной фразы
+    // означают, что она не про конкретную вещь: запоминаем только действие
+    const sameArgs = JSON.stringify(existing.args ?? {}) === JSON.stringify(args)
     const count = existing.count + 1
     const active = count >= ACTIVATE_AT
-    col().patch(existing.id, { count, active, at: Date.now() })
+    col().patch(existing.id, { count, active, args: sameArgs ? args : undefined, at: Date.now() })
     if (active && !existing.active) {
-      logger.info('core', `выучила: «${phrase}» → ${action.id}`)
+      logger.info('core', `выучила: «${phrase}» → ${action.id}${sameArgs && Object.keys(args).length ? ' с твоими данными' : ''}`)
       onChange?.()
     }
     return
   }
-  col().put({ id: newId(), phrase, actionId: action.id, count: 1, active: false, at: Date.now() })
+  col().put({ id: newId(), phrase, actionId: action.id, args, count: 1, active: false, at: Date.now() })
+}
+
+/** Позиционные аргументы протокола → именованные, как их ждёт действие. */
+function namedArgs(action: { args: { name: string }[] }, positional: string[]): Record<string, string> {
+  const out: Record<string, string> = {}
+  action.args.forEach((spec, i) => {
+    const v = positional[i]
+    // очень длинное значение — это не «моя почта», а разовый текст
+    if (typeof v === 'string' && v.trim() && v.length <= 200) out[spec.name] = v.trim()
+  })
+  return out
+}
+
+/**
+ * Точное совпадение с выученной фразой — самый дешёвый и самый безопасный путь.
+ *
+ * Смысловой слой ловит перефразировки, но требует установленного движка
+ * эмбеддингов и сравнивает приблизительно. Когда человек повторяет СВОЮ
+ * формулировку слово в слово, гадать не нужно: выполняем ровно то, что он
+ * подтвердил, вместе с его аргументами — мгновенно, офлайн и без риска
+ * подставить чужие данные в похожую фразу.
+ */
+export function exactLearned(rawPhrase: string): { actionId: string; args: Record<string, string> } | null {
+  const phrase = normalize(rawPhrase)
+  if (!phrase) return null
+  const hit = col().all().find((p) => p.active && !p.rejected && p.phrase === phrase)
+  if (!hit) return null
+  const action = registry.get(hit.actionId)
+  // проверяем флаги ЗАНОВО: действие могло стать опасным в новой версии Kira, а
+  // выученная запись пережила обновление и тихо запускала бы его без вопросов
+  if (!action || action.dangerous || action.noSemantic) return null
+  return { actionId: hit.actionId, args: { ...(hit.args ?? {}) } }
 }
 
 /**

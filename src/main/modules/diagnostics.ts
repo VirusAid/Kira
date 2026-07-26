@@ -30,7 +30,7 @@ function topicFromText(text?: string): Topic {
   const s = (text ?? '').toLowerCase()
   if (/голос|озвуч|говор|микрофон|распозна|слыш|слово|актив/.test(s)) return 'voice'
   if (/офлайн|локальн|ollama|оллама|мозг/.test(s)) return 'local'
-  if (/памят|семант|эмбед|документ|rag|база знан/.test(s)) return 'memory'
+  if (/памят|семант|эмбед|документ|rag|база знан|выучи|обучен|научил|формулировк/.test(s)) return 'memory'
   if (/интернет|провайдер|модел|ключ|облак|ии|ai/.test(s)) return 'ai'
   if (/диск|мест|память на диске/.test(s)) return 'disk'
   if (/интеграц|google|gmail|obsidian|notion|discord|telegram/.test(s)) return 'integrations'
@@ -129,6 +129,23 @@ export async function diagnose(topicText?: string): Promise<{ checks: DiagCheck[
       const { semantic } = await import('./ai/semantic')
       const ok = await semantic.isAvailable()
       checks.push({ name: 'Семантическая память и поиск по документам', ok, detail: ok ? 'готова (fastembed)' : 'не установлена', fix: ok ? undefined : 'Настройки → установить движок эмбеддингов (fastembed)' })
+    } catch { /* ignore */ }
+
+    // Личное обучение: всё выученное лежит в профиле ЭТОГО пользователя
+    // Windows и ни с кем не делится. Показываем это прямо, чтобы вопрос «а моё
+    // ли это» не оставался на веру.
+    try {
+      const { listLearned } = await import('../core/learning')
+      const all = listLearned()
+      const active = all.filter((p) => p.active && !p.rejected).length
+      const waiting = all.filter((p) => !p.active && !p.rejected).length
+      checks.push({
+        name: 'Личное обучение (твои формулировки)',
+        ok: true,
+        detail: all.length
+          ? `в работе ${active}, ждут повтора ${waiting}. Хранится только в твоём профиле: ${app.getPath('userData')}`
+          : `пока ничего не выучила — учусь по ходу дела. Хранится только в твоём профиле: ${app.getPath('userData')}`
+      })
     } catch { /* ignore */ }
   }
 

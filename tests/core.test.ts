@@ -6,7 +6,7 @@ import { actionHistory } from '../src/main/core/history'
 import { bus } from '../src/main/core/bus'
 import { parseIntent } from '../src/main/core/intent'
 import {
-  noteMiss, listLearned, learnedDocs, forgetLearned, noteCorrection, looksLikeCorrection
+  noteMiss, listLearned, learnedDocs, forgetLearned, noteCorrection, looksLikeCorrection, exactLearned
 } from '../src/main/core/learning'
 import { contentOf } from '../src/main/core/types'
 import { transcribeHint } from '../src/main/core/sttHint'
@@ -272,6 +272,30 @@ import { semanticIntent } from '../src/main/core/semanticIntent'
     hint.includes('Кира') && hint.includes('врубай погромче звук'), '-> ' + hint.slice(0, 90))
   t('подсказка распознавателю: не длиннее лимита Whisper', hint.length <= 380)
 
+  // Индивидуальность: ядро запоминает не только форму команды, но и ЧТО именно
+  // человек имел в виду. «Открой мою почту» у каждого своя, и повторять её
+  // должно ядро, а не облако.
+  forgetLearned()
+  noteMiss('открой мою почту', 'open_url', ['mail.example.com'])
+  t('личное: с первого раза ещё не работает', exactLearned('открой мою почту') === null)
+  noteMiss('открой мою почту', 'open_url', ['mail.example.com'])
+  const mine = exactLearned('открой мою почту')
+  t('личное: выучена команда вместе с адресом',
+    mine?.actionId === 'open_url' && mine?.args.url === 'mail.example.com',
+    '-> ' + JSON.stringify(mine))
+  t('личное: чужая формулировка не подхватывает мои данные',
+    exactLearned('открой почту') === null)
+
+  // Одна и та же фраза с разными данными — она не про конкретную вещь,
+  // подставлять прошлое значение было бы враньём.
+  noteMiss('найди это', 'web_search', ['рецепт борща'])
+  noteMiss('найди это', 'web_search', ['погода в Киеве'])
+  const vague = exactLearned('найди это')
+  t('личное: разные данные у одной фразы не запоминаются',
+    vague?.actionId === 'web_search' && Object.keys(vague?.args ?? {}).length === 0,
+    '-> ' + JSON.stringify(vague))
+  forgetLearned()
+
   // Исправление пользователя: молча повторять опровергнутую ошибку — худшее,
   // что может делать обучение, поэтому связка гасится и не оживает сама.
   noteMiss('врубай погромче звук', 'volume_up')
@@ -377,6 +401,17 @@ async function level2(): Promise<void> {
   const askFolder = await commandEngine.executeById('list_files', {}, { source: 'agent' })
   t('уточнение: ядро не придумывает недостающее', !!askFolder && askFolder.ok === false,
     '-> ' + (askFolder ? askFolder.message : 'нет'))
+
+  // Сквозная проверка личного обучения: выученная фраза выполняется САМИМ
+  // ядром — без облака и без движка эмбеддингов (его в тестах нет вовсе).
+  noteMiss('вставь мою подпись', 'clipboard_write', ['Вадим, VirusAid'])
+  noteMiss('вставь мою подпись', 'clipboard_write', ['Вадим, VirusAid'])
+  clipboard.writeText('')
+  const ranLearned = await commandEngine.tryHandle('вставь мою подпись', { source: 'chat' })
+  t('личное: ядро само выполняет выученную фразу с моими данными',
+    ranLearned.handled === true && clipboard.readText() === 'Вадим, VirusAid',
+    '-> ' + JSON.stringify(clipboard.readText()))
+  forgetLearned()
 
   const d1 = await commandEngine.tryHandle('выключи компьютер', { source: 'chat' })
   t('опасное без confirm -> отклонено', d1.handled === true && d1.result !== undefined && d1.result.ok === false)
