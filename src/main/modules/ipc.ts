@@ -24,7 +24,11 @@ import { rearmAutomation, removeAutomationTrigger } from './automation'
 import { registerHotkey } from './window'
 import { addReminder, listReminders, deleteReminder } from './reminders'
 import { globalSearch } from './search'
-import { updateVoice, requestOpenMain, requestToggleVoice, refreshVisibility } from './overlay'
+import { transcribeHint } from '../core/sttHint'
+import {
+  updateVoice, requestOpenMain, requestToggleVoice, refreshVisibility,
+  startOverlayDrag, endOverlayDrag
+} from './overlay'
 import { undoLast, historyLabels } from './undo'
 import { integrationStatus, connectGoogle, calendarToday, gmailList, discordSend } from './integrations'
 import { restartDiscordMonitor, verifyDiscordToken } from './discord'
@@ -209,8 +213,10 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
       form.append('model', 'whisper-large-v3')
       form.append('language', 'ru')
       form.append('temperature', '0')
-      // подсказка-контекст улучшает распознавание имён/команд
-      form.append('prompt', 'Разговор с ассистентом Кира на русском: включи музыку, фильм, открой, найди, напомни.')
+      // подсказка-контекст улучшает распознавание имён/команд. Собирается из
+      // живого: имя пользователя, слово активации, его частые и выученные
+      // формулировки — статичная фраза одинаково плохо слышала всех
+      form.append('prompt', transcribeHint())
       // verbose_json даёт no_speech_prob и avg_logprob — по ним отсекаем тишину
       form.append('response_format', 'verbose_json')
       const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
@@ -630,6 +636,9 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   })
   ipcMain.handle('overlay:open-main', () => requestOpenMain())
   ipcMain.handle('overlay:toggle-voice', () => requestToggleVoice())
+  // send, а не handle: перетаскивание идёт потоком событий, ответ не нужен
+  ipcMain.on('overlay:drag-start', () => startOverlayDrag())
+  ipcMain.on('overlay:drag-end', () => endOverlayDrag())
 
   // ─── Окно ─────────────────────────────────────────────────────────────────
   ipcMain.handle('window:minimize', () => getWindow()?.minimize())

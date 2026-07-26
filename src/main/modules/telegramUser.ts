@@ -117,15 +117,136 @@ export async function telegramUserStatus(): Promise<{ connected: boolean; name?:
   }
 }
 
-/** Написать сообщение от твоего имени (получатель: @username, номер или id). */
-export async function sendUserMessage(peer: string, text: string): Promise<ActionResult> {
-  if (!client) return { ok: false, message: 'Личный Telegram не подключён' }
-  try {
-    await client.sendMessage(peer.trim(), { message: text })
-    return { ok: true, message: 'Сообщение отправлено в Telegram' }
-  } catch (err) {
-    return { ok: false, message: (err as Error).message }
+// ─── Поиск собеседника по имени ─────────────────────────────────────────────
+//
+// Человек говорит «напиши Васе», а не «напиши @vasya_1990». Раньше имя уходило
+// в Telegram как есть и отправка падала. Теперь имя ищется среди личных
+// переписок — и, что важнее, при сомнении Kira не отправляет наугад: чужому
+// человеку сообщение уже не вернуть.
+
+export interface TelegramPeer {
+  /** Идентификатор для отправки (стабильнее имени). */
+  id: string
+  name: string
+  username: string
+}
+
+/** Список переписок стоит сетевого запроса — держим его недолго в памяти. */
+const DIALOGS_TTL_MS = 60_000
+let dialogCache: { at: number; peers: TelegramPeer[] } | null = null
+
+function fold(s: string): string {
+  return s.toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9\s]/gi, ' ').replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * Одно ли это слово с точностью до склонения: «Вася» и «Васе» — да, «Ян» и
+ * «Яна» — нет. Совпадать должна почти вся основа, а длина — отличаться на
+ * окончание, не больше: иначе «Вася» подойдёт к «Василисе».
+ */
+function sameWord(a: string, b: string): boolean {
+  if (a === b) return true
+  const short = Math.min(a.length, b.length)
+  // до четырёх букв окончания не отбрасываем — там от имени ничего не останется
+  if (short < 4 || Math.abs(a.length - b.length) > 3) return false
+  const need = Math.max(3, short - 2)
+  return a.slice(0, need) === b.slice(0, need)
+}
+
+/**
+ * Совпадает ли имя: каждое слово запроса должно найтись в имени собеседника.
+ *
+ * Сравнение идёт ПО СЛОВАМ, а не по вхождению подстроки: «Ян» иначе попадал бы
+ * в «Яну», «Яника» и «Яровую», а сообщение уходит живому человеку и отозвать
+ * его нельзя. Ошибиться в сторону «не нашла» безопасно — Kira переспросит.
+ *
+ * Экспортируется ради тестов: от этой функции зависит, кто получит сообщение.
+ */
+export function nameMatches(candidate: string, query: string): boolean {
+  const c = fold(candidate)
+  const q = fold(query)
+  if (!c || !q) return false
+  if (c === q) return true
+  const cWords = c.split(' ')
+  return q.split(' ').every((qw) => cWords.some((cw) => sameWord(cw, qw)))
+}
+
+/** Личные переписки пользователя (только люди, не группы и каналы). */
+async function personalPeers(): Promise<TelegramPeer[]> {
+  if (dialogCache && Date.now() - dialogCache.at < DIALOGS_TTL_MS) return dialogCache.peers
+  const dialogs = await client.getDialogs({ limit: 200 })
+  const peers: TelegramPeer[] = []
+  for (const d of dialogs) {
+    if (!d.isUser || !d.id) continue
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const e = d.entity as any
+    if (e?.bot || e?.self) continue // боты и «Избранное» — не собеседники
+    const name = [e?.firstName, e?.lastName].filter(Boolean).join(' ') || d.name || e?.username || ''
+    if (!name) continue
+    peers.push({ id: String(d.id), name, username: e?.username ?? '' })
   }
+  dialogCache = { at: Date.now(), peers }
+  return peers
+}
+
+/** Найти собеседников по имени — для уточнения «кому именно написать». */
+export async function findPeers(query: string): Promise<TelegramPeer[]> {
+  if (!client) return []
+  try {
+    const peers = await personalPeers()
+    return peers.filter((p) => nameMatches(p.name, query) || (p.username && nameMatches(p.username, query)))
+  } catch {
+    return []
+  }
+}
+
+/** Похоже ли на точный адрес (@username, телефон, числовой id) — искать не нужно. */
+function isExactPeer(peer: string): boolean {
+  return /^@[\w\d_]+$/.test(peer) || /^\+?\d{5,}$/.test(peer)
+}
+
+/**
+ * Написать сообщение от твоего имени. Получатель — @username, телефон, id или
+ * просто имя из переписок. При неоднозначности НЕ отправляем: спрашиваем.
+ */
+export async function sendUserMessage(peer: string, text: string): Promise<ActionResult> {
+  if (!client) {
+    return { ok: false, message: 'Личный Telegram не подключён — подключи его в разделе «Интеграции», и я смогу писать от твоего имени' }
+  }
+  const target = peer.trim()
+  if (!target) return { ok: false, message: 'Не поняла, кому писать' }
+  if (!text.trim()) return { ok: false, message: 'Пустое сообщение отправлять не буду' }
+
+  let recipient = target
+  let shown = target
+  if (!isExactPeer(target)) {
+    const found = await findPeers(target)
+    if (found.length === 0) {
+      return { ok: false, message: `Не нашла в переписках Telegram никого по имени «${target}». Скажи точнее — имя как в Telegram или @username.` }
+    }
+    if (found.length > 1) {
+      const list = found.slice(0, 5).map((p) => p.username ? `${p.name} (@${p.username})` : p.name).join(', ')
+      return { ok: false, message: `По имени «${target}» подходит несколько человек: ${list}. Кому именно написать?` }
+    }
+    recipient = found[0].id
+    shown = found[0].username ? `${found[0].name} (@${found[0].username})` : found[0].name
+  }
+
+  try {
+    await client.sendMessage(recipient, { message: text })
+    return { ok: true, message: `Отправила в Telegram — ${shown}` }
+  } catch (err) {
+    return { ok: false, message: `Не отправилось: ${(err as Error).message}` }
+  }
+}
+
+/** Кого Kira видит в переписках — для ответа «кому я могу написать». */
+export async function listPeers(query: string): Promise<ActionResult> {
+  if (!client) return { ok: false, message: 'Личный Telegram не подключён' }
+  const found = query.trim() ? await findPeers(query) : await personalPeers().catch(() => [])
+  if (!found.length) return { ok: true, message: 'Никого не нашла', content: '' }
+  const lines = found.slice(0, 20).map((p) => (p.username ? `${p.name} (@${p.username})` : p.name))
+  return { ok: true, message: `Нашла: ${found.length}`, content: lines.join('\n') }
 }
 
 export async function logoutTelegramUser(): Promise<{ ok: boolean }> {

@@ -53,11 +53,36 @@ export function encodeWavBase64(f32: Float32Array, sampleRate = 16000): string {
   return uint8ToBase64(new Uint8Array(buffer))
 }
 
-/** Записать N миллисекунд с микрофона и вернуть PCM 16 кГц base64 (для обучения голоса). */
-export async function recordSampleBase64(ms: number): Promise<string> {
-  const stream = await navigator.mediaDevices.getUserMedia({
-    audio: { echoCancellation: true, noiseSuppression: true }
-  })
+/**
+ * Выровнять громкость записи перед распознаванием.
+ *
+ * Тихий микрофон (низкое усиление, человек далеко) даёт сигнал в разы слабее
+ * того, на чём обучался распознаватель, — и слова теряются. Поднимаем пик до
+ * рабочего уровня, не трогая уже громкие записи и не усиливая тишину, чтобы не
+ * превращать фоновый шум в «речь».
+ */
+export function normalizeLoudness(f32: Float32Array): Float32Array {
+  let peak = 0
+  for (let i = 0; i < f32.length; i++) {
+    const v = Math.abs(f32[i])
+    if (v > peak) peak = v
+  }
+  // уже громко — не трогаем; почти тишина — усиливать нечего
+  if (peak >= 0.5 || peak < 0.01) return f32
+  const gain = 0.85 / peak
+  const out = new Float32Array(f32.length)
+  for (let i = 0; i < f32.length; i++) out[i] = f32[i] * gain
+  return out
+}
+
+/**
+ * Записать N миллисекунд с микрофона и вернуть PCM 16 кГц base64 (для обучения
+ * голоса). Микрофон — тот же, которым Kira слушает: обучать узнавание на одном
+ * устройстве, а слушать другим бессмысленно, тембр отличается.
+ */
+export async function recordSampleBase64(ms: number, deviceId = ''): Promise<string> {
+  const { openMicStream } = await import('./mic')
+  const { stream } = await openMicStream(deviceId)
   const mimeType = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
   const recorder = new MediaRecorder(stream, { mimeType })
   const chunks: Blob[] = []

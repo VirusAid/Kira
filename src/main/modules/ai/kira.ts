@@ -28,7 +28,7 @@ read_file|путь · read_document|путь(PDF/Word/Excel) · list_dir|пут�
 set_volume|0-100 · mute|on/off · set_brightness|0-100 · media|playpause/next/prev/volup/voldown · screenshot · focus_window|имя · minimize_all
 clipboard_write|текст · clipboard_read · read_selection(прочитать ВЫДЕЛЕННЫЙ текст в активном окне — для «переведи/объясни/перепиши это») · type_text|текст · notify|заголовок|текст · remind|текст|когда(«через 30 минут»/«завтра в 9»)
 run_command|PowerShell(опасное) · kill_process|имя(опасное) · processes|фильтр(список запущенных процессов; с фильтром — «запущен ли X») · shutdown/restart(опасное) · sleep · lock
-calendar(события на сегодня — Google) · gmail_check(непрочитанные письма) · gmail_search|запрос · gmail_send|кому@почта|тема|текст · discord_send|текст(сообщение в Discord) · telegram_send|текст(написать пользователю в Telegram) · telegram_dm|кому(@username/id)|текст(написать от имени пользователя в Telegram — личный аккаунт)
+calendar(события на сегодня — Google) · gmail_check(непрочитанные письма) · gmail_search|запрос · gmail_send|кому@почта|тема|текст · discord_send|текст(сообщение в Discord) · telegram_send|текст(написать пользователю в Telegram) · telegram_dm|кому|текст(написать от имени пользователя в Telegram — личный аккаунт; «кому» можно указать просто именем из переписок, @username или id) · telegram_who|имя(найти собеседника в Telegram — используй, если не уверена, кого он имеет в виду)
 note_search|запрос · note_read|имя · note_write|имя|текст(заметки Obsidian) · notion_search|запрос · notion_create|заголовок|текст
 ask_docs|вопрос(ПОИСК ПО ЛОКАЛЬНОЙ БАЗЕ ЗНАНИЙ пользователя — его проиндексированные документы; используй, когда спрашивают «что в моих документах/договоре/файлах про…») · index_docs|папка(проиндексировать документы) · gmail_digest(подробная выжимка непрочитанных писем — для саммари «что нового в почте») · read_screen_text(распознать текст на экране, OCR, офлайн) · clipboard_history(что копировал) · paste_recent|N(вставить прошлую копию) · snippet_paste|имя(вставить заготовку) · top_memory · top_cpu(что грузит память/процессор)
 diagnose|тема(самодиагностика: «почему не работает голос/офлайн-мозг/память» — проверяет подсистемы и говорит, что починить)
@@ -120,6 +120,7 @@ export function buildSystemPrompt(options?: { withTools?: boolean; extraContext?
   if (s.googleRefreshToken) conn.push('Google Календарь (calendar) и Gmail (gmail_check/gmail_search/gmail_send)')
   if (s.discordWebhook) conn.push('Discord (discord_send)')
   if (s.telegramBotEnabled && s.telegramBotToken) conn.push('Telegram (telegram_send — написать/уведомить пользователя)')
+  if (s.telegramSession) conn.push('Личный Telegram (telegram_dm — написать человеку от имени пользователя, telegram_who — найти контакт)')
   const integrationsBlock = conn.length ? 'Подключённые сервисы: ' + conn.join(', ') + ' — используй их, когда уместно.' : ''
 
   const aliveGuide =
@@ -131,7 +132,14 @@ export function buildSystemPrompt(options?: { withTools?: boolean; extraContext?
     'не вставила соответствующую команду [[kira:…]]. Обычный текст ничего не выполняет — он только произносится. ' +
     'Если нужного инструмента нет или ты не можешь сделать задачу (например, доступа к конкретному аккаунту/сервису ' +
     'нет) — ЧЕСТНО скажи «не могу это сделать» или предложи, что можешь (например, включить трек через play_music), ' +
-    'а НЕ притворяйся, что выполнила. Лучше честно отказать, чем соврать об успехе.\n' +
+    'а НЕ притворяйся, что выполнила. Лучше честно отказать, чем соврать об успехе. ' +
+    'Результат каждого действия приходит тебе с пометкой OK или ОШИБКА. Если пришла ОШИБКА — попробуй иначе, ' +
+    'а если не вышло, так и скажи: что именно не получилось. Выдавать неудачу за успех нельзя ни в каком виде.\n' +
+    'УТОЧНЯЙ, А НЕ УГАДЫВАЙ: если непонятно, о ком или о чём речь — какому из двух Саш написать, какой именно ' +
+    'файл удалить, какое из похожих окон закрыть, — задай ОДИН короткий вопрос и дождись ответа. Особенно когда ' +
+    'действие необратимо: отправленное сообщение и удалённый файл назад не вернуть. Не выдумывай недостающее — ' +
+    'ни адрес, ни имя файла, ни номер. Когда же всё однозначно, не переспрашивай попусту — просто делай. ' +
+    'И не сочиняй фактов: не знаешь — скажи «не знаю» или посмотри (search_web, read_screen_text, ask_docs).\n' +
     'ОЗВУЧКА: ответы читаются вслух. НЕ проговаривай технику — пути к файлам, ссылки, команды, названия функций. ' +
     'Выполнив действие (вставив команду), отвечай КОРОТКО: «Готово», «Сделала», «Включаю» — без описания процесса. ' +
     'Никаких списков и разметки в речи.\n' +
@@ -447,6 +455,10 @@ export async function executeAction(a: ParsedAction): Promise<ActionResult> {
       case 'telegram_dm': {
         const { sendUserMessage } = await import('../telegramUser')
         return sendUserMessage(a.args[0] ?? '', a.args.slice(1).join('|'))
+      }
+      case 'telegram_who': {
+        const { listPeers } = await import('../telegramUser')
+        return listPeers(a.args[0] ?? '')
       }
       case 'note_search': {
         const { notesSearch } = await import('../integrations')

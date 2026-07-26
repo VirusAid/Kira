@@ -5,8 +5,12 @@ import { actions } from '../src/main/core/actions'
 import { actionHistory } from '../src/main/core/history'
 import { bus } from '../src/main/core/bus'
 import { parseIntent } from '../src/main/core/intent'
-import { noteMiss, listLearned, learnedDocs, forgetLearned } from '../src/main/core/learning'
+import {
+  noteMiss, listLearned, learnedDocs, forgetLearned, noteCorrection, looksLikeCorrection
+} from '../src/main/core/learning'
 import { contentOf } from '../src/main/core/types'
+import { transcribeHint } from '../src/main/core/sttHint'
+import { nameMatches } from '../src/main/modules/telegramUser'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
@@ -261,6 +265,39 @@ import { semanticIntent } from '../src/main/core/semanticIntent'
   noteMiss('вот это очень длинная фраза которую я говорю просто так и она точно не команда', 'volume_up')
   t('обучение: длинный текст не выучивается', listLearned().length === 1)
 
+  // подсказка распознавателю собирается из живого словаря пользователя:
+  // статичная фраза одинаково плохо слышала всех
+  const hint = transcribeHint()
+  t('подсказка распознавателю: знает имя ассистента и выученную фразу',
+    hint.includes('Кира') && hint.includes('врубай погромче звук'), '-> ' + hint.slice(0, 90))
+  t('подсказка распознавателю: не длиннее лимита Whisper', hint.length <= 380)
+
+  // Исправление пользователя: молча повторять опровергнутую ошибку — худшее,
+  // что может делать обучение, поэтому связка гасится и не оживает сама.
+  noteMiss('врубай погромче звук', 'volume_up')
+  noteMiss('врубай погромче звук', 'volume_up')
+  t('исправление: перед проверкой связка активна', learnedDocs().length === 1)
+  t('исправление: возражение распознаётся',
+    looksLikeCorrection('нет, я не это просил') && looksLikeCorrection('не то'))
+  t('исправление: обычная фраза не считается возражением',
+    !looksLikeCorrection('нет ли у меня встреч завтра') && !looksLikeCorrection('включи музыку'))
+  t('исправление: гасит ошибочную связку',
+    noteCorrection('врубай погромче звук', 'volume_up') && learnedDocs().length === 0)
+  noteMiss('врубай погромче звук', 'volume_up')
+  noteMiss('врубай погромче звук', 'volume_up')
+  t('исправление: опровергнутое не выучивается заново', learnedDocs().length === 0)
+
+  // Кому уйдёт сообщение в Telegram: имя склоняется («напиши Васе»), но
+  // ошибиться человеком нельзя — сообщение не отзовёшь.
+  t('контакт: склонённое имя находит того же человека',
+    nameMatches('Вася Пупкин', 'васе') && nameMatches('Вася Пупкин', 'вася'))
+  t('контакт: фамилия и имя вместе тоже находят',
+    nameMatches('Вася Пупкин', 'вася пупкин'))
+  t('контакт: чужое имя не подходит',
+    !nameMatches('Вася Пупкин', 'петя') && !nameMatches('Вася Пупкин', 'василиса кузнецова'))
+  t('контакт: короткое имя требует точного совпадения',
+    nameMatches('Ян Ковальский', 'ян') && !nameMatches('Яна Смирнова', 'ян'))
+
   // забывание работает и чистит индекс
   const forgotten = forgetLearned()
   t('обучение: забывание убирает всё', forgotten === 1 && learnedDocs().length === 0)
@@ -330,6 +367,16 @@ async function level2(): Promise<void> {
   await commandEngine.executeById('snippet_save', { name: newSnip, text: 'разовый' }, { source: 'agent' })
   await commandEngine.undoLast({ source: 'chat' })
   t('отмена: новый сниппет удалён, а не оставлен пустым', getSnippet(newSnip).ok === false)
+
+  // Не хватает обязательного аргумента — ядро спрашивает и показывает пример,
+  // а не подставляет что-нибудь на своё усмотрение: угаданный файл или
+  // получатель это уже не помощь.
+  const needArg = await commandEngine.executeById('clipboard_write', { text: '   ' }, { source: 'agent' })
+  t('уточнение: пустой обязательный аргумент не выполняется', !!needArg && needArg.ok === false,
+    '-> ' + (needArg ? needArg.message : 'нет'))
+  const askFolder = await commandEngine.executeById('list_files', {}, { source: 'agent' })
+  t('уточнение: ядро не придумывает недостающее', !!askFolder && askFolder.ok === false,
+    '-> ' + (askFolder ? askFolder.message : 'нет'))
 
   const d1 = await commandEngine.tryHandle('выключи компьютер', { source: 'chat' })
   t('опасное без confirm -> отклонено', d1.handled === true && d1.result !== undefined && d1.result.ok === false)

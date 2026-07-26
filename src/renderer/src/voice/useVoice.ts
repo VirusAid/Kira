@@ -9,11 +9,20 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { kira } from '@/api'
 import { useAppStore } from '@/state/appStore'
 import { useChatStore } from '@/state/chatStore'
-import { float32ToBase64, encodeWavBase64 } from './audioUtils'
+import { float32ToBase64, encodeWavBase64, normalizeLoudness } from './audioUtils'
+import { openMicStream } from './mic'
 
 export type VoiceState = 'off' | 'listening' | 'recording' | 'transcribing' | 'thinking' | 'speaking'
 
-const SPEECH_THRESHOLD = 0.030 // базовый RMS-порог начала речи (над шумом)
+/**
+ * Нижняя граница RMS, ниже которой звук точно не считаем речью.
+ *
+ * Раньше здесь было 0.030 — фиксированный порог, недостижимый для микрофонов с
+ * низким усилением: человек говорил, а Kira молчала. Основной порог всё равно
+ * считается от фактического шума (см. threshold ниже), поэтому нижняя граница
+ * нужна только как страховка от полной тишины и может быть заметно мягче.
+ */
+const SPEECH_THRESHOLD = 0.016
 const SILENCE_MS = 1100 // тишина до конца фразы
 const MIN_SPEECH_MS = 450 // минимальная длительность речи
 const SPEECH_START_MS = 120 // сколько мс устойчивой громкости = начало речи
@@ -225,8 +234,9 @@ export function useVoice() {
         } catch { /* не критично */ }
       }
 
-      // распознавание: отдаём Whisper чистый WAV 16 кГц (без потерь начала)
-      const wav = encodeWavBase64(pcm, 16000)
+      // распознавание: отдаём чистый WAV 16 кГц (без потерь начала), выровняв
+      // громкость — на тихом микрофоне без этого слова просто терялись
+      const wav = encodeWavBase64(normalizeLoudness(pcm), 16000)
       const result = await kira.ai.transcribe(wav, 'audio/wav')
       if (currentState() === 'off') return
       if (result.ok && result.text) {
@@ -304,7 +314,9 @@ export function useVoice() {
     if (s0 === 'listening') {
       noiseFloorRef.current = noiseFloorRef.current * 0.96 + rms * 0.04
     }
-    const threshold = Math.max(SPEECH_THRESHOLD, noiseFloorRef.current * 2.6 + 0.006)
+    // порог — от реального шума в комнате: так он подстраивается и под тихий
+    // микрофон, и под шумную обстановку, а не под одно «среднее» устройство
+    const threshold = Math.max(SPEECH_THRESHOLD, noiseFloorRef.current * 3 + 0.004)
     const loud = rms > threshold
     const typing = now - lastTypeRef.current < TYPING_SUPPRESS_MS
 
@@ -347,10 +359,21 @@ export function useVoice() {
     typeHandlerRef.current = onKey
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }
-      })
+      const mic = await openMicStream(useAppStore.getState().settings?.micDeviceId ?? '')
+      if (mic.fellBack) {
+        setLastError('Выбранный микрофон недоступен — слушаю системный. Проверь его в настройках голоса.')
+      }
+      const stream = mic.stream
       streamRef.current = stream
+      // микрофон могли выдернуть на ходу (гарнитуру, USB-камеру): дорожка
+      // заканчивается, звук перестаёт идти — раньше Kira просто глохла молча
+      stream.getAudioTracks().forEach((t) => {
+        t.onended = () => {
+          if (stateRef.current === 'off') return
+          setLastError('Микрофон отключился. Выбери другой в настройках голоса.')
+          stop()
+        }
+      })
       // 16 кГц — совместимо с Vosk (офлайн-активатор) и достаточно для VAD
       const ctx = new AudioContext({ sampleRate: 16000 })
       audioCtxRef.current = ctx

@@ -88,7 +88,9 @@ const api = {
   overlay: {
     voiceUpdate: (p: { active: boolean; state: string; level: number }) => ipcRenderer.send('voice:update', p),
     openMain: () => invoke('overlay:open-main'),
-    toggleVoice: () => invoke('overlay:toggle-voice')
+    toggleVoice: () => invoke('overlay:toggle-voice'),
+    dragStart: () => ipcRenderer.send('overlay:drag-start'),
+    dragEnd: () => ipcRenderer.send('overlay:drag-end')
   },
 
   undo: {

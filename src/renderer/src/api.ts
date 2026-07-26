@@ -72,6 +72,8 @@ interface KiraBridge {
     voiceUpdate: (p: { active: boolean; state: string; level: number }) => void
     openMain: () => Promise<void>
     toggleVoice: () => Promise<void>
+    dragStart: () => void
+    dragEnd: () => void
   }
   undo: {
     list: () => Promise<{ id: string; label: string; at: number }[]>

@@ -658,6 +658,8 @@ function VoiceSection({ settings, update }: SectionProps) {
         <Toggle label="Автоматически слушать" hint="После ответа Kira снова слушает тебя"
           checked={settings.voiceAutoListen} onChange={(v) => update({ voiceAutoListen: v })} />
 
+        <MicPicker value={settings.micDeviceId} onChange={(id) => update({ micDeviceId: id })} />
+
         <Field label="Каким голосом говорить">
           <div style={{ display: 'flex', gap: 8 }}>
             {engineCard('silero', '🧠 Свой голос', 'Живой и тёплый. Работает без интернета.')}
@@ -845,7 +847,7 @@ function BehaviorSection({ settings, update }: SectionProps) {
       const samples: string[] = []
       for (let i = 0; i < 2; i++) {
         setSpkLog(`Говори что-нибудь… запись ${i + 1}/2`)
-        samples.push(await recordSampleBase64(4000))
+        samples.push(await recordSampleBase64(4000, settings.micDeviceId))
       }
       setSpkLog('Обрабатываю…')
       const res = await kira.speaker.enroll(samples)
@@ -1137,6 +1139,93 @@ function SectionTitle({ icon, title, subtitle }: { icon: React.ReactNode; title:
       </div>
       <p className="muted" style={{ marginTop: 5, marginLeft: 30 }}>{subtitle}</p>
     </div>
+  )
+}
+
+/**
+ * Выбор микрофона с живой проверкой.
+ *
+ * Проверка важнее списка: название устройства ни о чём не говорит, а полоска
+ * уровня сразу показывает, слышит ли Kira именно этот микрофон, — иначе
+ * «Kira меня не слышит» превращается в гадание.
+ */
+function MicPicker({ value, onChange }: { value: string; onChange: (id: string) => void }) {
+  const [devices, setDevices] = useState<{ id: string; label: string }[]>([])
+  const [level, setLevel] = useState(0)
+  const [testing, setTesting] = useState(false)
+  const [error, setError] = useState('')
+  const stopRef = useRef<(() => void) | null>(null)
+
+  const refresh = (): void => {
+    void import('@/voice/mic').then((m) => m.listMicrophones().then(setDevices).catch(() => setDevices([])))
+  }
+
+  useEffect(() => {
+    refresh()
+    // список меняется на ходу: воткнули гарнитуру, отключили камеру
+    navigator.mediaDevices.addEventListener('devicechange', refresh)
+    return () => {
+      navigator.mediaDevices.removeEventListener('devicechange', refresh)
+      stopRef.current?.()
+    }
+  }, [])
+
+  const test = async (): Promise<void> => {
+    if (testing) { stopRef.current?.(); return }
+    setError('')
+    try {
+      const { openMicStream } = await import('@/voice/mic')
+      const mic = await openMicStream(value)
+      if (mic.fellBack) setError('Выбранный микрофон недоступен — слушаю системный.')
+      const ctx = new AudioContext()
+      const analyser = ctx.createAnalyser()
+      analyser.fftSize = 1024
+      ctx.createMediaStreamSource(mic.stream).connect(analyser)
+      const data = new Float32Array(analyser.fftSize)
+      let raf = 0
+      const tick = (): void => {
+        analyser.getFloatTimeDomainData(data)
+        let sum = 0
+        for (const v of data) sum += v * v
+        setLevel(Math.min(1, Math.sqrt(sum / data.length) * 9))
+        raf = requestAnimationFrame(tick)
+      }
+      tick()
+      setTesting(true)
+      stopRef.current = () => {
+        cancelAnimationFrame(raf)
+        mic.stream.getTracks().forEach((t) => t.stop())
+        void ctx.close()
+        stopRef.current = null
+        setTesting(false)
+        setLevel(0)
+      }
+    } catch (e) {
+      setError('Не удалось открыть микрофон: ' + (e as Error).message)
+    }
+  }
+
+  return (
+    <Field label="Микрофон">
+      <select style={{ width: '100%' }} value={value} onChange={(e) => { stopRef.current?.(); onChange(e.target.value) }}>
+        <option value="">Как в Windows (по умолчанию)</option>
+        {devices.map((d) => <option key={d.id} value={d.id}>{d.label}</option>)}
+      </select>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+        <button className="btn press" onClick={() => void test()}>
+          <Mic size={14} />{testing ? 'Остановить' : 'Проверить'}
+        </button>
+        <div style={{ flex: 1, height: 8, borderRadius: 999, background: 'var(--bg-3)', overflow: 'hidden' }}>
+          <div style={{
+            width: `${Math.round(level * 100)}%`, height: '100%', borderRadius: 999,
+            background: 'var(--accent)', transition: 'width 0.08s linear'
+          }} />
+        </div>
+      </div>
+      <p className="muted" style={{ marginTop: 6, fontSize: 11.5 }}>
+        {error || (testing ? 'Скажи что-нибудь — полоска должна двигаться.' : 'Нажми «Проверить» и убедись, что Kira слышит именно этот микрофон.')}
+      </p>
+    </Field>
   )
 }
 

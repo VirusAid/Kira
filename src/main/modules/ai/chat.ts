@@ -35,6 +35,12 @@ const CONTROL_ACTIONS = new Set([
  */
 const SEARCH_ACTIONS = new Set(['search_web', 'read_page', 'open_search', 'search_files', 'find_files', 'search_content'])
 const SEARCH_BUDGET = 3
+/**
+ * Сколько времени «нет, я не это просил» ещё относится к прошлой команде.
+ * Две минуты: человек успевает увидеть результат и возразить, но возражение из
+ * позавчерашнего разговора уже ничего не поправляет.
+ */
+const CORRECTION_WINDOW_MS = 2 * 60_000
 
 const sleep = (ms: number): Promise<void> => new Promise((r) => setTimeout(r, ms))
 
@@ -211,29 +217,44 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
   const lastUser = [...req.messages].reverse().find((m) => m.role === 'user')
   /** Фраза, которую ядро НЕ поняло — материал для обучения (см. ниже). */
   let missedPhrase = ''
+  /** Исходная фраза, которую пользователь только что поправил (см. ниже). */
+  let correctedPhrase = ''
   if (!req.imageBase64 && req.withTools !== false && typeof lastUser?.content === 'string') {
     try {
       const { commandEngine, initKiraCore } = await import('../../core')
+      const { looksLikeCorrection, noteCorrection } = await import('../../core/learning')
       initKiraCore()
-      const local = await commandEngine.tryHandle(lastUser.content, {
-        source: 'chat',
-        confirm: (description) => askConfirmation(win, req.requestId, description)
-      })
-      if (local.handled && local.result) {
-        send(win, 'ai:action', {
-          requestId: req.requestId, name: local.actionId ?? 'core',
-          ok: local.result.ok, message: local.result.message
+
+      // «Нет, я не это просил» сразу после сработавшей команды — не новая
+      // команда, а исправление. Гасим ошибочную связку и дальше учим ИСХОДНУЮ
+      // фразу тому действию, которое человек имел в виду на самом деле.
+      const prev = commandEngine.lastLocalRun()
+      if (prev && looksLikeCorrection(lastUser.content) && Date.now() - prev.at < CORRECTION_WINDOW_MS) {
+        noteCorrection(prev.phrase, prev.actionId)
+        commandEngine.clearLastLocalRun()
+        correctedPhrase = prev.phrase
+      } else {
+        const local = await commandEngine.tryHandle(lastUser.content, {
+          source: 'chat',
+          confirm: (description) => askConfirmation(win, req.requestId, description)
         })
-        send(win, 'ai:done', { requestId: req.requestId, content: local.reply || 'Готово.', model: 'kira-core' })
-        logger.ai('core', `Локально (без LLM): ${local.actionId}`)
-        return
+        if (local.handled && local.result) {
+          send(win, 'ai:action', {
+            requestId: req.requestId, name: local.actionId ?? 'core',
+            ok: local.result.ok, message: local.result.message
+          })
+          send(win, 'ai:done', { requestId: req.requestId, content: local.reply || 'Готово.', model: 'kira-core' })
+          logger.ai('core', `Локально (без LLM): ${local.actionId}`)
+          return
+        }
       }
     } catch (err) {
       logger.warn('core', `Ядро пропустило запрос: ${(err as Error).message}`)
     }
     // ядро не справилось — фраза станет материалом для обучения, если ниже
-    // нейросеть выполнит ровно одно действие успешно
-    missedPhrase = lastUser.content
+    // нейросеть выполнит ровно одно действие успешно. После исправления учим
+    // не само возражение, а фразу, которую поняли неправильно
+    missedPhrase = correctedPhrase || lastUser.content
   }
 
   const history: AIMessage[] = [

@@ -227,6 +227,12 @@ export interface KiraSettings {
   edgeVoice: string
   /** Имя системного голоса (Web Speech), если ttsEngine = 'system' */
   voiceName: string
+  /**
+   * Микрофон, которым Kira слушает (deviceId). Пусто — устройство Windows по
+   * умолчанию. Нужен выбор: у людей одновременно веб-камера, гарнитура и
+   * микрофон монитора, и Windows часто выбирает не тот.
+   */
+  micDeviceId: string
   voiceRate: number
   /** Высота тона для Edge TTS, Гц (-30…+30) */
   voicePitch: number

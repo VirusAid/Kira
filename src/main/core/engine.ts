@@ -139,8 +139,30 @@ interface UndoableRun {
   at: number
 }
 
+/**
+ * Что ядро выполнило по последней фразе — нужно, чтобы понять исправление
+ * пользователя («нет, я не это просил») и связать его с ТОЙ фразой, а не с
+ * самим возражением.
+ */
+export interface LocalRun {
+  phrase: string
+  actionId: string
+  at: number
+}
+
 class CommandEngine {
   private lastUndoable: UndoableRun | null = null
+  private lastLocal: LocalRun | null = null
+
+  /** Последняя фраза, которую ядро обработало само (для разбора исправлений). */
+  lastLocalRun(): LocalRun | null {
+    return this.lastLocal
+  }
+
+  /** Забыть последнее локальное срабатывание — исправление уже учтено. */
+  clearLastLocalRun(): void {
+    this.lastLocal = null
+  }
 
   /** Локальная обработка свободного текста (chat/voice). */
   async tryHandle(text: string, ctx: ActionContext): Promise<HandleOutcome> {
@@ -160,6 +182,7 @@ class CommandEngine {
         return { handled: false, intent: 'ai' }
       }
       trace({ at: Date.now(), text, route: 'шаблон', actionId: action.id, why: 'точное совпадение шаблона' })
+      this.lastLocal = { phrase: text, actionId: action.id, at: Date.now() }
       return outcome
     }
 
@@ -195,6 +218,7 @@ class CommandEngine {
           if (outcome.result?.ok || !action.softFail) {
             const withArg = argName ? ` · ${argName}=«${args[argName]}»` : ''
             trace({ at: Date.now(), text, route: 'смысл', actionId: action.id, semantic: sem, why: `понято по смыслу${withArg}` })
+            this.lastLocal = { phrase: text, actionId: action.id, at: Date.now() }
             return outcome
           }
           trace({ at: Date.now(), text, route: 'облако', actionId: action.id, semantic: sem, why: 'по смыслу нашлось, но действие отказалось' })
@@ -252,10 +276,14 @@ class CommandEngine {
     // обязательные аргументы + валидация
     for (const spec of action.args) {
       if (spec.required && !args[spec.name]?.trim()) {
+        // Спрашиваем, а не подставляем что-нибудь на своё усмотрение: угаданный
+        // файл или получатель — это уже не помощь. Пример из самого действия
+        // показывает, в какой форме ответ понятен.
+        const example = action.examples[0] ? ` Например: «${action.examples[0]}».` : ''
         return {
           handled: true, intent: 'local', actionId: action.id,
           result: { ok: false, message: `Не хватает аргумента «${spec.name}» (${spec.description})` },
-          reply: `Уточни, ${spec.description.toLowerCase()}.`
+          reply: `Уточни: ${spec.description.toLowerCase()}.${example}`
         }
       }
     }

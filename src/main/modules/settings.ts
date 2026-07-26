@@ -40,6 +40,7 @@ export const DEFAULT_SETTINGS: KiraSettings = {
   sileroSpeaker: 'xenia',
   edgeVoice: 'ru-RU-SvetlanaNeural',
   voiceName: '',
+  micDeviceId: '',
   voiceRate: 1.0,
   voicePitch: 0,
   voiceAutoListen: true,
