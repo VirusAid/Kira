@@ -74,7 +74,7 @@ class CommandEngine {
 
   /** Локальная обработка свободного текста (chat/voice). */
   async tryHandle(text: string, ctx: ActionContext): Promise<HandleOutcome> {
-    const intent = parseIntent(text, registry.intentSpecs())
+    const intent = parseIntent(text, registry.intentSpecs(), registry.commandVocabulary())
     if (intent.kind === 'local') {
       const action = registry.get(intent.actionId)
       if (!action) {
