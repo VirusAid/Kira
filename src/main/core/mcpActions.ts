@@ -46,6 +46,46 @@ function phrasePattern(phrase: string, needsArg: boolean): RegExp | null {
     : new RegExp(`^${escaped}$`)
 }
 
+/**
+ * Что и с какими аргументами вызывали в последний раз — материал для отмены.
+ * `undo(args)` получает только аргументы команды, а для отката нужно и то, что
+ * было ДО вызова: прежнее содержимое файла узнать задним числом уже нельзя.
+ */
+const lastCall = new Map<string, { args: Record<string, unknown>; before: unknown }>()
+
+/** Аргументы инструмента: `$1` — сказанное человеком, остальное — постоянные. */
+function buildArgs(template: Record<string, string>, spoken: string): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [key, value] of Object.entries(template)) {
+    out[key] = value.includes('$1') ? value.replace('$1', spoken) : value
+  }
+  return out
+}
+
+/**
+ * Синхронная проверка обратимости — нужна в момент СБОРКИ действия, когда
+ * решается, будет ли у него отмена вообще. Список короткий и не меняется в
+ * рантайме, поэтому дублировать его тут дешевле, чем делать сборку асинхронной.
+ */
+function isReversibleSync(tool: string): boolean {
+  return tool === 'move_file' || tool === 'write_file'
+}
+
+/** Откатить последний вызов привязки. */
+async function undoBinding(b: McpBinding): Promise<{ ok: boolean; message: string }> {
+  const { callTool } = await import('../modules/mcp/manager')
+  const { reverseOf } = await import('../modules/mcp/reversible')
+  const saved = lastCall.get(b.id)
+  if (!saved) return { ok: false, message: 'Не помню, что нужно вернуть' }
+  lastCall.delete(b.id)
+  const back = reverseOf(b.tool, saved.args, saved.before)
+  if (!back) {
+    return { ok: false, message: `«${b.title || b.tool}» отменить нельзя — расширение не умеет обращать это действие` }
+  }
+  const r = await callTool(b.server, back.call.tool, back.call.args, { timeoutMs: 30_000 })
+  return r.ok ? { ok: true, message: back.said } : { ok: false, message: `Не вышло вернуть: ${r.message}` }
+}
+
 /** Нужен ли привязке аргумент из речи — то есть встречается ли где-то `$1`. */
 function usesSpokenValue(b: McpBinding): boolean {
   return Object.values(b.args).some((v) => v.includes('$1'))
@@ -83,15 +123,27 @@ export function bindingToAction(b: McpBinding): KiraAction | null {
     dangerous: b.dangerous,
     execute: async (a, ctx) => {
       const { callTool } = await import('../modules/mcp/manager')
-      // подставляем сказанное туда, где стоит $1; остальное — постоянные значения
-      const payload: Record<string, unknown> = {}
-      for (const [key, template] of Object.entries(b.args)) {
-        payload[key] = template.includes('$1') ? template.replace('$1', a.value ?? '') : template
+      const { captureBefore, isReversible } = await import('../modules/mcp/reversible')
+      const payload = buildArgs(b.args, a.value ?? '')
+
+      // Прежнее состояние запоминаем ДО вызова — после него его уже не узнать.
+      // Только для тех инструментов, у которых обратный шаг вообще существует.
+      if (isReversible(b.tool)) {
+        const read = async (call: { tool: string; args: Record<string, unknown> }): Promise<string | null> => {
+          const r = await callTool(b.server, call.tool, call.args, { timeoutMs: 15_000 })
+          return r.ok ? (r.content ?? '') : null
+        }
+        lastCall.set(b.id, { args: payload, before: await captureBefore(b.tool, payload, read) })
       }
+
       // источник 'llm' означает фоновый вызов — там ждать человека бессмысленно
       const timeoutMs = ctx.source === 'chat' || ctx.source === 'voice' ? 30_000 : 60_000
       return callTool(b.server, b.tool, payload, { timeoutMs })
     },
+    // Отмена появляется ТОЛЬКО у обратимых инструментов. Вешать её на всё
+    // подряд нельзя: тогда неотменяемый вызов расширения занял бы место
+    // последнего отменяемого и закрыл человеку откат того, что откатить можно.
+    ...(isReversibleSync(b.tool) ? { undo: () => undoBinding(b) } : {}),
     describe: (a) => `${title}${a.value ? `: «${a.value}»` : ''} (расширение «${b.server}»)`
   }
 }

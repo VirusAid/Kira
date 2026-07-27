@@ -16,8 +16,9 @@
     "prepare:standalone": "node scripts/prepare-standalone.mjs",
     "dist:standalone": "node scripts/prepare-standalone.mjs && node scripts/prepare-mcp.mjs && electron-vite build && electron-builder --win",
     "test:mcp": "esbuild tests/mcp.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-mcp.cjs && node tests/.build/test-mcp.cjs",
-    "test": "npm run test:core && npm run test:mcp",
-    "prepare:mcp": "node scripts/prepare-mcp.mjs"
+    "test": "npm run test:core && npm run test:mcp && npm run test:ext",
+    "prepare:mcp": "node scripts/prepare-mcp.mjs",
+    "test:ext": "esbuild tests/extensions.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-ext.cjs && node tests/.build/test-ext.cjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",

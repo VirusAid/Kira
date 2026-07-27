@@ -285,6 +285,15 @@ class CommandEngine {
       noteUndo(last.phrase, last.actionId)
       this.lastLocal = null
     }
+    /*
+     * Что человек делал последним. Нужно, чтобы на «отмени» после
+     * неотменяемого действия сказать это ПРЯМО, назвав его: «нечего отменять»
+     * в такой момент звучит как отговорка и заставляет гадать, сработало
+     * что-то или нет.
+     */
+    const recent = last && Date.now() - last.at < UNDO_AS_CORRECTION_MS
+      ? registry.get(last.actionId)
+      : undefined
     const u = this.lastUndoable
     if (u?.action.undo) {
       this.lastUndoable = null
@@ -304,6 +313,9 @@ class CommandEngine {
     // файловые операции LLM-инструментов (move/rename/write/delete…)
     const { undoLast, canUndo } = await import('../modules/undo')
     if (canUndo()) return undoLast()
+    if (recent && !recent.undo) {
+      return { ok: false, message: `«${recent.title}» отменить нельзя — это действие необратимо` }
+    }
     return { ok: false, message: 'Нечего отменять — недавних отменяемых действий нет' }
   }
 
