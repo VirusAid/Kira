@@ -30,10 +30,19 @@ import type { ExecResult } from '../../core/types'
 
 /** Сколько ждём ответа сервера по умолчанию. */
 const DEFAULT_TIMEOUT_MS = 30_000
-/** Рукопожатие должно быть быстрым: сервер либо запустился, либо нет. */
-const INIT_TIMEOUT_MS = 20_000
+/**
+ * Сколько ждём первого ответа сервера.
+ *
+ * Щедро, и намеренно: почти все серверы запускаются через `npx -y`, а он при
+ * первом обращении СКАЧИВАЕТ пакет. На проверке это заняло 10 секунд при
+ * хорошей сети — на медленной уйдёт заметно больше, и жёсткий короткий таймаут
+ * превратил бы обычную установку в «сервер не отвечает».
+ */
+const INIT_TIMEOUT_MS = 120_000
 /** Сколько ждём добровольного завершения, прежде чем убить процесс. */
 const SHUTDOWN_GRACE_MS = 3000
+/** Пауза между попытками поднять упавший сервер. */
+const RETRY_COOLDOWN_MS = 5000
 
 interface Pending {
   resolve: (value: unknown) => void
@@ -62,6 +71,24 @@ export function resolveCommand(command: string): { command: string; viaShell: bo
   return { command, viaShell: false } // не нашли — пусть система сама решит
 }
 
+/**
+ * Расшифровать журнал сервера.
+ *
+ * Сам сервер пишет в UTF-8, но если запуск не удался, сообщение приходит уже от
+ * cmd.exe — а он на русской Windows говорит в CP866. Прочитанное как UTF-8, оно
+ * превращается в кашу, и человек вместо «не является внутренней командой» видит
+ * «��������». Отличаем по признаку сбоя декодирования.
+ */
+function decodeStderr(chunk: Buffer): string {
+  const asUtf8 = chunk.toString('utf-8')
+  if (process.platform !== 'win32' || !asUtf8.includes('�')) return asUtf8
+  try {
+    return new TextDecoder('cp866').decode(chunk)
+  } catch {
+    return asUtf8
+  }
+}
+
 /** Кавычки для аргумента, уходящего через cmd.exe: путь с пробелом иначе распадётся. */
 function quoteForShell(arg: string): string {
   return /[\s"^&|<>()]/.test(arg) ? `"${arg.replace(/"/g, '\\"')}"` : arg
@@ -75,6 +102,10 @@ export class StdioMcpProvider implements McpProvider {
   private tools: McpTool[] = []
   private listeners = new Set<() => void>()
   private state: McpStatus['state'] = 'unconfigured'
+  /** Идущее подключение — чтобы параллельные вызовы ждали его, а не плодили процессы. */
+  private connecting: Promise<void> | null = null
+  /** Когда последний раз пытались подняться (защита от частых перезапусков). */
+  private lastAttempt = 0
   private detail = 'не подключён'
   /** Последние строки stderr — единственная подсказка, почему сервер не встал. */
   private stderrTail: string[] = []
@@ -85,8 +116,23 @@ export class StdioMcpProvider implements McpProvider {
     return { state: this.state, message: this.detail, tools: this.tools.length }
   }
 
+  /**
+   * Подключиться. Параллельные вызовы ждут ОДНО подключение: без этого
+   * первый же вызов инструмента во время старта запускал второй процесс
+   * сервера — а тот, что уже поднимался, оставался сиротой.
+   */
   async connect(): Promise<void> {
     if (this.child) return
+    if (this.connecting) return this.connecting
+    // упавший сервер не перезапускаем чаще, чем раз в несколько секунд:
+    // иначе на каждый вызов будет плодиться новый процесс
+    if (this.state === 'offline' && Date.now() - this.lastAttempt < RETRY_COOLDOWN_MS) return
+    this.lastAttempt = Date.now()
+    this.connecting = this.doConnect().finally(() => { this.connecting = null })
+    return this.connecting
+  }
+
+  private async doConnect(): Promise<void> {
     if (!this.config.command.trim()) {
       this.state = 'unconfigured'
       this.detail = 'не указана команда запуска'
@@ -96,9 +142,14 @@ export class StdioMcpProvider implements McpProvider {
     this.detail = 'запускаю…'
 
     const { command, viaShell } = resolveCommand(this.config.command)
+    // Через оболочку цитировать нужно и САМУ команду, а не только аргументы:
+    // npx на Windows живёт в «C:\Program Files\nodejs\npx.cmd», и без кавычек
+    // cmd.exe принимает за команду «C:\Program». Без этого ни один сервер из
+    // npm не запускался бы на обычной установке Windows.
+    const exe = viaShell ? quoteForShell(command) : command
     const args = viaShell ? this.config.args.map(quoteForShell) : this.config.args
     try {
-      this.child = spawn(command, args, {
+      this.child = spawn(exe, args, {
         cwd: this.config.cwd || undefined,
         env: { ...process.env, ...this.config.env },
         stdio: ['pipe', 'pipe', 'pipe'],
@@ -114,10 +165,9 @@ export class StdioMcpProvider implements McpProvider {
 
     this.child.stdout.setEncoding('utf-8')
     this.child.stdout.on('data', (chunk: string) => this.onData(chunk))
-    this.child.stderr.setEncoding('utf-8')
-    this.child.stderr.on('data', (chunk: string) => {
+    this.child.stderr.on('data', (chunk: Buffer) => {
       // журнал сервера: держим только хвост — он пригодится в диагностике
-      for (const line of String(chunk).split('\n')) {
+      for (const line of decodeStderr(chunk).split('\n')) {
         const t = line.trim()
         if (!t) continue
         this.stderrTail.push(t)
@@ -207,11 +257,13 @@ export class StdioMcpProvider implements McpProvider {
     const id = this.nextId++
     const timeoutMs = ctx?.timeoutMs ?? DEFAULT_TIMEOUT_MS
     return new Promise<unknown>((resolve, reject) => {
+      let cleanup: () => void = () => {}
       const finish = (err: Error): void => {
         const p = this.pending.get(id)
         if (!p) return
         this.pending.delete(id)
         clearTimeout(p.timer)
+        cleanup()
         // сообщаем серверу, что ответ больше не нужен — иначе он будет
         // работать впустую и, возможно, писать в закрытый диалог
         try { this.send({ jsonrpc: '2.0', method: 'notifications/cancelled', params: { requestId: id, reason: err.message } }) } catch { /* уже нет связи */ }
@@ -219,7 +271,12 @@ export class StdioMcpProvider implements McpProvider {
       }
       const timer = setTimeout(() => finish(new Error('сервер не ответил вовремя')), timeoutMs)
       this.pending.set(id, { resolve, reject, timer })
-      ctx?.signal?.addEventListener('abort', () => finish(new Error('отменено')), { once: true })
+      // слушателя снимаем: один и тот же сигнал живёт на весь запрос
+      // пользователя, и за десяток вызовов на нём накопились бы десятки
+      // подписок, каждая со ссылкой на этот промис
+      const onAbort = (): void => finish(new Error('отменено'))
+      ctx?.signal?.addEventListener('abort', onAbort, { once: true })
+      cleanup = (): void => ctx?.signal?.removeEventListener('abort', onAbort)
       try {
         this.send({ jsonrpc: '2.0', id, method, params })
       } catch (err) {

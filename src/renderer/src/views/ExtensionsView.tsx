@@ -67,6 +67,10 @@ export function ExtensionsView() {
 
   const add = async (): Promise<void> => {
     if (!adding) return
+    // без обязательного параметра сервер просто не запустится, а человек увидит
+    // невнятное «сбоит» — лучше сказать сразу и понятно
+    if (adding.argHint && !form.param.trim()) { setMsg(`Заполни: ${adding.argHint.toLowerCase()}`); return }
+    if (Object.keys(adding.env).length && !form.secret.trim()) { setMsg('Нужен ключ доступа'); return }
     setBusy('add'); setMsg('Подключаю…')
     const args = adding.args.map((a) => (a === '' ? form.param : a)).filter(Boolean)
     const env: Record<string, string> = {}

@@ -46,10 +46,17 @@ function schemaOf(args: Array<{ name: string; description: string; required?: bo
   return { type: 'object', properties, ...(required.length ? { required } : {}) }
 }
 
-/** Что отдаём наружу: всё безопасное из реестра. */
+/**
+ * Что отдаём наружу: собственные безопасные действия.
+ *
+ * Команды ЧУЖИХ расширений не пересдаём: во-первых, их сервер в этом режиме не
+ * поднят и вызов всё равно провалился бы; во-вторых, пересдача чужих
+ * инструментов под своим именем — это цепочка, за которую мы не отвечаем.
+ * Клиенту, которому нужен GitHub, следует подключить GitHub напрямую.
+ */
 function exposedTools(): Array<Record<string, unknown>> {
   return registry.list()
-    .filter((a) => !a.dangerous)
+    .filter((a) => !a.dangerous && !a.id.startsWith('mcp:'))
     .map((a) => ({
       name: a.id,
       title: a.title,
@@ -99,7 +106,7 @@ async function handle(msg: Rpc): Promise<void> {
     case 'tools/call': {
       const name = String(params?.name ?? '')
       const args = (params?.arguments ?? {}) as Record<string, string>
-      const action = registry.get(name)
+      const action = name.startsWith('mcp:') ? undefined : registry.get(name)
       if (!action) {
         replyError(id, -32602, `Неизвестный инструмент: ${name}`)
         return

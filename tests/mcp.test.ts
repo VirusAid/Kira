@@ -50,9 +50,22 @@ async function main(): Promise<void> {
   await p.disconnect()
   t('отключение: состояние offline', p.status().state === 'offline')
 
+  // Путь к npx на обычной Windows — «C:\Program Files\nodejs\npx.cmd».
+  // Через оболочку он ОБЯЗАН быть в кавычках, иначе cmd.exe принимает за
+  // команду «C:\Program» и ни один сервер из npm не запускается.
   const r = resolveCommand('npx')
   t('запуск: npx на Windows требует оболочки',
     process.platform !== 'win32' || r.viaShell === true || !r.command.endsWith('.cmd'), '-> ' + JSON.stringify(r))
+  if (process.platform === 'win32' && r.viaShell && r.command.includes(' ')) {
+    const spaced = new StdioMcpProvider({ ...config, id: 'spaced', command: r.command, args: ['--version'] })
+    await spaced.connect()
+    t('запуск: путь с пробелом не разваливается',
+      !spaced.status().message.includes('не является') &&
+      !spaced.status().message.includes('not recognized'), '-> ' + spaced.status().message)
+    await spaced.disconnect()
+  } else {
+    t('запуск: путь с пробелом не разваливается', true, '-> проверка не применима')
+  }
 
   console.log(`\n=== ИТОГО: ${pass} PASS, ${fail} FAIL ===`)
   process.exit(fail ? 1 : 0)

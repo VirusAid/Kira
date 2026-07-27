@@ -45,7 +45,12 @@ function providerFor(config: McpServerConfig): McpProvider {
   const existing = providers.get(config.id)
   if (existing) return existing
   const created = new StdioMcpProvider(config)
-  created.onToolsChanged(() => onChange?.())
+  created.onToolsChanged(() => {
+    // сервер обновил список — обновляем и кэш, иначе интерфейс и обучение
+    // командам продолжали бы показывать прежний набор
+    void created.listTools().then((list) => toolCache.set(config.id, list)).catch(() => undefined)
+    onChange?.()
+  })
   providers.set(config.id, created)
   return created
 }

@@ -35,7 +35,10 @@ export function bindingActionId(b: McpBinding): string {
  * компилируются в общий список.
  */
 function phrasePattern(phrase: string, needsArg: boolean): RegExp | null {
-  const clean = phrase.trim().toLowerCase().replace(/\s+/g, ' ')
+  // ТА ЖЕ свёртка, что и у разбора: там текст приводится к нижнему регистру и
+  // ё→е. Без замены «ё» фраза «найдём отчёт» не совпала бы никогда — шаблон
+  // остался бы с «ё», а на вход всегда приходит «е».
+  const clean = phrase.trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ')
   if (!clean) return null
   const escaped = clean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+')
   return needsArg
