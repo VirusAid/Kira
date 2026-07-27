@@ -123,6 +123,33 @@ export function buildSystemPrompt(options?: { withTools?: boolean; extraContext?
   if (s.telegramSession) conn.push('Личный Telegram (telegram_dm — написать человеку от имени пользователя, telegram_who — найти контакт)')
   const integrationsBlock = conn.length ? 'Подключённые сервисы: ' + conn.join(', ') + ' — используй их, когда уместно.' : ''
 
+  /*
+   * Расширения — ЛЕНИВО и только по названиям.
+   *
+   * Соблазн выложить в промпт все инструменты всех расширений велик, но это
+   * тысячи токенов в КАЖДОМ запросе, и на локальной модели с небольшим окном
+   * они вытеснят то, ради чего Kira и нужна. Поэтому модель видит лишь список
+   * названий, а полный набор запрашивает сама — и только у того расширения,
+   * которое ей сейчас понадобилось.
+   *
+   * Блока нет вовсе, пока расширений нет: платить за них нечем.
+   */
+  let extensionsBlock = ''
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const mcp = require('../mcp/manager') as typeof import('../mcp/manager')
+    const ready = mcp.listServers().filter((x) => x.enabled && mcp.statusOf(x.id).state === 'ready')
+    if (ready.length) {
+      extensionsBlock =
+        'РАСШИРЕНИЯ (внешние программы, подключённые пользователем): ' +
+        ready.map((x) => `«${x.id}» — ${x.title}`).join(', ') + '.\n' +
+        'Что умеет расширение — узнай командой [[kira:ext_tools|ключ]] (список придёт следующим сообщением), ' +
+        'затем вызывай [[kira:ext_call|ключ|инструмент|{"поле":"значение"}]]. ' +
+        'Пользуйся ими, когда встроенных действий не хватает: работа с файлами в разрешённой папке, ' +
+        'задачи, внешние хранилища. Система сама спросит подтверждение перед вызовом.'
+    }
+  } catch { /* расширения недоступны — блока просто нет */ }
+
   const aliveGuide =
     'Ты живая: с эмоциями, характером и мнением. Пиши коротко и по-человечески (1-2 фразы), ' +
     'тепло, проактивно, помня прошлые разговоры и жизнь пользователя. ' +
@@ -202,6 +229,7 @@ export function buildSystemPrompt(options?: { withTools?: boolean; extraContext?
     profileBlock,
     pathsBlock,
     integrationsBlock,
+    extensionsBlock,
     memoryBlock,
     abilitiesPromptBlock(),
     options?.withTools !== false ? TOOL_GUIDE : '',
@@ -236,7 +264,10 @@ export function stripActions(text: string): string {
   return text.replace(ACTION_RE, '').replace(/\n{3,}/g, '\n\n').trim()
 }
 
-const DANGEROUS = new Set(['shutdown', 'restart', 'kill_process', 'run_command', 'delete_file', 'gmail_send', 'discord_send', 'telegram_dm'])
+const DANGEROUS = new Set(['shutdown', 'restart', 'kill_process', 'run_command', 'delete_file', 'gmail_send', 'discord_send', 'telegram_dm',
+  // вызов чужого инструмента: что он делает — отправляет письмо или стирает
+  // файл — заранее неизвестно, поэтому спрашиваем всегда
+  'ext_call'])
 
 /** Необратимые кнопки при управлении приложениями — клик по ним подтверждаем. */
 const RISKY_CLICK = /отправ|удал|оплат|купит|подтверд|перевест|оформ(ить|ляю)|разместить заказ|delete|remove|\bsend\b|\bbuy\b|\bpay\b|submit|confirm|purchase|checkout|place order|sign out|выйти из аккаунт|log ?out/i
@@ -259,7 +290,8 @@ export function describeAction(a: ParsedAction): string {
     click_text: `Нажать кнопку «${a.args[0] ?? ''}» (необратимое действие в приложении)`,
     gmail_send: `Отправить письмо на ${a.args[0] ?? ''}: «${a.args[1] ?? ''}»`,
     discord_send: `Отправить в Discord: «${a.args.join('|').slice(0, 80)}»`,
-    telegram_dm: `Написать в Telegram ${a.args[0] ?? ''}: «${a.args.slice(1).join('|').slice(0, 70)}»`
+    telegram_dm: `Написать в Telegram ${a.args[0] ?? ''}: «${a.args.slice(1).join('|').slice(0, 70)}»`,
+    ext_call: `Расширение «${a.args[0] ?? ''}»: ${a.args[1] ?? ''} ${a.args.slice(2).join('|').slice(0, 90)}`
   }
   return map[a.name] ?? `${a.name}(${a.args.join(', ')})`
 }
@@ -459,6 +491,48 @@ export async function executeAction(a: ParsedAction): Promise<ActionResult> {
       case 'telegram_dm': {
         const { sendUserMessage } = await import('../telegramUser')
         return sendUserMessage(a.args[0] ?? '', a.args.slice(1).join('|'))
+      }
+      case 'ext_tools': {
+        const { toolsOf, listServers } = await import('../mcp/manager')
+        const key = (a.args[0] ?? '').trim()
+        const server = listServers().find((x) => x.id === key || x.title.toLowerCase() === key.toLowerCase())
+        if (!server) {
+          return { ok: false, message: `Расширение «${key}» не подключено` }
+        }
+        const tools = await toolsOf(server.id)
+        if (!tools.length) return { ok: false, message: `«${server.title}» сейчас недоступно` }
+        const lines = tools.map((t) => {
+          const props = (t.inputSchema as { properties?: Record<string, unknown>; required?: string[] })
+          const fields = Object.keys(props?.properties ?? {})
+          const need = props?.required ?? []
+          const args = fields.map((f) => (need.includes(f) ? f : `${f}?`)).join(', ')
+          return `${t.name}(${args}) — ${t.description.slice(0, 120)}`
+        })
+        const call = `Вызов: [[kira:ext_call|${server.id}|имя_инструмента|{"поле":"значение"}]]`
+        return {
+          ok: true,
+          message: `«${server.title}»: инструментов ${tools.length}`,
+          content: [`Инструменты расширения «${server.id}»:`, ...lines, call].join('\n')
+        }
+      }
+      case 'ext_call': {
+        const { callTool, listServers } = await import('../mcp/manager')
+        const key = (a.args[0] ?? '').trim()
+        const tool = (a.args[1] ?? '').trim()
+        const server = listServers().find((x) => x.id === key || x.title.toLowerCase() === key.toLowerCase())
+        if (!server) return { ok: false, message: `Расширение «${key}» не подключено` }
+        // аргументы приходят одним JSON; в нём самом может быть «|», поэтому
+        // склеиваем ВСЁ, что после имени инструмента, а не берём один кусок
+        const raw = a.args.slice(2).join('|').trim()
+        let payload: Record<string, unknown> = {}
+        if (raw) {
+          try {
+            payload = JSON.parse(raw) as Record<string, unknown>
+          } catch {
+            return { ok: false, message: 'Аргументы должны быть объектом JSON, например {"path":"C:\\файл.txt"}' }
+          }
+        }
+        return callTool(server.id, tool, payload, { timeoutMs: 60_000 })
       }
       case 'telegram_who': {
         const { listPeers } = await import('../telegramUser')

@@ -475,9 +475,28 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
     // Несколько действий не учим: непонятно, какое из них отражает фразу.
     if (missedPhrase && successfulActions.length === 1) {
       try {
-        const { noteMiss } = await import('../../core/learning')
-        // вместе с аргументами: «открой мою почту» без адреса — пустая форма
-        noteMiss(missedPhrase, successfulActions[0].name, successfulActions[0].args)
+        const only = successfulActions[0]
+        if (only.name === 'ext_call') {
+          // Модель сделала дело чужим инструментом — это заготовка команды.
+          // Со второго повторения она станет обычной локальной командой, и
+          // модель уйдёт из этого пути совсем.
+          const { noteExtensionUse } = await import('../mcp/proposals')
+          const server = only.args[0] ?? ''
+          const tool = only.args[1] ?? ''
+          let payload: Record<string, string> = {}
+          try {
+            const parsed = JSON.parse(only.args.slice(2).join('|') || '{}') as Record<string, unknown>
+            for (const [k, v] of Object.entries(parsed)) {
+              if (typeof v === 'string' || typeof v === 'number') payload[k] = String(v)
+            }
+          } catch { payload = {} }
+          const made = noteExtensionUse(missedPhrase, server, tool, payload)
+          if (made.created) logger.info('mcp', `новая команда из повторения: «${made.title}»`)
+        } else {
+          const { noteMiss } = await import('../../core/learning')
+          // вместе с аргументами: «открой мою почту» без адреса — пустая форма
+          noteMiss(missedPhrase, only.name, only.args)
+        }
       } catch { /* обучение не должно влиять на ответ */ }
     }
   } catch (err) {

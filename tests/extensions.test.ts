@@ -96,6 +96,51 @@ void (async () => {
   t('два места: отмена вернула файл обратно',
     backMove.ok === true && existsSync(src) && !existsSync(dst), '-> ' + backMove.message)
 
+  // МОДЕЛЬ КАК КОМПИЛЯТОР: удачный вызов расширения превращается в постоянную
+  // локальную команду — но только со второго повторения.
+  const { noteExtensionUse, generalize, forgetProposals } = await import('../src/main/modules/mcp/proposals')
+  forgetProposals()
+
+  const shaped = generalize('заведи задачу кнопка не работает',
+    { title: 'кнопка не работает', repo: 'kira' })
+  t('заготовка: сказанное становится местом, остальное — постоянным',
+    shaped.phrase === 'заведи задачу $1' && shaped.args.title === '$1' && shaped.args.repo === 'kira',
+    '-> ' + JSON.stringify(shaped))
+
+  const first = noteExtensionUse('запиши в дневник хороший день', srv.id, 'write_file',
+    { path: join(dir, 'dnevnik.txt'), content: 'хороший день' })
+  t('заготовка: с первого раза команда НЕ создаётся', first.created === false)
+
+  const second = noteExtensionUse('запиши в дневник хороший день', srv.id, 'write_file',
+    { path: join(dir, 'dnevnik.txt'), content: 'хороший день' })
+  t('заготовка: со второго раза появляется команда', second.created === true, '-> ' + second.title)
+
+  const { listBindings } = await import('../src/main/modules/mcp/manager')
+  const born = listBindings().find((x) => x.phrases[0].startsWith('запиши в дневник'))
+  t('заготовка: путь остался постоянным, а текст стал местом',
+    born?.args.content === '$1' && born?.args.path === join(dir, 'dnevnik.txt'),
+    '-> ' + JSON.stringify(born?.args))
+  t('заготовка: созданная команда требует подтверждения', born?.dangerous === true)
+
+  // и она сразу работает как обычная команда ядра — но сперва спрашивает
+  syncMcpActions(listBindings())
+  // метка-сторож: если команда сработает без спроса, содержимое изменится.
+  // Проверять «файла нет» нельзя — он мог остаться от прошлого прогона
+  writeFileSync(join(dir, 'dnevnik.txt'), 'сторож', 'utf-8')
+  const denied = await commandEngine.tryHandle('запиши в дневник отличный день', { source: 'chat' })
+  t('заготовка: без подтверждения ничего не делает',
+    denied.denied === true && readFileSync(join(dir, 'dnevnik.txt'), 'utf-8') === 'сторож',
+    '-> ' + denied.reply)
+
+  const spoken = await commandEngine.tryHandle('запиши в дневник отличный день',
+    { source: 'chat', confirm: async () => true })
+  t('заготовка: с подтверждением выполняется ядром',
+    spoken.handled === true && spoken.result?.ok === true, '-> ' + JSON.stringify(spoken.result?.message))
+  t('заготовка: подставилось именно сказанное',
+    readFileSync(join(dir, 'dnevnik.txt'), 'utf-8') === 'отличный день',
+    '-> ' + JSON.stringify(readFileSync(join(dir, 'dnevnik.txt'), 'utf-8')))
+  forgetProposals()
+
   const { shutdownMcp } = await import('../src/main/modules/mcp/manager')
   await shutdownMcp()
   console.log(`\n=== ИТОГО: ${pass} PASS, ${fail} FAIL ===`)
