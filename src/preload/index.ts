@@ -95,6 +95,8 @@ const api = {
 
   mcp: {
     overview: () => invoke('mcp:overview'),
+    bundled: () => invoke('mcp:bundled'),
+    addBundled: (pkg: string, param: string) => invoke('mcp:add-bundled', pkg, param),
     saveServer: (config: unknown) => invoke('mcp:save-server', config),
     removeServer: (id: string) => invoke('mcp:remove-server', id),
     connect: (id: string) => invoke('mcp:connect', id),

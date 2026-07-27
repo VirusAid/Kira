@@ -27,3 +27,6 @@ resources/*.zip
 tests/.build/
 resources/vosk-model/
 tests/.tmp/
+
+# Встроенные расширения ставятся при сборке (scripts/prepare-mcp.mjs)
+resources/mcp/

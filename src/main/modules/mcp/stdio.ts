@@ -72,6 +72,25 @@ export function resolveCommand(command: string): { command: string; viaShell: bo
 }
 
 /**
+ * Чем запускать сервер.
+ *
+ * `node` мы НЕ ищем в системе: внутри Electron уже есть Node (у нас — 20.x), и
+ * запустить им обычный скрипт можно переменной ELECTRON_RUN_AS_NODE. Это
+ * избавляет пользователя от установки Node.js и не стоит установщику ни одного
+ * лишнего байта — рантайм и так внутри.
+ *
+ * Всё остальное (npx, python, свои программы) ищем в системе как раньше: это
+ * путь для тех, кто подключает что-то своё.
+ */
+function launcher(command: string): { exec: string; viaShell: boolean; env: Record<string, string> } {
+  if (command === 'node') {
+    return { exec: process.execPath, viaShell: false, env: { ELECTRON_RUN_AS_NODE: '1' } }
+  }
+  const r = resolveCommand(command)
+  return { exec: r.command, viaShell: r.viaShell, env: {} }
+}
+
+/**
  * Расшифровать журнал сервера.
  *
  * Сам сервер пишет в UTF-8, но если запуск не удался, сообщение приходит уже от
@@ -141,7 +160,7 @@ export class StdioMcpProvider implements McpProvider {
     this.state = 'connecting'
     this.detail = 'запускаю…'
 
-    const { command, viaShell } = resolveCommand(this.config.command)
+    const { exec: command, viaShell, env: runtimeEnv } = launcher(this.config.command)
     // Через оболочку цитировать нужно и САМУ команду, а не только аргументы:
     // npx на Windows живёт в «C:\Program Files\nodejs\npx.cmd», и без кавычек
     // cmd.exe принимает за команду «C:\Program». Без этого ни один сервер из
@@ -151,7 +170,7 @@ export class StdioMcpProvider implements McpProvider {
     try {
       this.child = spawn(exe, args, {
         cwd: this.config.cwd || undefined,
-        env: { ...process.env, ...this.config.env },
+        env: { ...process.env, ...runtimeEnv, ...this.config.env },
         stdio: ['pipe', 'pipe', 'pipe'],
         // detached НЕ ставим: с ним windowsHide перестаёт действовать и
         // пользователь видит чёрное консольное окно

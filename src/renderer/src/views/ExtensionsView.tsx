@@ -11,36 +11,8 @@
  */
 import { useEffect, useState } from 'react'
 import { Blocks, Plus, Trash2, RefreshCw, Loader2, Check, AlertTriangle, Puzzle } from 'lucide-react'
-import { kira, type McpOverviewItem } from '@/api'
+import { kira, type BundledServer, type McpOverviewItem } from '@/api'
 import type { McpBinding, McpTool } from '@shared/types'
-
-/** Готовые расширения: человеку не нужно знать команду запуска. */
-const CATALOG = [
-  {
-    title: 'Файлы и папки',
-    hint: 'Кира сможет искать и читать файлы в выбранной папке',
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-filesystem', ''],
-    argHint: 'Папка, к которой открыть доступ',
-    env: {} as Record<string, string>
-  },
-  {
-    title: 'GitHub',
-    hint: 'Задачи, ветки и запросы на слияние в твоих репозиториях',
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-github'],
-    argHint: '',
-    env: { GITHUB_PERSONAL_ACCESS_TOKEN: '' }
-  },
-  {
-    title: 'Память о разговорах',
-    hint: 'Дополнительное хранилище фактов, общее с другими программами',
-    command: 'npx',
-    args: ['-y', '@modelcontextprotocol/server-memory'],
-    argHint: '',
-    env: {} as Record<string, string>
-  }
-]
 
 const STATE_LABEL: Record<string, { text: string; color: string }> = {
   ready: { text: 'работает', color: 'var(--ok, #22c55e)' },
@@ -55,32 +27,27 @@ export function ExtensionsView() {
   const [bindings, setBindings] = useState<McpBinding[]>([])
   const [busy, setBusy] = useState('')
   const [msg, setMsg] = useState('')
-  const [adding, setAdding] = useState<typeof CATALOG[number] | null>(null)
-  const [form, setForm] = useState({ title: '', param: '', secret: '' })
+  const [catalog, setCatalog] = useState<BundledServer[]>([])
+  const [adding, setAdding] = useState<BundledServer | null>(null)
+  const [form, setForm] = useState({ param: '' })
   const [teaching, setTeaching] = useState<{ server: string; tools: McpTool[] } | null>(null)
   const [lesson, setLesson] = useState({ tool: '', phrase: '', title: '' })
 
   const refresh = (): void => {
     void kira.mcp.overview().then((o) => { setServers(o.servers); setBindings(o.bindings) })
   }
-  useEffect(refresh, [])
+  useEffect(() => {
+    refresh()
+    void kira.mcp.bundled().then(setCatalog)
+  }, [])
 
   const add = async (): Promise<void> => {
     if (!adding) return
-    // без обязательного параметра сервер просто не запустится, а человек увидит
-    // невнятное «сбоит» — лучше сказать сразу и понятно
-    if (adding.argHint && !form.param.trim()) { setMsg(`Заполни: ${adding.argHint.toLowerCase()}`); return }
-    if (Object.keys(adding.env).length && !form.secret.trim()) { setMsg('Нужен ключ доступа'); return }
     setBusy('add'); setMsg('Подключаю…')
-    const args = adding.args.map((a) => (a === '' ? form.param : a)).filter(Boolean)
-    const env: Record<string, string> = {}
-    for (const key of Object.keys(adding.env)) env[key] = form.secret
-    const r = await kira.mcp.saveServer({
-      title: form.title || adding.title, command: adding.command, args, env, enabled: true
-    })
-    const st = await kira.mcp.connect(r.id)
-    setMsg(st.state === 'ready' ? `Готово: ${r.title} на связи` : `Не вышло: ${st.message}`)
-    setBusy(''); setAdding(null); setForm({ title: '', param: '', secret: '' }); refresh()
+    // всё остальное — забота main: команда запуска, путь к серверу, рантайм
+    const r = await kira.mcp.addBundled(adding.pkg, form.param)
+    setMsg(r.message)
+    setBusy(''); setAdding(null); setForm({ param: '' }); refresh()
   }
 
   const teach = async (serverId: string): Promise<void> => {
@@ -171,13 +138,16 @@ export function ExtensionsView() {
       {/* Каталог */}
       <h3 style={{ fontSize: 14, fontWeight: 650, margin: '22px 0 10px' }}>Что можно подключить</h3>
       <div style={{ display: 'grid', gap: 10 }}>
-        {CATALOG.map((c) => (
-          <div key={c.title} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        {catalog.map((c) => (
+          <div key={c.pkg} className="card" style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             <div style={{ flex: 1 }}>
               <div style={{ fontWeight: 650, fontSize: 13.5 }}>{c.title}</div>
-              <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>{c.hint}</div>
+              <div className="muted" style={{ fontSize: 12, marginTop: 2 }}>
+                {c.available ? c.hint : 'Не найдено в установке — переустанови Kira'}
+              </div>
             </div>
-            <button className="btn btn-primary press" onClick={() => { setAdding(c); setForm({ title: c.title, param: '', secret: '' }) }}>
+            <button className="btn btn-primary press" disabled={!c.available}
+              onClick={() => { setAdding(c); setForm({ param: '' }) }}>
               <Plus size={13} />Подключить
             </button>
           </div>
@@ -186,29 +156,23 @@ export function ExtensionsView() {
 
       <div className="card" style={{ marginTop: 18, background: 'var(--bg-2)', fontSize: 12.5, lineHeight: 1.55 }}>
         <AlertTriangle size={14} style={{ color: '#f59e0b', verticalAlign: -2, marginRight: 6 }} />
-        Для расширений нужен <b>Node.js</b> — если его нет, установи с nodejs.org и перезапусти Киру.
-        Ключи доступа хранятся на твоём компьютере в открытом виде, как и ключи ИИ-провайдеров.
+        Расширения уже установлены вместе с Кирой — ничего скачивать и настраивать не нужно.
         Новые команды Кира спрашивает перед выполнением, пока ты не разрешишь иначе.
       </div>
 
       {/* Диалог подключения */}
       {adding && (
         <Modal title={`Подключить: ${adding.title}`} onClose={() => setAdding(null)}>
-          <Field label="Название">
-            <input style={{ width: '100%' }} value={form.title}
-              onChange={(e) => setForm({ ...form, title: e.target.value })} />
-          </Field>
-          {adding.argHint && (
+          {adding.argHint ? (
             <Field label={adding.argHint}>
-              <input style={{ width: '100%' }} value={form.param} placeholder="C:\\Users\\...\\Documents"
-                onChange={(e) => setForm({ ...form, param: e.target.value })} />
+              <input style={{ width: '100%' }} value={form.param} placeholder="C:\Users\Имя\Documents"
+                onChange={(e) => setForm({ param: e.target.value })} />
+              <p className="muted" style={{ marginTop: 6, fontSize: 11.5 }}>
+                Указывай конкретную папку, а не весь диск: Кира получит доступ ко всему, что внутри.
+              </p>
             </Field>
-          )}
-          {Object.keys(adding.env).length > 0 && (
-            <Field label="Ключ доступа">
-              <input style={{ width: '100%' }} type="password" value={form.secret}
-                onChange={(e) => setForm({ ...form, secret: e.target.value })} />
-            </Field>
+          ) : (
+            <p className="muted" style={{ fontSize: 12.5, marginBottom: 14 }}>{adding.hint}</p>
           )}
           <button className="btn btn-primary press" disabled={busy === 'add'} onClick={() => void add()}>
             {busy === 'add' ? <Loader2 size={14} className="spin" /> : <Check size={14} />}Подключить

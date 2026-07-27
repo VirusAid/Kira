@@ -11,12 +11,13 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "postinstall": "electron-builder install-app-deps",
-    "dist": "electron-vite build && electron-builder --win",
+    "dist": "node scripts/prepare-mcp.mjs && electron-vite build && electron-builder --win",
     "test:core": "esbuild tests/core.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-core.cjs && node tests/.build/test-core.cjs",
     "prepare:standalone": "node scripts/prepare-standalone.mjs",
-    "dist:standalone": "node scripts/prepare-standalone.mjs && electron-vite build && electron-builder --win",
+    "dist:standalone": "node scripts/prepare-standalone.mjs && node scripts/prepare-mcp.mjs && electron-vite build && electron-builder --win",
     "test:mcp": "esbuild tests/mcp.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-mcp.cjs && node tests/.build/test-mcp.cjs",
-    "test": "npm run test:core && npm run test:mcp"
+    "test": "npm run test:core && npm run test:mcp",
+    "prepare:mcp": "node scripts/prepare-mcp.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",

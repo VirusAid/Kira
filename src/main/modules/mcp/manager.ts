@@ -10,6 +10,7 @@ import { Collection } from '../storage'
 import { logger } from '../logger'
 import { newId } from '../ids'
 import { StdioMcpProvider } from './stdio'
+import { bundledCatalog, type BundledServer } from './bundled'
 import type { CallContext, McpBinding, McpProvider, McpServerConfig, McpStatus, McpTool } from './types'
 import type { ExecResult } from '../../core/types'
 
@@ -182,6 +183,41 @@ export async function toolsOf(serverId: string): Promise<McpTool[]> {
   const list = await providerFor(config).listTools().catch(() => [])
   toolCache.set(serverId, list)
   return list
+}
+
+/** Каталог встроенных расширений — то, что готово сразу после установки. */
+export function listBundled(): BundledServer[] {
+  return bundledCatalog()
+}
+
+/**
+ * Подключить встроенное расширение в одно действие.
+ *
+ * Команда запуска, путь к серверу и рантайм — забота main, а не человека: он
+ * выбирает «Файлы и папки» и, если нужно, указывает папку. Ничего не
+ * скачивается: сервер уже лежит внутри установленной Kira.
+ */
+export async function addBundled(pkg: string, param: string): Promise<{ ok: boolean; message: string }> {
+  const item = bundledCatalog().find((b) => b.pkg === pkg)
+  if (!item) return { ok: false, message: 'Такого расширения нет' }
+  if (!item.available) {
+    return { ok: false, message: `«${item.title}» не найдено в установке — переустанови Kira` }
+  }
+  if (item.argHint && !param.trim()) return { ok: false, message: `Укажи: ${item.argHint.toLowerCase()}` }
+
+  const saved = await saveServer({
+    title: item.title,
+    transport: 'stdio',
+    // «node» — не системный, а рантайм самой Kira (см. stdio.ts)
+    command: 'node',
+    args: [item.entry, ...(param.trim() ? [param.trim()] : [])],
+    env: {},
+    enabled: true
+  })
+  const st = statusOf(saved.id)
+  return st.state === 'ready'
+    ? { ok: true, message: `«${item.title}» подключено` }
+    : { ok: false, message: st.message }
 }
 
 /** Поднять включённые серверы при старте приложения. */

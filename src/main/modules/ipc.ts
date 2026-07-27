@@ -635,6 +635,14 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
     const m = await import('./mcp/manager')
     return { servers: m.mcpOverview(), bindings: m.listBindings() }
   })
+  ipcMain.handle('mcp:bundled', async () => {
+    const m = await import('./mcp/manager')
+    return m.listBundled()
+  })
+  ipcMain.handle('mcp:add-bundled', async (_e, pkg: string, param: string) => {
+    const m = await import('./mcp/manager')
+    return m.addBundled(pkg, param)
+  })
   ipcMain.handle('mcp:save-server', async (_e, config) => {
     const m = await import('./mcp/manager')
     return m.saveServer(config)

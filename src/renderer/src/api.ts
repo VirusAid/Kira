@@ -7,6 +7,16 @@ import type {
   McpBinding, McpServerConfig, McpStatus, McpTool
 } from '@shared/types'
 
+/** Встроенное расширение из установщика — готово сразу, ничего не качается. */
+export interface BundledServer {
+  pkg: string
+  title: string
+  hint: string
+  entry: string
+  argHint: string
+  available: boolean
+}
+
 /** Сервер расширения вместе с состоянием и уже известными инструментами. */
 export interface McpOverviewItem {
   config: McpServerConfig
@@ -87,6 +97,8 @@ interface KiraBridge {
   }
   mcp: {
     overview: () => Promise<{ servers: McpOverviewItem[]; bindings: McpBinding[] }>
+    bundled: () => Promise<BundledServer[]>
+    addBundled: (pkg: string, param: string) => Promise<{ ok: boolean; message: string }>
     saveServer: (config: Partial<McpServerConfig>) => Promise<McpServerConfig>
     removeServer: (id: string) => Promise<void>
     connect: (id: string) => Promise<McpStatus>

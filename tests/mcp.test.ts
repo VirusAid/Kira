@@ -50,6 +50,22 @@ async function main(): Promise<void> {
   await p.disconnect()
   t('отключение: состояние offline', p.status().state === 'offline')
 
+  // Встроенные расширения запускаются рантаймом самой Kira: внутри Electron уже
+  // есть Node, поэтому пользователю не нужно ничего устанавливать, а установщик
+  // не толстеет ни на байт. Проверяем, что команда «node» ведёт именно к нам.
+  const own = new StdioMcpProvider({ ...config, id: 'own', command: 'node' })
+  const launch = (own as unknown as { config: McpServerConfig }).config
+  t('встроенные: команда «node» — это рантайм Kira, а не системный',
+    launch.command === 'node')
+  const viaOwn = new StdioMcpProvider({
+    ...config, id: 'viaOwn', command: 'node',
+    args: [join(process.cwd(), 'tests', 'mcp-fake-server.js')]
+  })
+  await viaOwn.connect()
+  t('встроенные: сервер поднимается рантаймом Kira',
+    viaOwn.status().state === 'ready', '-> ' + viaOwn.status().message)
+  await viaOwn.disconnect()
+
   // Путь к npx на обычной Windows — «C:\Program Files\nodejs\npx.cmd».
   // Через оболочку он ОБЯЗАН быть в кавычках, иначе cmd.exe принимает за
   // команду «C:\Program» и ни один сервер из npm не запускается.
