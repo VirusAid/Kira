@@ -11,7 +11,7 @@
  */
 import { app } from 'electron'
 import { existsSync } from 'fs'
-import { join } from 'path'
+import { dirname, join } from 'path'
 
 export interface BundledServer {
   /** Ключ пакета — для отладки и диагностики. */
@@ -26,11 +26,25 @@ export interface BundledServer {
   available: boolean
 }
 
-/** Папка со встроенными расширениями: в сборке — в ресурсах, в разработке — в проекте. */
+/**
+ * Папка со встроенными расширениями.
+ *
+ * В собранном приложении это ресурсы рядом с исполняемым файлом. В разработке
+ * искать приходится ВВЕРХ от собранного main: `app.getAppPath()` возвращает
+ * папку запускаемого файла (`out/main`), а не корень проекта — из-за этого
+ * расширения показывались как «не найдены», хотя лежали на месте.
+ */
 function bundleDir(): string {
-  return app.isPackaged
-    ? join(process.resourcesPath, 'mcp')
-    : join(app.getAppPath(), 'resources', 'mcp')
+  if (app.isPackaged) return join(process.resourcesPath, 'mcp')
+  let dir = __dirname
+  for (let up = 0; up < 5; up++) {
+    const candidate = join(dir, 'resources', 'mcp')
+    if (existsSync(candidate)) return candidate
+    const parent = dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return join(process.cwd(), 'resources', 'mcp')
 }
 
 function entryOf(pkg: string): string {

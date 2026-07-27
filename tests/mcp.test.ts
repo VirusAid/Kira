@@ -5,6 +5,7 @@
  * живёт в стыке — пагинация, зависший сервер, отмена, запуск .cmd на Windows.
  */
 import { join } from 'path'
+import { existsSync } from 'fs'
 import { StdioMcpProvider, resolveCommand } from '../src/main/modules/mcp/stdio'
 import type { McpServerConfig } from '../src/main/modules/mcp/types'
 
@@ -65,6 +66,15 @@ async function main(): Promise<void> {
   t('встроенные: сервер поднимается рантаймом Kira',
     viaOwn.status().state === 'ready', '-> ' + viaOwn.status().message)
   await viaOwn.disconnect()
+
+  // Путь к встроенным расширениям в РАЗРАБОТКЕ ищется вверх от собранного main:
+  // app.getAppPath() возвращает папку запускаемого файла (out/main), а не корень
+  // проекта, и раздел показывал «не найдено», хотя файлы лежали на месте.
+  const bundleRoot = join(process.cwd(), 'resources', 'mcp', 'node_modules', '@modelcontextprotocol')
+  t('встроенные: расширения подготовлены сборкой',
+    existsSync(join(bundleRoot, 'server-filesystem', 'dist', 'index.js')) &&
+    existsSync(join(bundleRoot, 'server-memory', 'dist', 'index.js')),
+    '-> ' + bundleRoot)
 
   // Путь к npx на обычной Windows — «C:\Program Files\nodejs\npx.cmd».
   // Через оболочку он ОБЯЗАН быть в кавычках, иначе cmd.exe принимает за
