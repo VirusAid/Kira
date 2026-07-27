@@ -29,6 +29,7 @@ export function ExtensionsView() {
   const [msg, setMsg] = useState('')
   const [catalog, setCatalog] = useState<BundledServer[]>([])
   const [adding, setAdding] = useState<BundledServer | null>(null)
+  const [own, setOwn] = useState<{ title: string; url: string; command: string; args: string } | null>(null)
   const [form, setForm] = useState({ param: '' })
   const [teaching, setTeaching] = useState<{ server: string; tools: McpTool[] } | null>(null)
   const [lesson, setLesson] = useState<{ tool: string; phrase: string; title: string; fields: string[] }>(
@@ -49,6 +50,30 @@ export function ExtensionsView() {
     const r = await kira.mcp.addBundled(adding.pkg, form.param)
     setMsg(r.message)
     setBusy(''); setAdding(null); setForm({ param: '' }); refresh()
+  }
+
+  /**
+   * Своё расширение: либо адрес в сети, либо программа на этом компьютере.
+   * Раздел для тех, кто знает, что подключает, — поэтому спрятан за кнопкой и
+   * не мешает остальным.
+   */
+  const addOwn = async (): Promise<void> => {
+    if (!own) return
+    if (!own.title.trim()) { setMsg('Дай расширению название'); return }
+    const byUrl = own.url.trim().length > 0
+    if (!byUrl && !own.command.trim()) { setMsg('Укажи адрес или программу запуска'); return }
+    setBusy('own'); setMsg('Подключаю…')
+    const saved = await kira.mcp.saveServer({
+      title: own.title.trim(),
+      transport: byUrl ? 'http' : 'stdio',
+      url: byUrl ? own.url.trim() : undefined,
+      command: byUrl ? '' : own.command.trim(),
+      args: byUrl ? [] : own.args.split(/\s+/).filter(Boolean),
+      env: {}, enabled: true
+    })
+    const st = await kira.mcp.connect(saved.id)
+    setMsg(st.state === 'ready' ? `Готово: ${saved.title} на связи` : `Не вышло: ${st.message}`)
+    setBusy(''); setOwn(null); refresh()
   }
 
   const teach = async (serverId: string): Promise<void> => {
@@ -170,6 +195,15 @@ export function ExtensionsView() {
         ))}
       </div>
 
+      <div style={{ marginTop: 12 }}>
+        <button className="btn press" onClick={() => setOwn({ title: '', url: '', command: '', args: '' })}>
+          <Plus size={13} />Подключить своё
+        </button>
+        <span className="muted" style={{ fontSize: 11.5, marginLeft: 10 }}>
+          адрес в сети или программа на этом компьютере
+        </span>
+      </div>
+
       <div className="card" style={{ marginTop: 18, background: 'var(--bg-2)', fontSize: 12.5, lineHeight: 1.55 }}>
         <AlertTriangle size={14} style={{ color: '#f59e0b', verticalAlign: -2, marginRight: 6 }} />
         Расширения уже установлены вместе с Кирой — ничего скачивать и настраивать не нужно.
@@ -192,6 +226,34 @@ export function ExtensionsView() {
           )}
           <button className="btn btn-primary press" disabled={busy === 'add'} onClick={() => void add()}>
             {busy === 'add' ? <Loader2 size={14} className="spin" /> : <Check size={14} />}Подключить
+          </button>
+        </Modal>
+      )}
+
+      {/* Своё расширение */}
+      {own && (
+        <Modal title="Подключить своё" onClose={() => setOwn(null)}>
+          <Field label="Название">
+            <input style={{ width: '100%' }} value={own.title}
+              onChange={(e) => setOwn({ ...own, title: e.target.value })} />
+          </Field>
+          <Field label="Адрес в сети">
+            <input style={{ width: '100%' }} placeholder="https://example.com/mcp" value={own.url}
+              onChange={(e) => setOwn({ ...own, url: e.target.value })} />
+          </Field>
+          <p className="muted" style={{ fontSize: 11.5, margin: '-6px 0 14px' }}>
+            Или оставь адрес пустым и укажи программу на этом компьютере:
+          </p>
+          <Field label="Программа">
+            <input style={{ width: '100%' }} placeholder="npx" value={own.command}
+              onChange={(e) => setOwn({ ...own, command: e.target.value })} />
+          </Field>
+          <Field label="Аргументы через пробел">
+            <input style={{ width: '100%' }} placeholder="-y имя-пакета" value={own.args}
+              onChange={(e) => setOwn({ ...own, args: e.target.value })} />
+          </Field>
+          <button className="btn btn-primary press" disabled={busy === 'own'} onClick={() => void addOwn()}>
+            {busy === 'own' ? <Loader2 size={14} className="spin" /> : <Check size={14} />}Подключить
           </button>
         </Modal>
       )}

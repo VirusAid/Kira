@@ -10,6 +10,7 @@ import { Collection } from '../storage'
 import { logger } from '../logger'
 import { newId } from '../ids'
 import { StdioMcpProvider } from './stdio'
+import { HttpMcpProvider } from './http'
 import { bundledCatalog, type BundledServer } from './bundled'
 import type { CallContext, McpBinding, McpProvider, McpServerConfig, McpStatus, McpTool } from './types'
 import type { ExecResult } from '../../core/types'
@@ -41,11 +42,18 @@ export function listBindings(): McpBinding[] {
   return bindingCol().all().sort((a, b) => b.createdAt - a.createdAt)
 }
 
-/** Провайдер сервера — создаётся лениво, живёт до отключения. */
+/**
+ * Провайдер сервера — создаётся лениво, живёт до отключения.
+ *
+ * Транспорт выбирается здесь и больше нигде: остальная система работает с
+ * общим контрактом и не знает, программа это на диске или адрес в сети.
+ */
 function providerFor(config: McpServerConfig): McpProvider {
   const existing = providers.get(config.id)
   if (existing) return existing
-  const created = new StdioMcpProvider(config)
+  const created: McpProvider = config.transport === 'http'
+    ? new HttpMcpProvider(config)
+    : new StdioMcpProvider(config)
   created.onToolsChanged(() => {
     // сервер обновил список — обновляем и кэш, иначе интерфейс и обучение
     // командам продолжали бы показывать прежний набор
@@ -104,10 +112,11 @@ export async function saveServer(config: Omit<McpServerConfig, 'id'> & { id?: st
   const next: McpServerConfig = {
     id,
     title: config.title.trim() || id,
-    transport: 'stdio',
-    command: config.command.trim(),
+    transport: config.transport === 'http' ? 'http' : 'stdio',
+    command: (config.command ?? '').trim(),
     args: config.args ?? [],
     env: config.env ?? {},
+    url: config.url?.trim(),
     cwd: config.cwd,
     enabled: config.enabled !== false
   }

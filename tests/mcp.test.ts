@@ -93,6 +93,50 @@ async function main(): Promise<void> {
     t('запуск: путь с пробелом не разваливается', true, '-> проверка не применима')
   }
 
+  // ── Транспорт HTTP: тот же контракт, другой способ связи ──
+  const { spawn } = await import('child_process')
+  const srv = spawn(process.execPath, [join(process.cwd(), 'tests', 'mcp-fake-http.js'), '0'],
+    { stdio: ['ignore', 'pipe', 'pipe'] })
+  const port = await new Promise<number>((resolve, reject) => {
+    let buf = ''
+    srv.stdout.setEncoding('utf-8')
+    srv.stdout.on('data', (c: string) => {
+      buf += c
+      const found = buf.match(/PORT=(\d+)/)
+      if (found) resolve(Number(found[1]))
+    })
+    setTimeout(() => reject(new Error('сервер не поднялся')), 10_000)
+  })
+
+  const { HttpMcpProvider } = await import('../src/main/modules/mcp/http')
+  const h = new HttpMcpProvider({
+    id: 'net', title: 'Сетевой', transport: 'http', command: '', args: [], env: {},
+    url: `http://127.0.0.1:${port}/mcp`, enabled: true
+  })
+  await h.connect()
+  t('http: подключение и рукопожатие', h.status().state === 'ready', '-> ' + JSON.stringify(h.status()))
+
+  const htools = await h.listTools()
+  t('http: список пришёл ПОТОКОМ событий и разобран',
+    htools.length === 2 && htools[0].name === 'echo', '-> ' + htools.map((x) => x.name).join(', '))
+
+  const hok = await h.call('echo', { text: 'привет' })
+  t('http: вызов вернул содержимое отдельно от статуса',
+    hok.ok && hok.content === 'эхо: привет', '-> ' + JSON.stringify(hok))
+
+  const hbad = await h.call('boom', {})
+  t('http: провал инструмента — неудача', hbad.ok === false && hbad.message.includes('внутренняя поломка'),
+    '-> ' + hbad.message)
+
+  const hstart = Date.now()
+  const hslow = await h.call('slow', {}, { timeoutMs: 800 })
+  t('http: молчащий сервер не вешает Киру',
+    hslow.ok === false && Date.now() - hstart < 4000, '-> ' + hslow.message)
+
+  await h.disconnect()
+  t('http: отключение', h.status().state === 'offline')
+  srv.kill()
+
   console.log(`\n=== ИТОГО: ${pass} PASS, ${fail} FAIL ===`)
   process.exit(fail ? 1 : 0)
 }
