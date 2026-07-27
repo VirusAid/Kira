@@ -27,6 +27,24 @@ export function bindingActionId(b: McpBinding): string {
 }
 
 /**
+ * Места во фразе, куда подставляется сказанное: «перемести $1 в $2».
+ *
+ * Один аргумент — частый случай, но далеко не единственный: «перемести отчёт в
+ * архив» это уже два, и по-русски они разделены предлогом, а не запятой.
+ * Поэтому места размечает сам человек прямо во фразе — там, где он их и
+ * слышит. Без разметки фраза работает по-старому: всё сказанное после неё
+ * становится единственным аргументом.
+ */
+const SLOT = /\$([1-9])/g
+
+/** Сколько разных мест размечено во фразе (0 — разметки нет). */
+function slotsIn(phrase: string): number[] {
+  const found = new Set<number>()
+  for (const m of phrase.matchAll(SLOT)) found.add(Number(m[1]))
+  return [...found].sort((x, y) => x - y)
+}
+
+/**
  * Шаблон из фразы привязки.
  *
  * Пользователь пишет фразы обычными словами, а не регулярками — регулярку он
@@ -34,16 +52,50 @@ export function bindingActionId(b: McpBinding): string {
  * скобкой или точкой развалила бы разбор ВСЕХ команд, потому что шаблоны
  * компилируются в общий список.
  */
-function phrasePattern(phrase: string, needsArg: boolean): RegExp | null {
+function phrasePattern(phrase: string, fallbackArg: boolean): RegExp | null {
   // ТА ЖЕ свёртка, что и у разбора: там текст приводится к нижнему регистру и
   // ё→е. Без замены «ё» фраза «найдём отчёт» не совпала бы никогда — шаблон
   // остался бы с «ё», а на вход всегда приходит «е».
   const clean = phrase.trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ')
   if (!clean) return null
-  const escaped = clean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+')
-  return needsArg
-    ? new RegExp(`^${escaped}\\s+(?<value>.+)$`)
-    : new RegExp(`^${escaped}$`)
+
+  const escape = (t: string): string =>
+    t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/ /g, '\\s+')
+
+  const slots = slotsIn(clean)
+  if (!slots.length) {
+    const body = escape(clean)
+    return fallbackArg ? new RegExp(`^${body}\\s+(?<v1>.+)$`) : new RegExp(`^${body}$`)
+  }
+
+  /*
+   * Собираем шаблон по кускам: между метками — буквальный текст, на месте
+   * метки — группа.
+   *
+   * Все группы, КРОМЕ ЗАМЫКАЮЩЕЙ, нежадные: иначе первая же съела бы весь
+   * остаток фразы и следующий кусок текста («в») не нашёлся бы. А последняя,
+   * если после неё ничего нет, наоборот должна забрать остаток целиком —
+   * нежадная оставила бы от «в архив старых отчётов» только «в».
+   */
+  const parts: string[] = ['^']
+  const pieces: Array<{ slot: number; at: number }> = []
+  let last = 0
+  for (const m of clean.matchAll(SLOT)) {
+    parts.push(escape(clean.slice(last, m.index)))
+    pieces.push({ slot: Number(m[1]), at: parts.length })
+    parts.push('') // место под группу — заполним, когда узнаем, замыкающая ли она
+    last = (m.index ?? 0) + m[0].length
+  }
+  const tail = clean.slice(last)
+  parts.push(escape(tail))
+  parts.push('$')
+
+  pieces.forEach((p, i) => {
+    const isLast = i === pieces.length - 1
+    const greedy = isLast && tail.trim() === ''
+    parts[p.at] = `(?<v${p.slot}>.+${greedy ? '' : '?'})`
+  })
+  return new RegExp(parts.join(''))
 }
 
 /**
@@ -53,11 +105,17 @@ function phrasePattern(phrase: string, needsArg: boolean): RegExp | null {
  */
 const lastCall = new Map<string, { args: Record<string, unknown>; before: unknown }>()
 
-/** Аргументы инструмента: `$1` — сказанное человеком, остальное — постоянные. */
-function buildArgs(template: Record<string, string>, spoken: string): Record<string, unknown> {
+/**
+ * Аргументы инструмента: метки `$1`, `$2`… заменяются на сказанное, остальное
+ * уходит как постоянные значения.
+ *
+ * Одно поле может содержать и текст, и метку («отчёт за $1»), поэтому
+ * подставляем в строку, а не подменяем её целиком.
+ */
+function buildArgs(template: Record<string, string>, spoken: Record<string, string>): Record<string, unknown> {
   const out: Record<string, unknown> = {}
   for (const [key, value] of Object.entries(template)) {
-    out[key] = value.includes('$1') ? value.replace('$1', spoken) : value
+    out[key] = value.replace(SLOT, (whole, n: string) => spoken[`v${n}`] ?? whole)
   }
   return out
 }
@@ -86,9 +144,27 @@ async function undoBinding(b: McpBinding): Promise<{ ok: boolean; message: strin
   return r.ok ? { ok: true, message: back.said } : { ok: false, message: `Не вышло вернуть: ${r.message}` }
 }
 
-/** Нужен ли привязке аргумент из речи — то есть встречается ли где-то `$1`. */
-function usesSpokenValue(b: McpBinding): boolean {
-  return Object.values(b.args).some((v) => v.includes('$1'))
+/**
+ * Какие места ждёт привязка. Берём из ФРАЗ, а если разметки там нет — из
+ * значений аргументов: так продолжают работать привязки, созданные раньше, где
+ * `$1` стоял только в аргументе, а фраза была без меток.
+ */
+function slotsOf(b: McpBinding): number[] {
+  const inPhrases = new Set<number>()
+  for (const p of b.phrases) for (const n of slotsIn(p)) inPhrases.add(n)
+  if (inPhrases.size) return [...inPhrases].sort((x, y) => x - y)
+  return Object.values(b.args).some((v) => v.includes('$1')) ? [1] : []
+}
+
+/** Понятное имя места — из поля инструмента, куда оно подставляется. */
+function slotLabel(b: McpBinding, slot: number): string {
+  const field = Object.entries(b.args).find(([, v]) => v.includes(`$${slot}`))?.[0]
+  return field ?? `часть ${slot}`
+}
+
+/** Фраза для показа человеку: метки заменяются многоточием. */
+function readablePhrase(phrase: string): string {
+  return phrase.replace(SLOT, '…')
 }
 
 /**
@@ -100,14 +176,17 @@ function usesSpokenValue(b: McpBinding): boolean {
 export function bindingToAction(b: McpBinding): KiraAction | null {
   if (!b.enabled || !b.server || !b.tool || !b.phrases.length) return null
 
-  const needsArg = usesSpokenValue(b)
-  const patterns = b.phrases.map((p) => phrasePattern(p, needsArg)).filter((p): p is RegExp => !!p)
+  const slots = slotsOf(b)
+  // Запасной аргумент нужен только когда мест ждём, а во фразе разметки нет:
+  // тогда всё сказанное после фразы становится единственным значением.
+  const fallbackArg = slots.length === 1 && !b.phrases.some((p) => slotsIn(p).length)
+  const patterns = b.phrases.map((p) => phrasePattern(p, fallbackArg)).filter((p): p is RegExp => !!p)
   if (!patterns.length) return null
 
   const title = b.title || b.tool
-  const args: ActionArg[] = needsArg
-    ? [{ name: 'value', description: 'что именно', required: true }]
-    : []
+  const args: ActionArg[] = slots.map((n) => ({
+    name: `v${n}`, description: slotLabel(b, n), required: true
+  }))
 
   return {
     id: bindingActionId(b),
@@ -116,7 +195,7 @@ export function bindingToAction(b: McpBinding): KiraAction | null {
     category: 'dev',
     aliases: [],
     patterns,
-    examples: [b.phrases[0]],
+    examples: [readablePhrase(b.phrases[0])],
     // фразы привязки идут и в смысловой слой: человек скажет их не дословно
     phrases: b.phrases,
     args,
@@ -124,7 +203,7 @@ export function bindingToAction(b: McpBinding): KiraAction | null {
     execute: async (a, ctx) => {
       const { callTool } = await import('../modules/mcp/manager')
       const { captureBefore, isReversible } = await import('../modules/mcp/reversible')
-      const payload = buildArgs(b.args, a.value ?? '')
+      const payload = buildArgs(b.args, a)
 
       // Прежнее состояние запоминаем ДО вызова — после него его уже не узнать.
       // Только для тех инструментов, у которых обратный шаг вообще существует.
@@ -144,7 +223,10 @@ export function bindingToAction(b: McpBinding): KiraAction | null {
     // подряд нельзя: тогда неотменяемый вызов расширения занял бы место
     // последнего отменяемого и закрыл человеку откат того, что откатить можно.
     ...(isReversibleSync(b.tool) ? { undo: () => undoBinding(b) } : {}),
-    describe: (a) => `${title}${a.value ? `: «${a.value}»` : ''} (расширение «${b.server}»)`
+    describe: (a) => {
+      const said = slots.map((n) => a[`v${n}`]).filter(Boolean).join(' → ')
+      return `${title}${said ? `: «${said}»` : ''} (расширение «${b.server}»)`
+    }
   }
 }
 

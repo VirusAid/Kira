@@ -76,6 +76,26 @@ void (async () => {
   t('неотменяемое названо прямо, а не «нечего отменять»',
     cant.ok === false && cant.message.includes('Заведи папку'), '-> ' + cant.message)
 
+  // ДВА МЕСТА в одной фразе на настоящем перемещении файла.
+  const src = join(dir, 'ishodnik.txt')
+  const dst = join(dir, 'perenesenniy.txt')
+  writeFileSync(src, 'содержимое для переноса', 'utf-8')
+  const b3 = saveBinding({
+    server: srv.id, tool: 'move_file', title: 'Перемести',
+    phrases: ['перемести $1 в $2'], args: { source: '$1', destination: '$2' },
+    dangerous: false, enabled: true
+  })
+  syncMcpActions([b, b2, b3])
+  const moved = await commandEngine.tryHandle(`перемести ${src} в ${dst}`, { source: 'chat' })
+  t('два места: команда выполнилась', moved.handled === true && moved.result?.ok === true,
+    '-> ' + JSON.stringify(moved.result?.message))
+  t('два места: файл действительно переехал',
+    existsSync(dst) && !existsSync(src), `-> есть новый: ${existsSync(dst)}, старого нет: ${!existsSync(src)}`)
+
+  const backMove = await commandEngine.undoLast({ source: 'chat' })
+  t('два места: отмена вернула файл обратно',
+    backMove.ok === true && existsSync(src) && !existsSync(dst), '-> ' + backMove.message)
+
   const { shutdownMcp } = await import('../src/main/modules/mcp/manager')
   await shutdownMcp()
   console.log(`\n=== ИТОГО: ${pass} PASS, ${fail} FAIL ===`)

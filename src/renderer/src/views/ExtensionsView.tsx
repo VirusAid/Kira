@@ -31,7 +31,8 @@ export function ExtensionsView() {
   const [adding, setAdding] = useState<BundledServer | null>(null)
   const [form, setForm] = useState({ param: '' })
   const [teaching, setTeaching] = useState<{ server: string; tools: McpTool[] } | null>(null)
-  const [lesson, setLesson] = useState({ tool: '', phrase: '', title: '' })
+  const [lesson, setLesson] = useState<{ tool: string; phrase: string; title: string; fields: string[] }>(
+    { tool: '', phrase: '', title: '', fields: [] })
 
   const refresh = (): void => {
     void kira.mcp.overview().then((o) => { setServers(o.servers); setBindings(o.bindings) })
@@ -54,22 +55,37 @@ export function ExtensionsView() {
     setBusy('tools:' + serverId)
     const tools = await kira.mcp.tools(serverId)
     setTeaching({ server: serverId, tools })
-    setLesson({ tool: tools[0]?.name ?? '', phrase: '', title: '' })
+    setLesson({ tool: tools[0]?.name ?? '', phrase: '', title: '', fields: [] })
     setBusy('')
   }
 
+  /**
+   * Разметка мест во фразе. Человек пишет «перемести ... в ...» обычными
+   * словами, а метки $1/$2 расставляются за него: про доллары и номера он
+   * знать не должен, а вот сказать «перемести отчёт в архив» хочет.
+   */
+  const slotCount = (lesson.phrase.match(/\.\.\.|…/g) ?? []).length
+
   const saveLesson = async (): Promise<void> => {
     if (!teaching || !lesson.tool || !lesson.phrase.trim()) return
+    const fields = argFields(teaching.tools, lesson.tool)
+    // многоточия по порядку превращаются в места $1, $2, …
+    let n = 0
+    const phrase = lesson.phrase.trim().replace(/\.\.\.|…/g, () => `$${++n}`)
+    const args: Record<string, string> = {}
+    if (n === 0) {
+      // разметки нет — старое поведение: всё сказанное после фразы в первое поле
+      if (fields[0]) args[fields[0]] = '$1'
+    } else {
+      for (let i = 0; i < n; i++) {
+        const field = lesson.fields[i] || fields[i] || fields[0]
+        if (field) args[field] = `$${i + 1}`
+      }
+    }
     await kira.mcp.saveBinding({
       server: teaching.server, tool: lesson.tool,
-      title: lesson.title || lesson.phrase,
-      phrases: [lesson.phrase.trim()],
-      // «$1» — то, что человек скажет после фразы; имя поля берём первое
-      // обязательное из описания инструмента
-      args: firstArgName(teaching.tools, lesson.tool)
-        ? { [firstArgName(teaching.tools, lesson.tool)!]: '$1' }
-        : {},
-      dangerous: true, enabled: true
+      title: lesson.title || lesson.phrase.trim(),
+      phrases: [phrase], args, dangerous: true, enabled: true
     })
     setTeaching(null); setMsg('Запомнила команду'); refresh()
   }
@@ -192,13 +208,33 @@ export function ExtensionsView() {
             </select>
           </Field>
           <Field label="Как ты это скажешь">
-            <input style={{ width: '100%' }} placeholder="заведи задачу" value={lesson.phrase}
+            <input style={{ width: '100%' }} placeholder="перемести ... в ..." value={lesson.phrase}
               onChange={(e) => setLesson({ ...lesson, phrase: e.target.value })} />
             <p className="muted" style={{ marginTop: 6, fontSize: 11.5 }}>
-              Всё, что скажешь после этих слов, Кира передаст как содержимое.
-              Например: «заведи задачу <i>кнопка не работает</i>».
+              Поставь <b>...</b> там, где будешь называть что-то своё. Например:
+              «перемести <b>...</b> в <b>...</b>» → «перемести отчёт в архив».
+              Без многоточий всё сказанное после фразы уйдёт одним куском.
             </p>
           </Field>
+
+          {slotCount > 1 && (
+            <Field label="Что куда подставить">
+              {Array.from({ length: slotCount }, (_, i) => (
+                <div key={i} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span className="muted" style={{ fontSize: 12, width: 74 }}>{i + 1}-е место</span>
+                  <select style={{ flex: 1 }} value={lesson.fields[i] ?? argFields(teaching.tools, lesson.tool)[i] ?? ''}
+                    onChange={(e) => {
+                      const next = [...lesson.fields]
+                      next[i] = e.target.value
+                      setLesson({ ...lesson, fields: next })
+                    }}>
+                    {argFields(teaching.tools, lesson.tool).map((f) => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </div>
+              ))}
+            </Field>
+          )}
+
           <button className="btn btn-primary press" onClick={() => void saveLesson()}>
             <Check size={14} />Запомнить
           </button>
@@ -208,11 +244,13 @@ export function ExtensionsView() {
   )
 }
 
-/** Первое обязательное поле инструмента — туда и уйдёт сказанное. */
-function firstArgName(tools: McpTool[], toolName: string): string | undefined {
+/** Поля инструмента: сначала обязательные — в них чаще всего и подставляют. */
+function argFields(tools: McpTool[], toolName: string): string[] {
   const schema = tools.find((t) => t.name === toolName)?.inputSchema as
     { properties?: Record<string, unknown>; required?: string[] } | undefined
-  return schema?.required?.[0] ?? Object.keys(schema?.properties ?? {})[0]
+  const all = Object.keys(schema?.properties ?? {})
+  const required = schema?.required ?? []
+  return [...required, ...all.filter((f) => !required.includes(f))]
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
