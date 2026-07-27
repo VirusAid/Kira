@@ -302,7 +302,7 @@ class CommandEngine {
         return {
           handled: true, intent: 'local', actionId: action.id,
           result: { ok: false, message: `Не хватает аргумента «${spec.name}» (${spec.description})` },
-          reply: `Уточни: ${spec.description.toLowerCase()}.${example}`
+          reply: livelyReply(`Уточни: ${spec.description.toLowerCase()}.${example}`)
         }
       }
     }
@@ -319,7 +319,7 @@ class CommandEngine {
         actionHistory.record({ actionId: action.id, title: action.title, args, ok: false, message: 'Отклонено пользователем', source: ctx.source })
         return {
           handled: true, intent: 'local', actionId: action.id, denied: true,
-          result: { ok: false, message: 'Отклонено пользователем' }, reply: 'Хорошо, отменила.'
+          result: { ok: false, message: 'Отклонено пользователем' }, reply: livelyReply('Хорошо, отменила.')
         }
       }
     }
@@ -349,12 +349,14 @@ class CommandEngine {
     // тут звучала одна и та же константа независимо от того, какую Киру человек
     // себе выбрал, — а именно этот путь и есть большая часть общения.
     const confirm = action.confirmText?.(args)
-    return {
-      handled: true, intent: 'local', actionId: action.id, result,
-      reply: result.ok
-        ? (confirm !== undefined ? livelyReply(confirm) : result.message + dataStr)
-        : result.message
-    }
+    // Через характер проходит КАЖДЫЙ ответ, а не только готовая фраза действия:
+    // неудача и «нечего отменять» звучали ровным техническим текстом — именно
+    // за это ассистента и называют автоответчиком. Незнакомый текст остаётся
+    // собой, так что содержимое ответов не искажается.
+    const reply = result.ok
+      ? (confirm !== undefined ? livelyReply(confirm) : livelyReply(result.message) + dataStr)
+      : livelyReply(result.message, { failed: true })
+    return { handled: true, intent: 'local', actionId: action.id, result, reply }
   }
 }
 

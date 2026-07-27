@@ -9,7 +9,7 @@ import {
   noteMiss, listLearned, learnedDocs, forgetLearned, noteCorrection, looksLikeCorrection, exactLearned
 } from '../src/main/core/learning'
 import { contentOf } from '../src/main/core/types'
-import { pickReply, resetPersonaState, hasVariants } from '../src/main/core/persona'
+import { pickReply, pickFailure, resetPersonaState, hasVariants } from '../src/main/core/persona'
 import { transcribeHint } from '../src/main/core/sttHint'
 import { nameMatches } from '../src/main/modules/telegramUser'
 import * as fs from 'fs'
@@ -444,6 +444,28 @@ async function level2(): Promise<void> {
     t('характер: незнакомую фразу не выдумывает',
       pickReply('Перевожу в гибернацию', 'озорной', ctx) === 'Перевожу в гибернацию')
 
+    // Фразы с подставленными данными («Громкость 40%») — самые частые ответы,
+    // и до сих пор именно они оставались штампом.
+    resetPersonaState()
+    const vol = [0, 1, 2].map(() => pickReply('Громкость 40%', 'тёплый', ctx))
+    t('характер: фразы с данными тоже оживают',
+      new Set(vol).size > 1 && vol.every((r) => r.includes('40')), '-> ' + vol.join(' / '))
+    resetPersonaState()
+    const search = [0, 1].map(() => pickReply('Ищу: рецепт борща', 'озорной', ctx))
+    t('характер: данные из фразы не теряются',
+      search.every((r) => r.includes('рецепт борща')), '-> ' + search.join(' / '))
+
+    // Неудача: сообщение об ошибке — суть, его менять нельзя, меняется подача.
+    resetPersonaState()
+    const because = 'Не удалось открыть папку: путь не найден'
+    const fail = pickFailure(because, 'тёплый', ctx)
+    t('характер: неудача звучит живее, но причина цела',
+      fail.endsWith(because) && fail.length > because.length, '-> ' + fail)
+    t('характер: у сухого регистра ошибка без вздохов',
+      pickFailure('Не удалось', 'сухой', ctx) === 'Не удалось')
+    t('характер: в очереди команд не до сочувствия',
+      pickFailure('Не удалось', 'тёплый', { streak: 6, hour: 12, firstInAWhile: false }) === 'Не удалось')
+
     // Таблица привязана к фразам действий по тексту, и разойтись они могут
     // молча: характер просто перестанет звучать, и никто не заметит.
     const spoken = new Set<string>()
@@ -483,8 +505,12 @@ async function level2(): Promise<void> {
   const d1 = await commandEngine.tryHandle('выключи компьютер', { source: 'chat' })
   t('опасное без confirm -> отклонено', d1.handled === true && d1.result !== undefined && d1.result.ok === false)
 
+  // Формулировка отказа зависит от характера, поэтому проверяем СМЫСЛ:
+  // действие не выполнено, отказ зафиксирован, ответ не пустой.
   const d2 = await commandEngine.tryHandle('перезагрузи', { source: 'chat', confirm: async () => false })
-  t('опасное confirm=false -> отменено', d2.reply === 'Хорошо, отменила.')
+  t('опасное confirm=false -> отменено',
+    d2.denied === true && d2.result?.ok === false && !!d2.reply && !/выполн|перезагру/i.test(d2.reply),
+    '-> ' + d2.reply)
 
   const sv = await commandEngine.tryHandle('включи свет', { source: 'chat' })
   t('стоп-слово «свет» -> уходит в AI', sv.handled === false)
