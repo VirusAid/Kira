@@ -57,6 +57,14 @@ export interface LearnedPhrase {
 /** Со скольких подтверждений фраза начинает работать. */
 const ACTIVATE_AT = 2
 
+/**
+ * Сколько связок держим. Коллекция растёт от каждой неудачной формулировки, а
+ * чистить её было некому: у истории действий предел есть, у обучения не было.
+ * За год активного разговора это тихо превращается в файл, который читается
+ * при каждом промахе ядра.
+ */
+const MAX_PHRASES = 400
+
 let _col: Collection<LearnedPhrase> | null = null
 function col(): Collection<LearnedPhrase> {
   if (!_col) _col = new Collection<LearnedPhrase>('learned-phrases')
@@ -100,6 +108,37 @@ export function noteMiss(rawPhrase: string, actionId: string, positionalArgs: st
     return
   }
   col().put({ id: newId(), phrase, actionId: action.id, args, count: 1, active: false, at: Date.now() })
+  prune()
+}
+
+/**
+ * Держать коллекцию в рамках. Первыми уходят НЕподтверждённые и давно не
+ * встречавшиеся: рабочая связка подтверждена дважды и её жалко, а одиночная
+ * попытка полугодовой давности — просто мусор. Отвергнутые не трогаем: это
+ * память о том, чего делать не надо, и она должна пережить уборку.
+ */
+function prune(): void {
+  const all = col().all()
+  if (all.length <= MAX_PHRASES) return
+  const disposable = all
+    .filter((p) => !p.active && !p.rejected)
+    .sort((a, b) => a.at - b.at)
+  let excess = all.length - MAX_PHRASES
+  for (const p of disposable) {
+    if (excess <= 0) break
+    col().delete(p.id)
+    excess--
+  }
+  if (excess > 0) {
+    // одних неподтверждённых не хватило — убираем самые старые из активных
+    const stale = all.filter((p) => p.active && !p.rejected).sort((a, b) => a.at - b.at)
+    for (const p of stale) {
+      if (excess <= 0) break
+      col().delete(p.id)
+      excess--
+    }
+    onChange?.()
+  }
 }
 
 /** Позиционные аргументы протокола → именованные, как их ждёт действие. */
@@ -172,6 +211,34 @@ export function noteCorrection(rawPhrase: string, wrongActionId: string): boolea
   if (!action) return false
   col().put({ id: newId(), phrase, actionId: action.id, count: 0, active: false, rejected: true, at: Date.now() })
   logger.info('core', `поправили: «${phrase}» — это не ${action.id}`)
+  return true
+}
+
+/**
+ * Человек отменил то, что Kira только что сделала по выученной фразе.
+ *
+ * Это исправление, но СЛАБОЕ: «отмени» говорят и когда команду поняли верно, а
+ * человек просто передумал или ошибся в названии. Поэтому связка не гасится
+ * сразу, как при явном «нет, я не это просил», — у неё отнимается уверенность.
+ * Одна отмена бывает случайной, вторая подряд — уже закономерность, и тогда
+ * связка выключается насовсем.
+ *
+ * Ослабляем только ВЫУЧЕННОЕ: если команда пришла из встроенного шаблона,
+ * отмена ничего не говорит о качестве распознавания.
+ */
+export function noteUndo(rawPhrase: string, actionId: string): boolean {
+  const phrase = normalize(rawPhrase)
+  if (!phrase) return false
+  const existing = col().all().find((p) => p.phrase === phrase && p.actionId === actionId)
+  if (!existing || existing.rejected) return false
+  const count = Math.max(0, existing.count - 1)
+  const active = count >= ACTIVATE_AT
+  const rejected = count === 0
+  col().patch(existing.id, { count, active, rejected, at: Date.now() })
+  if (existing.active !== active) {
+    logger.info('core', `отменили после «${phrase}» → ${actionId}: уверенность снижена${rejected ? ', связка выключена' : ''}`)
+    onChange?.()
+  }
   return true
 }
 

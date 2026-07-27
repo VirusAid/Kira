@@ -1,0 +1,60 @@
+/**
+ * Клиент расширений против НАСТОЯЩЕГО MCP-сервера (tests/mcp-fake-server.js).
+ *
+ * Проверять разбор JSON в отрыве от процесса бессмысленно: половина ошибок тут
+ * живёт в стыке — пагинация, зависший сервер, отмена, запуск .cmd на Windows.
+ */
+import { join } from 'path'
+import { StdioMcpProvider, resolveCommand } from '../src/main/modules/mcp/stdio'
+import type { McpServerConfig } from '../src/main/modules/mcp/types'
+
+const config: McpServerConfig = {
+  id: 'fake', title: 'Проверочный', transport: 'stdio',
+  command: process.execPath, // __dirname в собранном тесте указывает на tests/.build, поэтому берём
+  // путь от корня проекта — тесты запускаются именно оттуда
+  args: [join(process.cwd(), 'tests', 'mcp-fake-server.js')], env: {}, enabled: true
+}
+let pass = 0, fail = 0
+const t = (n: string, ok: boolean, extra = ''): void => {
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${n}${extra ? '  ' + extra : ''}`); ok ? pass++ : fail++
+}
+
+async function main(): Promise<void> {
+  const p = new StdioMcpProvider(config)
+  await p.connect()
+  t('подключение: состояние ready', p.status().state === 'ready', '-> ' + JSON.stringify(p.status()))
+  const tools = await p.listTools()
+  t('инструменты: обе страницы получены', tools.length === 2 && tools.map(x => x.name).join(',') === 'echo,boom',
+    '-> ' + tools.map(x => x.name).join(', '))
+
+  const ok = await p.call('echo', { text: 'привет' })
+  t('вызов: текст ушёл в содержимое, а не в статус',
+    ok.ok && ok.content === 'эхо: привет' && ok.message !== ok.content, '-> ' + JSON.stringify(ok))
+
+  const bad = await p.call('boom', {})
+  t('вызов: провал инструмента — неудача', bad.ok === false && bad.message.includes('внутренняя поломка'), '-> ' + bad.message)
+
+  const missing = await p.call('нет-такого', {})
+  t('вызов: неизвестный инструмент — честная ошибка', missing.ok === false, '-> ' + missing.message)
+
+  const started = Date.now()
+  const slow = await p.call('slow', {}, { timeoutMs: 800 })
+  t('вызов: зависший сервер не вешает Киру',
+    slow.ok === false && Date.now() - started < 3000, '-> ' + slow.message)
+
+  const ctrl = new AbortController()
+  setTimeout(() => ctrl.abort(), 200)
+  const cancelled = await p.call('slow', {}, { signal: ctrl.signal, timeoutMs: 10_000 })
+  t('вызов: отмена срабатывает', cancelled.ok === false && cancelled.message.includes('отменено'), '-> ' + cancelled.message)
+
+  await p.disconnect()
+  t('отключение: состояние offline', p.status().state === 'offline')
+
+  const r = resolveCommand('npx')
+  t('запуск: npx на Windows требует оболочки',
+    process.platform !== 'win32' || r.viaShell === true || !r.command.endsWith('.cmd'), '-> ' + JSON.stringify(r))
+
+  console.log(`\n=== ИТОГО: ${pass} PASS, ${fail} FAIL ===`)
+  process.exit(fail ? 1 : 0)
+}
+void main()

@@ -93,6 +93,16 @@ const api = {
     dragEnd: () => ipcRenderer.send('overlay:drag-end')
   },
 
+  mcp: {
+    overview: () => invoke('mcp:overview'),
+    saveServer: (config: unknown) => invoke('mcp:save-server', config),
+    removeServer: (id: string) => invoke('mcp:remove-server', id),
+    connect: (id: string) => invoke('mcp:connect', id),
+    tools: (id: string) => invoke('mcp:tools', id),
+    saveBinding: (binding: unknown) => invoke('mcp:save-binding', binding),
+    removeBinding: (id: string) => invoke('mcp:remove-binding', id)
+  },
+
   undo: {
     list: () => invoke('undo:list'),
     last: () => invoke('undo:last')

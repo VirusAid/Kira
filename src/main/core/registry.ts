@@ -36,6 +36,31 @@ class CommandRegistry {
     for (const a of actions) this.register(a)
   }
 
+  /**
+   * Заменить набор действий с общим префиксом.
+   *
+   * Встроенные действия регистрируются один раз при старте, а расширения
+   * приходят и уходят: сервер отключили, привязку удалили, список инструментов
+   * обновился. Без снятия регистрации повторное подключение падало бы на
+   * «Action уже зарегистрирован», а удалённая привязка продолжала бы
+   * срабатывать до перезапуска.
+   *
+   * Замена именно ПАКЕТОМ, а не по одному: так реестр не успевает побывать в
+   * промежуточном состоянии, где часть команд уже снята, а часть ещё нет.
+   */
+  replacePrefixed(prefix: string, actions: KiraAction[]): void {
+    for (const a of [...this.ordered]) {
+      if (!a.id.startsWith(prefix)) continue
+      this.byId.delete(a.id)
+      this.ordered.splice(this.ordered.indexOf(a), 1)
+    }
+    for (const a of actions) {
+      if (this.byId.has(a.id)) continue // чужой id — не затираем встроенное
+      this.byId.set(a.id, a)
+      this.ordered.push(a)
+    }
+  }
+
   get(id: string): KiraAction | undefined {
     return this.byId.get(id)
   }

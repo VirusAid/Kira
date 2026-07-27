@@ -18,6 +18,7 @@ import { MemoryView } from '@/views/MemoryView'
 import { FilesView } from '@/views/FilesView'
 import { AutomationView } from '@/views/AutomationView'
 import { IntegrationsView } from '@/views/IntegrationsView'
+import { ExtensionsView } from '@/views/ExtensionsView'
 import { SystemsView } from '@/views/SystemsView'
 import { SettingsView } from '@/views/SettingsView'
 import { LogsView } from '@/views/LogsView'
@@ -188,6 +189,7 @@ export default function App() {
             {view === 'files' && <FilesView />}
             {view === 'automation' && <AutomationView />}
             {view === 'integrations' && <IntegrationsView />}
+            {view === 'extensions' && <ExtensionsView />}
             {view === 'systems' && <SystemsView />}
             {view === 'settings' && <SettingsView />}
             {view === 'logs' && <LogsView />}

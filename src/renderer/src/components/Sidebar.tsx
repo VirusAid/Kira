@@ -7,6 +7,7 @@
  * перебирается по одному пункту.
  */
 import {
+  Blocks,
   Home, MessageSquare, FolderKanban, Zap, Brain,
   HardDrive, Clock, Settings, ScrollText, Mic, MicOff, Activity, Plug, Sparkles
 } from 'lucide-react'
@@ -45,6 +46,7 @@ const GROUPS: NavGroup[] = [
     items: [
       { id: 'systems', label: 'Способности', icon: Activity },
       { id: 'integrations', label: 'Связи', icon: Plug },
+      { id: 'extensions', label: 'Расширения', icon: Blocks },
       { id: 'settings', label: 'Настройки', icon: Settings },
       { id: 'logs', label: 'Журнал', icon: ScrollText }
     ]

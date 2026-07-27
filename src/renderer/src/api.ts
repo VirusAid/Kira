@@ -3,6 +3,16 @@ import type {
   ActionResult, AIRequest, Automation, Chat, ChatMessage, FileItem, KiraSettings,
   LogEntry, MemoryEntry, ProcessInfo, Project, Protocol, Ability, SearchResult, SystemStats
 } from '@shared/types'
+import type {
+  McpBinding, McpServerConfig, McpStatus, McpTool
+} from '@shared/types'
+
+/** Сервер расширения вместе с состоянием и уже известными инструментами. */
+export interface McpOverviewItem {
+  config: McpServerConfig
+  status: McpStatus
+  tools: McpTool[]
+}
 
 interface KiraBridge {
   invoke: (channel: string, ...args: unknown[]) => Promise<unknown>
@@ -74,6 +84,15 @@ interface KiraBridge {
     toggleVoice: () => Promise<void>
     dragStart: () => void
     dragEnd: () => void
+  }
+  mcp: {
+    overview: () => Promise<{ servers: McpOverviewItem[]; bindings: McpBinding[] }>
+    saveServer: (config: Partial<McpServerConfig>) => Promise<McpServerConfig>
+    removeServer: (id: string) => Promise<void>
+    connect: (id: string) => Promise<McpStatus>
+    tools: (id: string) => Promise<McpTool[]>
+    saveBinding: (binding: Partial<McpBinding>) => Promise<McpBinding>
+    removeBinding: (id: string) => Promise<void>
   }
   undo: {
     list: () => Promise<{ id: string; label: string; at: number }[]>

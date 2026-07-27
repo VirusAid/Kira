@@ -6,10 +6,13 @@ import { actionHistory } from '../src/main/core/history'
 import { bus } from '../src/main/core/bus'
 import { parseIntent } from '../src/main/core/intent'
 import {
-  noteMiss, listLearned, learnedDocs, forgetLearned, noteCorrection, looksLikeCorrection, exactLearned
+  noteMiss, listLearned, learnedDocs, forgetLearned, noteCorrection, looksLikeCorrection, exactLearned,
+  noteUndo
 } from '../src/main/core/learning'
 import { contentOf } from '../src/main/core/types'
 import { pickReply, pickFailure, resetPersonaState, hasVariants } from '../src/main/core/persona'
+import { bindingToAction } from '../src/main/core/mcpActions'
+import { toExecResult } from '../src/main/modules/mcp/normalize'
 import { transcribeHint } from '../src/main/core/sttHint'
 import { nameMatches } from '../src/main/modules/telegramUser'
 import * as fs from 'fs'
@@ -327,6 +330,30 @@ import { semanticIntent } from '../src/main/core/semanticIntent'
   const forgotten = forgetLearned()
   t('обучение: забывание убирает всё', forgotten === 1 && learnedDocs().length === 0)
   t('обучение: индекс вернулся к исходному', registry.semanticDocs().length === before)
+
+  // Отмена сразу после выученной команды — молчаливое исправление. Но сигнал
+  // СЛАБЫЙ: «отмени» говорят и когда поняли верно, а человек передумал.
+  forgetLearned()
+  noteMiss('прибери на столе', 'volume_up')
+  noteMiss('прибери на столе', 'volume_up')
+  t('отмена: до неё связка работает', learnedDocs().length === 1)
+  t('отмена: первая отмена только снижает уверенность',
+    noteUndo('прибери на столе', 'volume_up') && learnedDocs().length === 0 &&
+    listLearned().every((p) => !p.rejected))
+  noteUndo('прибери на столе', 'volume_up')
+  t('отмена: вторая подряд выключает связку насовсем',
+    listLearned().some((p) => p.rejected))
+  t('отмена: невыученную команду не трогаем',
+    noteUndo('открой браузер', 'open_browser') === false)
+  forgetLearned()
+
+  // Обучение не должно расти без предела: у истории действий он есть, у
+  // обучения не было — файл читается при каждом промахе ядра.
+  for (let i = 0; i < 430; i++) noteMiss(`проверочная фраза номер ${i}`, 'volume_up')
+  t('обучение: коллекция держится в рамках', listLearned().length <= 400,
+    '-> ' + listLearned().length)
+  forgetLearned()
+
 }
 }
 
@@ -479,6 +506,55 @@ async function level2(): Promise<void> {
     t('характер: звучит в большинстве ответов действий',
       missing.length <= spoken.size / 4,
       `без вариантов ${missing.length} из ${spoken.size}: ${missing.join(', ')}`)
+  }
+
+  // РАСШИРЕНИЯ (MCP). Инструмент чужого сервера становится обычным действием —
+  // именно поэтому движок, отмена и обучение не потребовали правок.
+  {
+    const binding = {
+      id: 'b1', server: 'github', tool: 'create_issue', title: 'Заведи задачу',
+      phrases: ['заведи задачу', 'создай issue'], args: { title: '$1', repo: 'kira' },
+      dangerous: true, enabled: true, createdAt: Date.now()
+    }
+    const act = bindingToAction(binding)
+    t('расширения: привязка становится действием',
+      act?.id === 'mcp:github/create_issue' && act?.dangerous === true, '-> ' + act?.id)
+    t('расширения: фраза с аргументом ловится шаблоном',
+      !!act?.patterns?.[0].test('заведи задачу кнопка не работает'))
+    t('расширения: аргумент вытаскивается из фразы',
+      act?.patterns?.[0].exec('заведи задачу кнопка не работает')?.groups?.value === 'кнопка не работает')
+
+    // Человек пишет фразы словами, а не регулярками. Незакрытая скобка не
+    // должна разваливать разбор ВСЕХ команд — шаблоны компилируются вместе.
+    const risky = bindingToAction({ ...binding, id: 'b2', phrases: ['сделай (что-нибудь) [важное]'], args: {} })
+    t('расширения: спецсимволы во фразе экранируются',
+      !!risky?.patterns?.[0].test('сделай (что-нибудь) [важное]') &&
+      !risky?.patterns?.[0].test('сделай чтонибудь важное'))
+
+    t('расширения: без фраз действие не создаётся',
+      bindingToAction({ ...binding, id: 'b3', phrases: [] }) === null)
+    t('расширения: выключенная привязка не создаётся',
+      bindingToAction({ ...binding, id: 'b4', enabled: false }) === null)
+
+    // Реестр должен уметь снимать регистрацию: сервер отключили, привязку
+    // удалили. Без этого повторное подключение падало бы на дубликате id.
+    const before = registry.size
+    registry.replacePrefixed('mcp:', [act!])
+    t('расширения: команда попадает в реестр', registry.size === before + 1 && !!registry.get(act!.id))
+    registry.replacePrefixed('mcp:', [])
+    t('расширения: снятие регистрации не задевает встроенные',
+      registry.size === before && !registry.get(act!.id) && !!registry.get('open_browser'))
+
+    // Ответ сервера приводится к контракту ядра: статус отдельно, содержимое
+    // отдельно — на смешении этих двух ядро уже дважды ловило баги.
+    const okRes = toExecResult({ content: [{ type: 'text', text: 'задача #12 создана' }] }, 'Заведи задачу')
+    t('расширения: текст ответа идёт в содержимое, а не в статус',
+      okRes.ok && okRes.content === 'задача #12 создана' && okRes.message !== okRes.content)
+    const errRes = toExecResult({ content: [{ type: 'text', text: 'нет доступа' }], isError: true }, 'Заведи задачу')
+    t('расширения: провал инструмента — это неудача, а не успех',
+      errRes.ok === false && errRes.message.includes('нет доступа'))
+    const imgRes = toExecResult({ content: [{ type: 'image', data: 'x', mimeType: 'image/png' }] }, 'Скриншот')
+    t('расширения: картинка не теряется молча', imgRes.ok && imgRes.content === '[изображение]')
   }
 
   // Не хватает обязательного аргумента — ядро спрашивает и показывает пример,

@@ -13,7 +13,7 @@ import { parseIntent } from './intent'
 import { registry } from './registry'
 import { contentOf } from './types'
 import { semanticIntent } from './semanticIntent'
-import { exactLearned } from './learning'
+import { exactLearned, noteUndo } from './learning'
 import { livelyReply } from './persona'
 import type { ActionContext, ExecResult, Intent, KiraAction } from './types'
 
@@ -47,6 +47,13 @@ export interface Decision {
   /** Человеческое объяснение. */
   why: string
 }
+
+/**
+ * Насколько быстрая отмена считается исправлением. Полминуты: человек успевает
+ * увидеть результат и передумать, а отмена десятиминутной давности относится
+ * уже к чему-то другому.
+ */
+const UNDO_AS_CORRECTION_MS = 30_000
 
 /** Кольцо последних решений — для диагностики и подбора порога. */
 const decisions: Decision[] = []
@@ -168,6 +175,20 @@ class CommandEngine {
 
   /** Локальная обработка свободного текста (chat/voice). */
   async tryHandle(text: string, ctx: ActionContext): Promise<HandleOutcome> {
+    try {
+      return await this.route(text, ctx)
+    } catch (err) {
+      // Разбор намерения не должен ронять весь запрос. Раньше сюда попадали
+      // только наши собственные шаблоны, а теперь ещё и команды расширений,
+      // собранные из пользовательских фраз, — одна кривая привязка не имеет
+      // права лишить человека всего ядра. Отдаём запрос дальше, в облако.
+      logger.error('core', `разбор сорвался: ${(err as Error).message}`)
+      trace({ at: Date.now(), text, route: 'облако', why: `сбой разбора: ${(err as Error).message}` })
+      return { handled: false, intent: 'ai' }
+    }
+  }
+
+  private async route(text: string, ctx: ActionContext): Promise<HandleOutcome> {
     const intent = parseIntent(text, registry.intentSpecs(), registry.commandVocabulary())
     if (intent.kind === 'local') {
       const action = registry.get(intent.actionId)
@@ -257,6 +278,13 @@ class CommandEngine {
    * пробуем файловую отмену (modules/undo, операции LLM-инструментов).
    */
   async undoLast(ctx: ActionContext): Promise<ExecResult> {
+    // Отмена сразу после того, как сработала ВЫУЧЕННАЯ фраза, — молчаливое
+    // исправление: человек не сказал «не то», но и результат ему не подошёл.
+    const last = this.lastLocal
+    if (last && Date.now() - last.at < UNDO_AS_CORRECTION_MS) {
+      noteUndo(last.phrase, last.actionId)
+      this.lastLocal = null
+    }
     const u = this.lastUndoable
     if (u?.action.undo) {
       this.lastUndoable = null

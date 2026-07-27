@@ -19,6 +19,7 @@ import { flushAllCollectionsSync } from './modules/storage'
 import { logger } from './modules/logger'
 import { getSettings } from './modules/settings'
 import { extractAiFile, extractFileText } from './modules/shellIntegration'
+import { isMcpServerMode, startMcpServer } from './modules/mcp/server'
 
 // Голосовой ассистент обязан слышать и отвечать, ДАЖE когда поверх — полноэкранная
 // игра или другое окно полностью перекрывает Kira. Chromium по умолчанию считает
@@ -116,6 +117,20 @@ process.on('unhandledRejection', (reason) => {
   try { logger.error('kira', `Необработанный промис: ${String((reason as Error)?.message ?? reason).slice(0, 200)}`) } catch { /* ignore */ }
 })
 
+/*
+ * Режим MCP-сервера: Kira отдаёт свои возможности наружу по stdio, чтобы ею
+ * могли пользоваться другие клиенты. Окна, трей, эмблема, зрение и
+ * проактивность не нужны — только ядро и обмен сообщениями.
+ *
+ * Проверка идёт ДО единственного экземпляра: клиент может запустить сервер,
+ * когда обычная Kira уже открыта, и тогда блокировка убила бы его на старте.
+ */
+if (isMcpServerMode(process.argv)) {
+  app.whenReady().then(() => {
+    startMcpServer()
+  })
+} else {
+
 const gotLock = app.requestSingleInstanceLock()
 if (!gotLock) {
   app.quit()
@@ -173,6 +188,8 @@ if (!gotLock) {
     initPulse(() => mainWindow)
     initVision(() => mainWindow)
     initDiscordMonitor(() => mainWindow)
+    // расширения (MCP) — после ядра: их команды регистрируются в том же реестре
+    void import('./modules/mcp/manager').then((m) => m.initMcp()).catch(() => {})
     initTelegram(() => mainWindow)
     void initTelegramUser(() => mainWindow)
 
@@ -204,6 +221,7 @@ app.on('before-quit', () => {
   shutdownDiscordMonitor()
   shutdownTelegram()
   void shutdownTelegramUser()
+  void import('./modules/mcp/manager').then((m) => m.shutdownMcp())
   // гасим ВСЕ python-сайдкары, иначе процессы осиротеют и повиснут в памяти
   void import('./modules/ai/voskStt').then((m) => m.voskStt.shutdown())
   void import('./modules/ai/silero').then((m) => m.silero.kill())
@@ -220,3 +238,5 @@ app.on('before-quit', () => {
   // прямо перед закрытием иначе терялось
   flushAllCollectionsSync()
 })
+
+} // конец обычного режима (не MCP-сервер)

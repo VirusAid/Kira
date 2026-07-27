@@ -630,6 +630,36 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('tg-user:status', () => telegramUserStatus())
   ipcMain.handle('tg-user:logout', () => logoutTelegramUser())
 
+  // ─── Расширения (MCP) ─────────────────────────────────────────────────────
+  ipcMain.handle('mcp:overview', async () => {
+    const m = await import('./mcp/manager')
+    return { servers: m.mcpOverview(), bindings: m.listBindings() }
+  })
+  ipcMain.handle('mcp:save-server', async (_e, config) => {
+    const m = await import('./mcp/manager')
+    return m.saveServer(config)
+  })
+  ipcMain.handle('mcp:remove-server', async (_e, id: string) => {
+    const m = await import('./mcp/manager')
+    return m.removeServer(id)
+  })
+  ipcMain.handle('mcp:connect', async (_e, id: string) => {
+    const m = await import('./mcp/manager')
+    return m.connectServer(id)
+  })
+  ipcMain.handle('mcp:tools', async (_e, id: string) => {
+    const m = await import('./mcp/manager')
+    return m.toolsOf(id)
+  })
+  ipcMain.handle('mcp:save-binding', async (_e, binding) => {
+    const m = await import('./mcp/manager')
+    return m.saveBinding(binding)
+  })
+  ipcMain.handle('mcp:remove-binding', async (_e, id: string) => {
+    const m = await import('./mcp/manager')
+    return m.removeBinding(id)
+  })
+
   // ─── Оверлей голосового режима ────────────────────────────────────────────
   ipcMain.on('voice:update', (_e, p: { active: boolean; state: string; level: number }) => {
     updateVoice(p.active, p.state, p.level)

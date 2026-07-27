@@ -24,6 +24,30 @@ export function initKiraCore(): void {
   initialized = true
   registry.registerAll(actions)
   logger.info('core', `Kira Core активно: действий в реестре — ${registry.size}`)
+  // Команды расширений подключаются тем же путём, что и встроенные, и живут в
+  // том же реестре. Пересборка — на любое изменение: подключили сервер,
+  // поправили привязку, сервер обновил список инструментов.
+  void wireMcp()
+}
+
+/**
+ * Связать расширения с ядром. Ошибки здесь не должны мешать Kira работать:
+ * расширения — дополнение, а не условие запуска.
+ */
+async function wireMcp(): Promise<void> {
+  try {
+    const mcp = await import('../modules/mcp/manager')
+    const { syncMcpActions } = await import('./mcpActions')
+    const { resetSemanticIndex } = await import('./semanticIntent')
+    const resync = (): void => {
+      syncMcpActions(mcp.listBindings())
+      resetSemanticIndex() // новые фразы должны попасть и в поиск по смыслу
+    }
+    mcp.setMcpChangeHook(resync)
+    resync()
+  } catch (err) {
+    logger.warn('mcp', `Расширения не подключились: ${(err as Error).message}`)
+  }
 }
 
 export function coreFlushSync(): void {
