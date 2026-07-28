@@ -128,6 +128,14 @@ async function main(): Promise<void> {
   t('http: провал инструмента — неудача', hbad.ok === false && hbad.message.includes('внутренняя поломка'),
     '-> ' + hbad.message)
 
+  // Сервер вправе НЕ закрывать поток после ответа. Ждать его конца нельзя:
+  // тогда каждый вызов упирался бы в таймаут, хотя ответ пришёл сразу.
+  const openStart = Date.now()
+  const openRes = await h.call('otkrytyy', {}, { timeoutMs: 8000 })
+  t('http: ответ берётся сразу, даже если поток не закрыт',
+    openRes.ok && openRes.content === 'ответ пришёл сразу' && Date.now() - openStart < 3000,
+    `-> ${JSON.stringify(openRes.content)} за ${Date.now() - openStart} мс`)
+
   const hstart = Date.now()
   const hslow = await h.call('slow', {}, { timeoutMs: 800 })
   t('http: молчащий сервер не вешает Киру',

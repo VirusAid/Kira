@@ -18,12 +18,28 @@
  */
 import { logger } from '../logger'
 import { toExecResult, type McpCallResult } from './normalize'
-import { PROTOCOL_VERSION } from './types'
+import { kiraVersion, PROTOCOL_VERSION } from './types'
 import type { CallContext, Disposable, McpProvider, McpServerConfig, McpStatus, McpTool } from './types'
 import type { ExecResult } from '../../core/types'
 
 const DEFAULT_TIMEOUT_MS = 30_000
 const INIT_TIMEOUT_MS = 30_000
+/** Пауза между попытками достучаться до недоступного сервера. */
+const RETRY_COOLDOWN_MS = 5000
+
+/** Одно событие потока → сообщение JSON-RPC (или null, если это не оно). */
+function parseEvent(event: string): Record<string, unknown> | null {
+  const data = event.split('\n')
+    .filter((l) => l.startsWith('data:'))
+    .map((l) => l.slice(5).trim())
+    .join('')
+  if (!data) return null
+  try {
+    return JSON.parse(data) as Record<string, unknown>
+  } catch {
+    return null
+  }
+}
 
 export class HttpMcpProvider implements McpProvider {
   private nextId = 1
@@ -34,6 +50,8 @@ export class HttpMcpProvider implements McpProvider {
   private session = ''
   private version = PROTOCOL_VERSION
   private connecting: Promise<void> | null = null
+  /** Когда последний раз пытались соединиться (защита от частых попыток). */
+  private lastAttempt = 0
 
   constructor(readonly config: McpServerConfig) {}
 
@@ -48,6 +66,9 @@ export class HttpMcpProvider implements McpProvider {
   async connect(): Promise<void> {
     if (this.state === 'ready') return
     if (this.connecting) return this.connecting
+    // недоступный адрес не долбим на каждый вызов: сеть и так ответила
+    if (this.state === 'offline' && Date.now() - this.lastAttempt < RETRY_COOLDOWN_MS) return
+    this.lastAttempt = Date.now()
     this.connecting = this.doConnect().finally(() => { this.connecting = null })
     return this.connecting
   }
@@ -64,7 +85,7 @@ export class HttpMcpProvider implements McpProvider {
       const init = (await this.request('initialize', {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: {},
-        clientInfo: { name: 'Kira', title: 'Kira', version: '1.1.0' }
+        clientInfo: { name: 'Kira', title: 'Kira', version: kiraVersion() }
       }, { timeoutMs: INIT_TIMEOUT_MS })) as { protocolVersion?: string } | undefined
       if (init?.protocolVersion) this.version = init.protocolVersion
       await this.notify('notifications/initialized')
@@ -102,23 +123,45 @@ export class HttpMcpProvider implements McpProvider {
       const body = (await res.json()) as Record<string, unknown>
       return this.unwrap(body)
     }
-    const text = await res.text()
-    for (const chunk of text.split(/\n\n/)) {
-      const data = chunk.split('\n')
-        .filter((l) => l.startsWith('data:'))
-        .map((l) => l.slice(5).trim())
-        .join('')
-      if (!data) continue
-      let msg: Record<string, unknown>
-      try {
-        msg = JSON.parse(data)
-      } catch { continue }
-      if (msg.method === 'notifications/tools/list_changed') {
-        void this.refreshTools()
-        continue
+    /*
+     * Поток читаем ПО МЕРЕ ПОСТУПЛЕНИЯ и обрываем сразу, как пришёл наш ответ.
+     *
+     * Дождаться конца потока (res.text()) нельзя: спецификация лишь
+     * рекомендует серверу закрыть поток после ответа, но разрешает держать его
+     * открытым. С таким сервером КАЖДЫЙ вызов упирался бы в таймаут, хотя
+     * ответ пришёл в первую же миллисекунду.
+     */
+    const reader = res.body?.getReader()
+    if (!reader) throw new Error('пустой ответ сервера')
+    const decoder = new TextDecoder()
+    let buf = ''
+    try {
+      for (;;) {
+        const { value, done } = await reader.read()
+        if (value) buf += decoder.decode(value, { stream: true })
+        // события разделены пустой строкой
+        let sep = buf.indexOf('\n\n')
+        while (sep !== -1) {
+          const event = buf.slice(0, sep)
+          buf = buf.slice(sep + 2)
+          const msg = parseEvent(event)
+          if (msg) {
+            if (msg.method === 'notifications/tools/list_changed') {
+              void this.refreshTools()
+            } else if (msg.id === id) {
+              return this.unwrap(msg)
+            }
+          }
+          sep = buf.indexOf('\n\n')
+        }
+        if (done) break
       }
-      if (msg.id === id) return this.unwrap(msg)
+    } finally {
+      // читать дальше незачем: ответ получен либо поток кончился
+      void reader.cancel().catch(() => undefined)
     }
+    const tail = parseEvent(buf)
+    if (tail && tail.id === id) return this.unwrap(tail)
     throw new Error('сервер не прислал ответ')
   }
 

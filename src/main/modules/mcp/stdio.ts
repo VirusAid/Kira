@@ -24,7 +24,7 @@ import { existsSync } from 'fs'
 import { join } from 'path'
 import { logger } from '../logger'
 import { toExecResult, type McpCallResult } from './normalize'
-import { PROTOCOL_VERSION } from './types'
+import { kiraVersion, PROTOCOL_VERSION } from './types'
 import type { CallContext, Disposable, McpProvider, McpServerConfig, McpStatus, McpTool } from './types'
 import type { ExecResult } from '../../core/types'
 
@@ -312,7 +312,7 @@ export class StdioMcpProvider implements McpProvider {
       // ни roots, ни sampling, ни elicitation Kira пока не предоставляет —
       // заявлять неподдерживаемое хуже, чем честно промолчать
       capabilities: {},
-      clientInfo: { name: 'Kira', title: 'Kira', version: '1.1.0' }
+      clientInfo: { name: 'Kira', title: 'Kira', version: kiraVersion() }
     }, { timeoutMs: INIT_TIMEOUT_MS })) as { protocolVersion?: string } | undefined
     // сервер вправе ответить другой версией; продолжаем, но помечаем это
     if (result?.protocolVersion && result.protocolVersion !== PROTOCOL_VERSION) {

@@ -63,6 +63,11 @@ const server = http.createServer((req, res) => {
         sendJson(res, { jsonrpc: '2.0', id: m.id, result: { content: [{ type: 'text', text: 'эхо: ' + m.params.arguments.text }] } })
       } else if (name === 'boom') {
         sendStream(res, { jsonrpc: '2.0', id: m.id, result: { content: [{ type: 'text', text: 'внутренняя поломка' }], isError: true } })
+      } else if (name === 'otkrytyy') {
+        // ответ есть, но поток НЕ закрываем — так делать спецификация разрешает
+        res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Mcp-Session-Id': SESSION })
+        res.write('data: ' + JSON.stringify({ jsonrpc: '2.0', id: m.id, result: { content: [{ type: 'text', text: 'ответ пришёл сразу' }] } }) + '\n\n')
+        // намеренно держим соединение открытым
       } else if (name === 'slow') {
         /* намеренно молчим — проверяем таймаут */
       } else {

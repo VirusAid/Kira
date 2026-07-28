@@ -5,7 +5,9 @@ module.exports = {
     getPath: (n) => path.join(os.tmpdir(), 'kira-core-test', n),
     isPackaged: false,
     // настройки при сохранении трогают автозапуск — в тестах это пустышка
-    setLoginItemSettings: () => {}
+    setLoginItemSettings: () => {},
+    // версия нужна MCP: Kira представляется ею серверам
+    getVersion: () => '0.0.0-test'
   },
   shell: {
     openPath: async () => '',

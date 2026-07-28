@@ -139,6 +139,17 @@ void (async () => {
   t('заготовка: подставилось именно сказанное',
     readFileSync(join(dir, 'dnevnik.txt'), 'utf-8') === 'отличный день',
     '-> ' + JSON.stringify(readFileSync(join(dir, 'dnevnik.txt'), 'utf-8')))
+  // Морфология: человек говорит «задачу», модель передаёт «задача» — совпадения
+  // нет. Создать привязку, где ничего не переменное, значит навсегда повторять
+  // данные того единственного раза.
+  const stale = { path: join(dir, 'x.txt'), content: 'совсем другое' }
+  noteExtensionUse('запиши заметку', srv.id, 'write_file', stale)
+  const notCreated = noteExtensionUse('запиши заметку', srv.id, 'write_file', stale)
+  t('заготовка: не берётся, если непонятно, что переменное',
+    notCreated.created === false &&
+    !listBindings().some((x) => x.phrases[0] === 'запиши заметку'),
+    '-> created=' + notCreated.created)
+
   forgetProposals()
 
   const { shutdownMcp } = await import('../src/main/modules/mcp/manager')

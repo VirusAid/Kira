@@ -21,7 +21,7 @@ import { registry } from '../../core/registry'
 import { commandEngine } from '../../core/engine'
 import { initKiraCore } from '../../core'
 import { contentOf } from '../../core/types'
-import { PROTOCOL_VERSION } from './types'
+import { kiraVersion, PROTOCOL_VERSION } from './types'
 
 /** Есть ли в аргументах запуска просьба поработать MCP-сервером. */
 export function isMcpServerMode(argv: string[]): boolean {
@@ -87,7 +87,7 @@ async function handle(msg: Rpc): Promise<void> {
       reply(id, {
         protocolVersion: PROTOCOL_VERSION,
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { name: 'kira', title: 'Kira', version: '1.1.0' },
+        serverInfo: { name: 'kira', title: 'Kira', version: kiraVersion() },
         instructions:
           'Kira управляет компьютером Windows: приложения, файлы, звук, окна, буфер обмена, ' +
           'система. Опасные и необратимые действия наружу не отдаются — их выполняет только ' +

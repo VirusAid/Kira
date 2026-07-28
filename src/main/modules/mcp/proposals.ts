@@ -104,6 +104,20 @@ export function noteExtensionUse(
   if (count < CREATE_AT) return { created: false, title: '' }
 
   const shaped = generalize(phrase, existing.args)
+  /*
+   * Аргументы были, но ни один не нашёлся во фразе — значит, что в команде
+   * переменное, мы не поняли. Чаще всего виновата морфология: человек говорит
+   * «заведи задачу», а модель передаёт «задача».
+   *
+   * Такую привязку создавать нельзя: она выглядит гибкой, а на деле навсегда
+   * повторяет данные того единственного раза. Молча подставлять вчерашний текст
+   * вместо сегодняшнего — худший вид «обучения».
+   */
+  if (Object.keys(existing.args).length > 0 && !Object.values(shaped.args).some((v) => v.includes('$'))) {
+    col().delete(existing.id)
+    logger.info('mcp', `не берусь: во фразе «${phrase}» не видно, что здесь переменное`)
+    return { created: false, title: '' }
+  }
   const binding = saveBinding({
     server, tool,
     title: shaped.phrase.replace(/\$\d/g, '…'),

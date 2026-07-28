@@ -29,6 +29,21 @@ import type { McpBinding, McpServerConfig, McpStatus, McpTool } from '../../../s
 // только то, что относится к исполнению.
 export type { McpBinding, McpServerConfig, McpStatus, McpTool }
 
+/**
+ * Версия самой Kira — ею она представляется серверам и клиентам.
+ *
+ * Берём у приложения, а не вписываем строкой: вручную вписанная версия
+ * устаревает в первом же выпуске, и наружу уходит неправда.
+ */
+export function kiraVersion(): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return (require('electron') as typeof import('electron')).app.getVersion()
+  } catch {
+    return '0.0.0'
+  }
+}
+
 /** Версия протокола, с которой Kira представляется серверам. */
 export const PROTOCOL_VERSION = '2025-06-18'
 
