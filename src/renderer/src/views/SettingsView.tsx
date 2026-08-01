@@ -6,7 +6,7 @@ import {
 } from 'lucide-react'
 import { useAppStore } from '@/state/appStore'
 import { kira } from '@/api'
-import type { AIProviderId, KiraSettings } from '@shared/types'
+import type { AIProviderId, KiraSettings, UpdateState } from '@shared/types'
 import { PERSONALITY_PRESETS, detectPreset, type PersonalityPreset } from '@shared/personalityPresets'
 
 type Section = 'models' | 'personality' | 'voice' | 'interface' | 'behavior' | 'data'
@@ -102,7 +102,7 @@ export function SettingsView() {
         {section === 'voice' && <VoiceSection settings={settings} update={update} />}
         {section === 'interface' && <InterfaceSection settings={settings} update={update} />}
         {section === 'behavior' && <BehaviorSection settings={settings} update={update} />}
-        {section === 'data' && <DataSection />}
+        {section === 'data' && <><UpdateCard /><DataSection /></>}
       </div>
     </div>
   )
@@ -892,10 +892,6 @@ function BehaviorSection({ settings, update }: SectionProps) {
             checked={settings.allowControl} onChange={(v) => update({ allowControl: v })} />
         </div>
 
-        <Toggle label="Чувствовать эмоции по голосу"
-          hint="Kira улавливает твой тон (устал, воодушевлён, спокоен) и подстраивает ответ"
-          checked={settings.emotionSense} onChange={(v) => update({ emotionSense: v })} />
-
         <Toggle label="Узнавать мой голос"
           hint="Kira реагирует только на твой голос и игнорирует других людей, ТВ и видео"
           checked={settings.speakerVerify} onChange={(v) => update({ speakerVerify: v })} />
@@ -1057,6 +1053,65 @@ function ShellMenuControl() {
         Пункт «Kira: действия» в контекстном меню файлов (ПКМ по файлу) — открывает меню
         AI Actions по содержимому. {msg && `· ${msg}`}
       </span>
+    </div>
+  )
+}
+
+/**
+ * Обновления. Живёт в «Данных» — рядом с выгрузкой и очисткой, там же, где
+ * человек разбирается с самой Kira, а не с её поведением.
+ *
+ * Загрузка НЕ начинается сама: установщик весит сотни мегабайт, и на мобильном
+ * интернете самовольная закачка это чужие деньги.
+ */
+function UpdateCard() {
+  const [st, setSt] = useState<UpdateState | null>(null)
+  useEffect(() => {
+    void kira.update.state().then(setSt)
+    return kira.on('update:state', (p) => setSt(p as UpdateState))
+  }, [])
+  if (!st) return null
+
+  const busy = st.stage === 'checking' || st.stage === 'downloading'
+  const tone = st.stage === 'error' ? '#f87171' : st.stage === 'ready' || st.stage === 'available' ? '#22c55e' : 'var(--text-2)'
+
+  return (
+    <div className="card" style={{ marginBottom: 16 }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+        <RefreshCw size={17} style={{ color: 'var(--accent-text)' }} />
+        <b style={{ fontSize: 14 }}>Обновления</b>
+        <span className="muted" style={{ fontSize: 12 }}>· установлена {st.current}</span>
+      </div>
+      {st.message && (
+        <p style={{ fontSize: 12.5, color: tone, margin: '6px 0 10px' }}>{st.message}</p>
+      )}
+      {st.stage === 'downloading' && (
+        <div style={{ margin: '8px 0 12px' }}>
+          <div style={{ height: 7, borderRadius: 5, background: 'var(--bg-2)', overflow: 'hidden' }}>
+            <div style={{ height: '100%', width: `${st.percent ?? 0}%`, background: 'var(--accent)', transition: 'width .3s', minWidth: 3 }} />
+          </div>
+          <span className="muted" style={{ fontSize: 11 }}>{st.percent ?? 0}%</span>
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+        {st.stage === 'ready' ? (
+          <button className="btn btn-primary press" onClick={() => void kira.update.install()}>
+            Перезапустить и обновить
+          </button>
+        ) : st.stage === 'available' ? (
+          <button className="btn btn-primary press" onClick={() => void kira.update.download()}>
+            <Download size={14} /> Загрузить {st.version}
+          </button>
+        ) : (
+          <button className="btn press" disabled={busy} onClick={() => void kira.update.check().then(setSt)}>
+            {busy ? <Loader2 size={14} className="spin" /> : <RefreshCw size={14} />} Проверить обновления
+          </button>
+        )}
+      </div>
+      <p className="muted" style={{ fontSize: 11, lineHeight: 1.5, marginTop: 10 }}>
+        Kira сама смотрит, не вышла ли новая версия, но ничего не скачивает без твоего согласия.
+        Обновление ставится при перезапуске — работа не прервётся посреди дела.
+      </p>
     </div>
   )
 }

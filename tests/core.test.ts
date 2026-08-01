@@ -15,7 +15,7 @@ import { bindingToAction } from '../src/main/core/mcpActions'
 import { toExecResult } from '../src/main/modules/mcp/normalize'
 import { transcribeHint } from '../src/main/core/sttHint'
 import { nameMatches } from '../src/main/modules/telegramUser'
-import { stripActions, parseActions } from '../src/main/modules/ai/kira'
+import { stripActions, parseActions, buildSystemPrompt } from '../src/main/modules/ai/kira'
 import { resolveLocalModel } from '../src/main/modules/ai/localLlm'
 import { calculate, looksLikeMath } from '../src/main/modules/utilities'
 import * as fs from 'fs'
@@ -868,6 +868,51 @@ async function level2(): Promise<void> {
   const evening = parseWhen('сегодня вечером')
   t('напоминание: «вечером» — это 19 часов',
     evening !== null && new Date(evening).getHours() === 19)
+
+  /*
+   * Голос с включённым «чувством эмоций» приписывает к фразе пометку о тоне.
+   * Все шаблоны ядра анкерные, поэтому ОДНА такая пометка убивала распознавание
+   * целиком: «открой браузер» переставало быть командой, и каждая фраза
+   * уезжала в облако. При выключенной настройке всё работало — оттого и не
+   * замечалось.
+   */
+  for (const [phrase, want] of [
+    ['[голос звучит спокойно] открой браузер', 'open_browser'],
+    ['[голос звучит радостно] громкость 40', 'set_volume'],
+    ['[голос звучит устало] сделай потише', 'volume_down']
+  ] as Array<[string, string]>) {
+    const got = parseIntent(phrase, specs, vocab)
+    t(`голос: пометка о тоне не ломает команду — «${phrase}»`,
+      got.kind === 'local' && got.actionId === want,
+      '-> ' + (got.kind === 'local' ? got.actionId : got.kind))
+  }
+  // но текст в скобках ПОСРЕДИ фразы — часть просьбы, его трогать нельзя
+  t('голос: скобки внутри фразы остаются на месте',
+    parseIntent('запиши в заметки купить [молоко]', specs, vocab).kind === 'local')
+
+  /*
+   * Память о ПОСТУПКАХ. Переписка помнит слова, но не дела: локальную команду
+   * ядро выполняет само, и в разговоре от неё остаётся лишь «Открываю» — без
+   * того, ЧТО открыто. Поэтому на «что ты только что делала» отвечать было
+   * нечем. Журнал дел обязан доходить до подсказки, иначе он снова никому не
+   * виден — ровно так уже пропадал контекст экрана.
+   */
+  {
+    actionHistory.record({
+      actionId: 'launch_app', title: 'Открыть программу',
+      args: { app: 'Стим' }, ok: true, message: 'Запускаю', source: 'chat'
+    })
+    const prompt = buildSystemPrompt({ withTools: false })
+    t('память о делах: попадает в подсказку модели', prompt.includes('ЧТО ТЫ УЖЕ СДЕЛАЛА'))
+    t('память о делах: помнит НЕ только действие, но и с чем',
+      prompt.includes('Открыть программу') && prompt.includes('Стим'))
+    actionHistory.record({
+      actionId: 'delete_file', title: 'Удалить в корзину',
+      args: { path: 'C:\\нет.txt' }, ok: false, message: 'файл не найден', source: 'agent'
+    })
+    t('память о делах: неудача помечена как неудача',
+      buildSystemPrompt({ withTools: false }).includes('НЕ УДАЛОСЬ'))
+  }
 
   const hist = actionHistory.list(20)
   t('история фиксирует действия', hist.length >= 4, 'записей: ' + hist.length)

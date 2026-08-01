@@ -13,6 +13,8 @@ import { promises as fsp, existsSync, readFileSync, mkdirSync, renameSync, write
 import { join } from 'path'
 
 const FLUSH_DELAY = 400
+/** Сколько переписок держать в памяти. Остальные перечитываются с диска. */
+const HOT_CHATS = 12
 
 function dataDir(): string {
   const dir = join(app.getPath('userData'), 'data')
@@ -20,14 +22,25 @@ function dataDir(): string {
   return dir
 }
 
+/*
+ * Имя временного файла — РАЗНОЕ на каждую запись.
+ *
+ * Общий «file.tmp» означал, что отложенная запись и сброс при выходе могут
+ * писать в один и тот же файл одновременно: один пишет содержимое, другой в
+ * этот момент переименовывает недописанное поверх настоящего. Разные имена
+ * убирают саму возможность такого пересечения.
+ */
+let tmpSeq = 0
+const tmpName = (file: string): string => `${file}.${process.pid}.${++tmpSeq}.tmp`
+
 function atomicWriteSync(file: string, content: string): void {
-  const tmp = file + '.tmp'
+  const tmp = tmpName(file)
   writeFileSync(tmp, content, 'utf-8')
   renameSync(tmp, file)
 }
 
 async function atomicWrite(file: string, content: string): Promise<void> {
-  const tmp = file + '.tmp'
+  const tmp = tmpName(file)
   await fsp.writeFile(tmp, content, 'utf-8')
   await fsp.rename(tmp, file)
 }
@@ -44,6 +57,28 @@ const registry = new Set<{ flushSync: () => void; name: string }>()
 export function flushAllCollectionsSync(): void {
   for (const c of registry) {
     try { c.flushSync() } catch { /* одна битая коллекция не мешает остальным */ }
+  }
+}
+
+/**
+ * Убрать недописанные временные файлы прошлых запусков.
+ *
+ * Запись идёт «во временный файл, потом переименовать». Если Kira убили ровно
+ * между этими шагами, временный файл остаётся навсегда — а имена у них теперь
+ * уникальные, значит сами собой они больше не перезаписываются. Чужие
+ * (от другого живого процесса) не трогаем.
+ */
+export async function sweepTempFiles(): Promise<void> {
+  const dirs = [dataDir(), join(dataDir(), 'messages')]
+  for (const dir of dirs) {
+    try {
+      for (const name of await fsp.readdir(dir)) {
+        if (!name.endsWith('.tmp')) continue
+        const pid = Number(name.split('.').slice(-3)[0])
+        if (pid === process.pid) continue
+        await fsp.unlink(join(dir, name)).catch(() => undefined)
+      }
+    } catch { /* папки может не быть */ }
   }
 }
 
@@ -80,16 +115,30 @@ export class Collection<T extends { id: string }> {
     }, FLUSH_DELAY)
   }
 
+  /**
+   * Отложенная запись. «Чисто» отмечаем ТОЛЬКО после удачной записи.
+   *
+   * Раньше флаг снимался до await. Если в этот момент человек закрывал Kira,
+   * сброс при выходе видел «чисто» и не делал ничего, а незавершённая запись
+   * умирала вместе с процессом — сказанное последним пропадало. Тот же флаг,
+   * снятый заранее, прятал и обычную ошибку записи: диск полон, файл занят
+   * антивирусом — данные считались сохранёнными, хотя их не было.
+   */
   async flush(): Promise<void> {
     if (!this.dirty) return
-    this.dirty = false
-    await atomicWrite(this.file, JSON.stringify([...this.items.values()]))
+    const snapshot = JSON.stringify([...this.items.values()])
+    try {
+      await atomicWrite(this.file, snapshot)
+      this.dirty = false
+    } catch {
+      // остаёмся «грязными»: следующая правка или выход попробуют снова
+    }
   }
 
   flushSync(): void {
     if (!this.dirty) return
-    this.dirty = false
     atomicWriteSync(this.file, JSON.stringify([...this.items.values()]))
+    this.dirty = false
   }
 
   all(): T[] {
@@ -146,7 +195,23 @@ export class MessageStore<M extends { id: string; chatId: string }> {
     let msgs = this.cache.get(chatId)
     if (!msgs) {
       const file = this.fileFor(chatId)
-      msgs = existsSync(file) ? (JSON.parse(readFileSync(file, 'utf-8')) as M[]) : []
+      msgs = []
+      if (existsSync(file)) {
+        try {
+          const raw = JSON.parse(readFileSync(file, 'utf-8')) as M[]
+          if (Array.isArray(raw)) msgs = raw
+        } catch {
+          // Битый файл одной переписки не должен ронять всё остальное: раньше
+          // исключение отсюда уходило наверх и обрывало открытие чата целиком.
+          // Сохраняем испорченное рядом — вдруг пригодится, — и начинаем чисто.
+          try { renameSync(file, file + '.corrupt.' + Date.now()) } catch { /* ignore */ }
+        }
+      }
+      this.cache.set(chatId, msgs)
+    } else {
+      // трогали — значит, разговор «горячий»: переставляем в конец, чтобы
+      // очистка холодных не выбросила именно его
+      this.cache.delete(chatId)
       this.cache.set(chatId, msgs)
     }
     return msgs
@@ -198,19 +263,40 @@ export class MessageStore<M extends { id: string; chatId: string }> {
   }
 
   async flush(): Promise<void> {
-    const chats = [...this.dirtyChats]
-    this.dirtyChats.clear()
-    for (const chatId of chats) {
+    for (const chatId of [...this.dirtyChats]) {
       const msgs = this.cache.get(chatId)
-      if (msgs) await atomicWrite(this.fileFor(chatId), JSON.stringify(msgs))
+      if (!msgs) { this.dirtyChats.delete(chatId); continue }
+      try {
+        await atomicWrite(this.fileFor(chatId), JSON.stringify(msgs))
+        this.dirtyChats.delete(chatId) // только после удачной записи
+      } catch { /* попробуем при следующей правке или при выходе */ }
+    }
+    this.forgetColdChats()
+  }
+
+  /**
+   * Отпустить из памяти переписки, к которым давно не обращались.
+   *
+   * listChat кэширует КАЖДЫЙ открытый разговор целиком и не отпускал никогда:
+   * достаточно полистать историю, чтобы все чаты за всё время осели в памяти
+   * до перезапуска. Несохранённые не трогаем — их ещё нужно записать.
+   */
+  private forgetColdChats(): void {
+    if (this.cache.size <= HOT_CHATS) return
+    for (const chatId of [...this.cache.keys()]) {
+      if (this.cache.size <= HOT_CHATS) break
+      if (this.dirtyChats.has(chatId)) continue
+      this.cache.delete(chatId) // Map хранит порядок вставки — уходят самые давние
     }
   }
 
   flushSync(): void {
-    for (const chatId of this.dirtyChats) {
+    for (const chatId of [...this.dirtyChats]) {
       const msgs = this.cache.get(chatId)
-      if (msgs) atomicWriteSync(this.fileFor(chatId), JSON.stringify(msgs))
+      try {
+        if (msgs) atomicWriteSync(this.fileFor(chatId), JSON.stringify(msgs))
+        this.dirtyChats.delete(chatId)
+      } catch { /* не записалось — пусть остаётся помеченной */ }
     }
-    this.dirtyChats.clear()
   }
 }

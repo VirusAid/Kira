@@ -195,8 +195,7 @@ export class StdioMcpProvider implements McpProvider {
     })
     this.child.on('error', (err) => this.fail(err.message))
     this.child.on('exit', (code) => {
-      const why = this.stderrTail.length ? this.stderrTail[this.stderrTail.length - 1] : `код ${code}`
-      this.fail(code === 0 ? 'сервер завершился' : `сервер упал: ${why}`)
+      this.fail(code === 0 ? 'сервер завершился' : `сервер упал: ${this.crashReason(code)}`)
     })
 
     try {
@@ -208,6 +207,31 @@ export class StdioMcpProvider implements McpProvider {
     } catch (err) {
       this.fail((err as Error).message)
     }
+  }
+
+  /**
+   * Почему сервер завершился — по последним строкам его журнала.
+   *
+   * Брать просто ПОСЛЕДНЮЮ строку нельзя. Приличный сервер первым делом пишет в
+   * stderr приветствие вроде «Knowledge Graph MCP Server running on stdio», и
+   * если он потом завершится по любой причине, именно это приветствие уходило
+   * человеку как причина падения. В журнале Kira так и стояло: «сервер упал:
+   * Knowledge Graph MCP Server running on stdio» — сообщение, которое сбивает
+   * с толку и того, кто ищет поломку, и того, кто просто читает.
+   *
+   * Ищем строку, похожую на ошибку; не нашли — честно говорим про код выхода.
+   */
+  private crashReason(code: number | null): string {
+    const looksLikeError = /error|exception|traceback|fail|cannot|denied|refus|not found|no such|enoent|eacces|ошибк|не удалось|отказано/i
+    // приветствия и обычный журнал запуска причиной быть не могут
+    const banner = /running on stdio|started|listening|ready|initializ|version \d/i
+    for (let i = this.stderrTail.length - 1; i >= 0; i--) {
+      const line = this.stderrTail[i]
+      if (looksLikeError.test(line)) return line.slice(0, 200)
+    }
+    const last = this.stderrTail[this.stderrTail.length - 1]
+    if (last && !banner.test(last)) return last.slice(0, 200)
+    return `код ${code}`
   }
 
   private fail(message: string): void {

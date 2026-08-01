@@ -62,6 +62,9 @@ const RESUME_WINDOW_MS = 12 * 60 * 60 * 1000
  */
 const HISTORY_TURNS = 30
 
+/** Сколько шагов задачи держать на виду. Длинная задача делает их десятками. */
+const MAX_ACTION_EVENTS = 60
+
 let currentRequestId: string | null = null
 let listenersBound = false
 let ttsCursor = 0 // сколько символов streamText уже отдано на озвучку
@@ -99,7 +102,20 @@ export const useChatStore = create<ChatState>((set, get) => ({
     // закреплённые, а закреплён обычно как раз старый разговор
     let recent: Chat | null = null
     for (const c of chats) if (!recent || c.updatedAt > recent.updatedAt) recent = c
-    if (recent && Date.now() - recent.updatedAt < RESUME_WINDOW_MS) await get().openChat(recent.id)
+    if (!recent || Date.now() - recent.updatedAt >= RESUME_WINDOW_MS) return
+    const messages = await kira.messages.list(recent.id)
+    /*
+     * Пока читали переписку с диска, человек мог уже заговорить.
+     *
+     * Это не теоретическая гонка: голосом обращаются сразу после запуска, из
+     * трея, не открывая окна — то есть ровно тогда, когда эта загрузка ещё
+     * идёт. Подставить сюда прошлый разговор значит стереть только что
+     * сказанное с экрана и отправить ответ в другой диалог — со стороны это
+     * выглядит как «я ей сказал, а она забыла». Начатый разговор всегда
+     * важнее восстановленного.
+     */
+    if (get().activeChatId) return
+    set({ activeChatId: recent.id, messages, actionEvents: [] })
   },
 
   openChat: async (chatId) => {
@@ -280,7 +296,9 @@ function bindListeners(): void {
   kira.on('ai:action', (payload) => {
     const event = payload as { requestId?: string; name: string; ok: boolean; message: string }
     if (event.requestId && event.requestId !== currentRequestId) return
-    store.setState((s) => ({ actionEvents: [...s.actionEvents, event] }))
+    // Длинная задача успевает сделать десятки шагов; показывать все бессмысленно,
+    // а держать в состоянии — тем более. Оставляем хвост.
+    store.setState((s) => ({ actionEvents: [...s.actionEvents, event].slice(-MAX_ACTION_EVENTS) }))
   })
 
   kira.on('ai:done', (payload) => {

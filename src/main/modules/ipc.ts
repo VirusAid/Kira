@@ -2,7 +2,7 @@
  * IPC — регистрация всех каналов связи main ↔ renderer.
  * Каждый домен (чат, память, проекты…) — своя группа обработчиков.
  */
-import { BrowserWindow, ipcMain, dialog } from 'electron'
+import { BrowserWindow, ipcMain, dialog, shell } from 'electron'
 import { db } from './db'
 import { newId } from './ids'
 import { logger } from './logger'
@@ -14,7 +14,6 @@ import { silero, SILERO_SPEAKERS } from './ai/silero'
 import { wakeWord } from './ai/wakeword'
 import { semantic } from './ai/semantic'
 import { speaker } from './ai/speaker'
-import { emotion } from './ai/emotion'
 import * as system from './system'
 import * as files from './files'
 import { runProtocol, stopProtocol, duplicateProtocol } from './protocols'
@@ -22,6 +21,7 @@ import { listAbilities, saveAbility, deleteAbility, runAbilityByName, draftFromD
 import { isFileMenuInstalled, installFileMenu, removeFileMenu } from './shellIntegration'
 import { rearmAutomation, removeAutomationTrigger } from './automation'
 import { registerHotkey } from './window'
+import { updateState, checkForUpdate, downloadUpdate, installUpdate } from './updater'
 import { addReminder, listReminders, deleteReminder } from './reminders'
 import { globalSearch } from './search'
 import { transcribeHint } from '../core/sttHint'
@@ -61,6 +61,36 @@ function isWhisperHallucination(text: string): boolean {
 }
 
 export function registerIpc(getWindow: () => BrowserWindow | null): void {
+  /*
+   * Открыть ссылку снаружи. Схему проверяем ЗДЕСЬ, а не в интерфейсе.
+   *
+   * Ссылка приходит из ответа модели, то есть в конечном счёте из веб-страниц,
+   * файлов и чужих расширений. shell.openExternal отдаёт её операционной
+   * системе, и та честно запустит всё, что умеет: `file:` откроет файл,
+   * зарегистрированный протокол — стороннюю программу с этим аргументом.
+   * Проверка на стороне окна ничего не стоила бы: обходится она там же, где
+   * живёт. Поэтому решает main.
+   */
+  ipcMain.handle('app:open-external', async (_e, url: unknown) => {
+    const raw = String(url ?? '').trim()
+    let parsed: URL
+    try { parsed = new URL(raw) } catch { return { ok: false, message: 'Это не адрес' } }
+    if (!['http:', 'https:', 'mailto:'].includes(parsed.protocol)) {
+      logger.warn('ipc', `Отклонена ссылка со схемой ${parsed.protocol}`)
+      return { ok: false, message: `Не открываю ссылки вида «${parsed.protocol}»` }
+    }
+    await shell.openExternal(parsed.toString())
+    return { ok: true, message: 'Открыто' }
+  })
+
+  // ─── Обновления ───────────────────────────────────────────────────────────
+  ipcMain.handle('update:state', () => updateState())
+  // ручная проверка — не тихая: человек нажал кнопку и ждёт ответа, в том
+  // числе про неудачу
+  ipcMain.handle('update:check', () => checkForUpdate(false))
+  ipcMain.handle('update:download', () => downloadUpdate())
+  ipcMain.handle('update:install', () => installUpdate())
+
   // ─── AI ───────────────────────────────────────────────────────────────────
   ipcMain.handle('ai:chat', (_e, req: AIRequest) => {
     const win = getWindow()
@@ -139,8 +169,6 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   })
 
   // Анализ тона голоса (эмоции)
-  ipcMain.handle('emotion:available', () => emotion.isAvailable())
-  ipcMain.handle('emotion:analyze', (_e, pcm: string) => emotion.analyze(pcm))
 
   // Семантическая память (эмбеддинги)
   ipcMain.handle('semantic:available', () => semantic.isAvailable())

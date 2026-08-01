@@ -61,7 +61,6 @@ export function useVoice() {
   const scriptNodeRef = useRef<ScriptProcessorNode | null>(null)
   const wakeOffRef = useRef<(() => void) | null>(null)
   const verifyVoiceRef = useRef(false) // проверять ли, что говорит хозяин
-  const emotionRef = useRef(false) // анализировать ли эмоции по голосу
   const audioRef = useRef<HTMLAudioElement | null>(null)
   /** Токен последнего запроса TTS — отменяет устаревший синтез при перебивании. */
   const ttsTokenRef = useRef(0)
@@ -221,7 +220,7 @@ export function useVoice() {
     if (currentState() === 'off') return
     setVoiceState('transcribing')
     try {
-      const pcmB64 = float32ToBase64(pcm) // для узнавания голоса и эмоций
+      const pcmB64 = float32ToBase64(pcm) // для узнавания голоса хозяина
 
       // узнавание голоса: реагируем только на хозяина
       if (verifyVoiceRef.current) {
@@ -230,15 +229,6 @@ export function useVoice() {
           if (currentState() === 'off') return
           if (!v.isOwner) { setVoiceState('listening'); return }
         } catch { /* не блокируем при сбое */ }
-      }
-
-      // эмоции по голосу
-      let toneHint = ''
-      if (emotionRef.current) {
-        try {
-          const emo = await kira.emotion.analyze(pcmB64)
-          if (emo && emo.label) toneHint = `[голос звучит ${emo.label}] `
-        } catch { /* не критично */ }
       }
 
       // распознавание: отдаём чистый WAV 16 кГц (без потерь начала), выровняв
@@ -262,7 +252,7 @@ export function useVoice() {
         }
 
         setVoiceState('thinking')
-        await useChatStore.getState().sendMessage(toneHint + text)
+        await useChatStore.getState().sendMessage(text)
       } else {
         if (result.error) setLastError(result.error)
         setVoiceState('listening')
@@ -393,15 +383,11 @@ export function useVoice() {
 
       // узнавание голоса хозяина: включаем, если настроено, обучено и доступно
       verifyVoiceRef.current = false
-      emotionRef.current = false
       const cfg = useAppStore.getState().settings
       if (cfg?.speakerVerify) {
         try {
           verifyVoiceRef.current = (await kira.speaker.enrolled()) && (await kira.speaker.available())
         } catch { /* недоступно */ }
-      }
-      if (cfg?.emotionSense) {
-        try { emotionRef.current = await kira.emotion.available() } catch { /* недоступно */ }
       }
 
       // офлайн слово-активатор «Кира» через Vosk (если установлен и включён)

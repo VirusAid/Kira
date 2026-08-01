@@ -1,6 +1,6 @@
 /** Типизированный доступ к мосту window.kira (preload). */
 import type {
-  ActionResult, AIRequest, Automation, Chat, ChatMessage, FileItem, KiraSettings,
+  ActionResult, AIRequest, UpdateState, Automation, Chat, ChatMessage, FileItem, KiraSettings,
   LogEntry, MemoryEntry, ProcessInfo, Project, Protocol, Ability, SearchResult, SystemStats
 } from '@shared/types'
 import type {
@@ -27,6 +27,15 @@ export interface McpOverviewItem {
 interface KiraBridge {
   invoke: (channel: string, ...args: unknown[]) => Promise<unknown>
   on: (channel: string, listener: (...args: unknown[]) => void) => () => void
+  app: {
+    openExternal: (url: string) => Promise<{ ok: boolean; message: string }>
+  }
+  update: {
+    state: () => Promise<UpdateState>
+    check: () => Promise<UpdateState>
+    download: () => Promise<UpdateState>
+    install: () => Promise<void>
+  }
   ai: {
     chat: (req: AIRequest) => Promise<void>
     abort: (requestId: string) => Promise<void>
@@ -83,10 +92,6 @@ interface KiraBridge {
     verify: (pcm: string) => Promise<{ isOwner: boolean; score: number }>
     clear: () => Promise<void>
     install: () => Promise<{ ok: boolean; message: string }>
-  }
-  emotion: {
-    available: () => Promise<boolean>
-    analyze: (pcm: string) => Promise<{ label: string; arousal: number; pitch: number } | null>
   }
   overlay: {
     voiceUpdate: (p: { active: boolean; state: string; level: number }) => void

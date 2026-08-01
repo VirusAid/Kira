@@ -10,6 +10,7 @@ import { registerHotkey } from './modules/window'
 import { createTray, destroyTray, isQuitting, setQuitting } from './modules/tray'
 import { createOverlay, destroyOverlay } from './modules/overlay'
 import { initPulse, shutdownPulse } from './modules/pulse'
+import { initUpdater, shutdownUpdater } from './modules/updater'
 import { initDiscordMonitor, shutdownDiscordMonitor } from './modules/discord'
 import { initTelegram, shutdownTelegram } from './modules/telegram'
 import { initTelegramUser, shutdownTelegramUser } from './modules/telegramUser'
@@ -17,7 +18,7 @@ import { initKiraCore, coreFlushSync } from './core'
 import { flushAllSync } from './modules/db'
 import { flushAllCollectionsSync } from './modules/storage'
 import { logger } from './modules/logger'
-import { getSettings } from './modules/settings'
+import { getSettings, secureSecretsAtRest } from './modules/settings'
 import { extractAiFile, extractFileText } from './modules/shellIntegration'
 import { isMcpServerMode, startMcpServer } from './modules/mcp/server'
 
@@ -90,10 +91,48 @@ function createWindow(): void {
     }
   })
 
-  // внешние ссылки — в системный браузер
+  // внешние ссылки — в системный браузер, и только по безопасной схеме:
+  // адрес приходит из ответа модели, а её кормят веб-страницы и чужие
+  // расширения. `file:` или чей-то протокол система запустила бы послушно.
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    void shell.openExternal(url)
+    if (/^https?:\/\//i.test(url) || url.startsWith('mailto:')) void shell.openExternal(url)
+    else logger.warn('kira', `Отклонено открытие окна: ${url.slice(0, 80)}`)
     return { action: 'deny' }
+  })
+
+  /*
+   * Окно Kira не должно уходить на сторонний адрес.
+   *
+   * В окне живёт мост к управлению компьютером. Обычная ссылка в ответе — а
+   * ответ Kira это разметка — увела бы туда весь интерфейс вместе с мостом, и
+   * приложение бы просто исчезло, подменённое чужой страницей. Разрешаем
+   * только собственные адреса; остальное уходит в системный браузер.
+   */
+  mainWindow.webContents.on('will-navigate', (e, url) => {
+    const own = process.env['ELECTRON_RENDERER_URL']
+    if (url.startsWith('file://') || (own && url.startsWith(own))) return
+    e.preventDefault()
+    logger.warn('kira', `Заблокирован переход окна на ${url.slice(0, 80)}`)
+    if (/^https?:\/\//i.test(url)) void shell.openExternal(url)
+  })
+  // запрет на прикрепление отладчика и на webview с чужим содержимым
+  mainWindow.webContents.on('will-attach-webview', (e) => e.preventDefault())
+
+  /*
+   * Рендерер умер — поднимаем заново.
+   *
+   * Kira живёт в трее сутками, и весь голос работает именно в окне. Без этого
+   * после падения (например, когда полноэкранная игра душит скрытое окно)
+   * оставался живой значок в трее, который ни на что не отвечает: ни голоса,
+   * ни ответов, и человеку не за что зацепиться. Перезагрузка возвращает всё.
+   */
+  mainWindow.webContents.on('render-process-gone', (_e, details) => {
+    logger.error('kira', `Окно упало (${details.reason}) — поднимаю заново`)
+    if (details.reason === 'clean-exit') return
+    try { mainWindow?.webContents.reload() } catch { /* окно уже уничтожено */ }
+  })
+  mainWindow.webContents.on('unresponsive', () => {
+    logger.warn('kira', 'Окно перестало отвечать')
   })
 
   if (process.env['ELECTRON_RENDERER_URL']) {
@@ -157,6 +196,9 @@ if (!gotLock) {
       callback(permission === 'media' || permission === 'clipboard-read')
     })
 
+    // ключи и токены на диске закрываем ПОСЛЕ готовности: до неё системное
+    // шифрование недоступно и миграция молча ничего бы не сделала
+    secureSecretsAtRest()
     initKiraCore()
     registerIpc(() => mainWindow)
     createWindow()
@@ -190,11 +232,13 @@ if (!gotLock) {
     // прибираем чужой мусор прошлых запусков: недокачанный движок и снимки
     // экрана, оставшиеся от оборванного распознавания
     void import('./modules/system').then((m) => m.sweepTempSnapshots()).catch(() => {})
+    void import('./modules/storage').then((m) => m.sweepTempFiles()).catch(() => {})
     initAutomations()
     initReminders()
     initClipboardHistory()
     void import('./modules/routines').then((m) => m.initRoutines()).catch(() => {})
     registerHotkey()
+    initUpdater(() => mainWindow)
     initPulse(() => mainWindow)
     initVision(() => mainWindow)
     initDiscordMonitor(() => mainWindow)
@@ -228,6 +272,7 @@ app.on('before-quit', () => {
   shutdownClipboardHistory()
   shutdownVision()
   shutdownPulse()
+  shutdownUpdater()
   shutdownDiscordMonitor()
   shutdownTelegram()
   void shutdownTelegramUser()
@@ -237,7 +282,6 @@ app.on('before-quit', () => {
   void import('./modules/ai/silero').then((m) => m.silero.kill())
   void import('./modules/ai/semantic').then((m) => m.semantic.kill())
   void import('./modules/ai/speaker').then((m) => m.speaker.kill())
-  void import('./modules/ai/emotion').then((m) => m.emotion.kill())
   void import('./modules/ai/wakeword').then((m) => m.wakeWord.stop())
   coreFlushSync()
   destroyTray()

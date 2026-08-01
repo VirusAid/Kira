@@ -268,7 +268,6 @@ export interface KiraSettings {
   /** Узнавать голос хозяина — реагировать только на него */
   speakerVerify: boolean
   /** Чувствовать эмоции по голосу и подстраивать тон */
-  emotionSense: boolean
   /** Пройден ли мастер знакомства при первом запуске */
   onboarded: boolean
   /** Персональный профиль пользователя (свободный текст) для контекста Kira */
@@ -454,4 +453,17 @@ export interface McpBinding {
   dangerous: boolean
   enabled: boolean
   createdAt: number
+}
+
+/** Состояние обновления Kira — общее для main и интерфейса. */
+export interface UpdateState {
+  /** установленная версия */
+  current: string
+  stage: 'idle' | 'checking' | 'available' | 'downloading' | 'ready' | 'latest' | 'error'
+  /** версия найденного обновления */
+  version?: string
+  /** 0..100 при загрузке */
+  percent?: number
+  /** человеческое пояснение, в том числе причина сбоя */
+  message?: string
 }

@@ -16,6 +16,7 @@ import { runProtocolByName } from '../protocols'
 import { runAbilityByName, saveAbility, activeAbilities, abilitiesPromptBlock } from '../abilities'
 import { screenContextForPrompt } from '../vision'
 import { listServers as listMcpServers, statusOf as mcpStatusOf } from '../mcp/manager'
+import { actionHistory } from '../../core/history'
 import type { ActionResult, MemoryCategory } from '../../../shared/types'
 
 // ─── Системный промпт ───────────────────────────────────────────────────────
@@ -68,6 +69,41 @@ const ADDRESS_MAP: Record<string, string> = {
 function screenBlock(): string {
   try {
     return screenContextForPrompt()
+  } catch {
+    return ''
+  }
+}
+
+/** Сколько последних дел показывать и насколько старые ещё считаются «недавно». */
+const DEEDS_SHOWN = 12
+const DEEDS_WINDOW_MS = 6 * 60 * 60 * 1000
+
+/**
+ * Что Kira РЕАЛЬНО сделала за последнее время.
+ *
+ * Переписка помнит слова, но не поступки: локальную команду «открой стим» ядро
+ * выполняет само, и в разговоре от неё остаётся лишь «Открываю» — без того,
+ * ЧТО открыто. А действия, назначенные нейросетью, до сих пор вообще нигде не
+ * оставляли следа. Поэтому на «что ты только что делала» ответить было нечем,
+ * и Kira либо молчала, либо придумывала.
+ *
+ * Журнал ведётся один на оба пути и переживает перезапуск, так что помнит она
+ * и то, что делала до закрытия окна.
+ */
+function deedsBlock(): string {
+  try {
+    const since = Date.now() - DEEDS_WINDOW_MS
+    const recent = actionHistory.list(40).filter((r) => r.at >= since).slice(0, DEEDS_SHOWN)
+    if (!recent.length) return ''
+    const lines = recent.map((r) => {
+      const when = new Date(r.at).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })
+      const args = Object.values(r.args ?? {}).filter(Boolean).join(', ')
+      const what = args ? `${r.title} (${args})` : r.title
+      return `- ${when} ${what}${r.ok ? '' : ' — НЕ УДАЛОСЬ: ' + r.message.slice(0, 80)}`
+    })
+    return 'ЧТО ТЫ УЖЕ СДЕЛАЛА (свежие дела, новые сверху — это твоя память о поступках,\n' +
+      'опирайся на неё, когда спрашивают «что ты делала», «повтори», «отмени то же самое»;\n' +
+      'сама по себе не пересказывай):\n' + lines.join('\n')
   } catch {
     return ''
   }
@@ -238,6 +274,9 @@ export function buildSystemPrompt(options?: { withTools?: boolean; extraContext?
     integrationsBlock,
     extensionsBlock,
     memoryBlock,
+    // память о ПОСТУПКАХ, а не только о словах: переписка не помнит, что
+    // именно было открыто, перемещено и кому написано
+    deedsBlock(),
     abilitiesPromptBlock(),
     options?.withTools !== false ? TOOL_GUIDE : '',
     // что Kira видит на экране прямо сейчас (если зрение включено) — благодаря
@@ -365,7 +404,40 @@ async function controlGuard(fn: () => Promise<ActionResult>): Promise<ActionResu
   return fn()
 }
 
+/**
+ * Выполнить действие, назначенное нейросетью, и ЗАПИСАТЬ его в общий журнал дел.
+ *
+ * Записывать обязательно здесь, а не внутри веток: журнал должен быть один на
+ * оба пути. Раньше в него попадало только то, что выполнило ядро само, а всё
+ * сделанное «через модель» нигде не оставалось следа — поэтому на «что ты
+ * только что делала» Kira честно не могла ответить: она этого не помнила.
+ */
 export async function executeAction(a: ParsedAction): Promise<ActionResult> {
+  const result = await runAction(a)
+  // журнал не должен ломать выполнение: дело уже сделано
+  try {
+    // читающие действия в память дел не пишем — «посмотрела на экран» и
+    // «прочитала буфер» не то, о чём спрашивают «что ты сделала»
+    if (!SILENT_ACTIONS.has(a.name)) {
+      const args: Record<string, string> = {}
+      a.args.forEach((v, i) => { if (v) args[`арг${i + 1}`] = v.slice(0, 120) })
+      actionHistory.record({
+        actionId: a.name, title: describeAction(a), args,
+        ok: result.ok, message: result.message, source: 'agent'
+      })
+    }
+  } catch { /* журнал — не повод падать */ }
+  return result
+}
+
+/** Действия-наблюдатели: выполняются часто и ничего не меняют. */
+const SILENT_ACTIONS = new Set([
+  'see_screen', 'read_screen_text', 'clipboard_read', 'clipboard_history', 'processes',
+  'read_file', 'read_document', 'list_dir', 'read_page', 'read_selection', 'recall',
+  'worker_status', 'list_abilities', 'ext_tools', 'top_memory', 'top_cpu', 'diagnose'
+])
+
+async function runAction(a: ParsedAction): Promise<ActionResult> {
   logger.ai('kira', `Действие: ${a.name}(${a.args.join(', ')})`)
   try {
     switch (a.name) {

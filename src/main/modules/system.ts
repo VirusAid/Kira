@@ -386,12 +386,21 @@ export async function takeScreenshot(): Promise<ActionResult> {
 /** Снимок экрана в base64 (для «зрения» Kira). */
 /** Захват источников экрана с таймаутом — desktopCapturer иногда виснет. */
 async function captureSources(width: number, height: number): Promise<Electron.DesktopCapturerSource[]> {
-  const timeout = new Promise<never>((_, reject) =>
-    setTimeout(() => reject(new Error('Таймаут захвата экрана')), 8000))
-  return Promise.race([
-    desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width, height } }),
-    timeout
-  ])
+  // Сторожевой таймер снимаем ВСЕГДА. При включённом наблюдении за экраном
+  // сюда заходят каждые несколько секунд, и незакрытый восьмисекундный таймер
+  // копился пачками — мелочь, но круглые сутки и совершенно зря.
+  let timer: NodeJS.Timeout | undefined
+  try {
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('Таймаут захвата экрана')), 8000)
+    })
+    return await Promise.race([
+      desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width, height } }),
+      timeout
+    ])
+  } finally {
+    if (timer) clearTimeout(timer)
+  }
 }
 
 /**

@@ -18,6 +18,18 @@ const api = {
   invoke,
   on,
 
+  app: {
+    /** Открыть ссылку в СИСТЕМНОМ браузере (main проверит схему). */
+    openExternal: (url: string) => invoke('app:open-external', url)
+  },
+
+  update: {
+    state: () => invoke('update:state'),
+    check: () => invoke('update:check'),
+    download: () => invoke('update:download'),
+    install: () => invoke('update:install')
+  },
+
   ai: {
     chat: (req: unknown) => invoke('ai:chat', req),
     abort: (requestId: string) => invoke('ai:abort', requestId),
@@ -78,11 +90,6 @@ const api = {
     verify: (pcm: string) => invoke('speaker:verify', pcm),
     clear: () => invoke('speaker:clear'),
     install: () => invoke('speaker:install')
-  },
-
-  emotion: {
-    available: () => invoke('emotion:available'),
-    analyze: (pcm: string) => invoke('emotion:analyze', pcm)
   },
 
   overlay: {

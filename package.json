@@ -1,6 +1,6 @@
 {
   "name": "kira",
-  "version": "1.3.0",
+  "version": "1.3.1",
   "description": "Kira — персональный ИИ-ассистент нового поколения для Windows",
   "main": "./out/main/index.js",
   "author": "VirusAid (D3F0LT)",
@@ -16,13 +16,16 @@
     "prepare:standalone": "node scripts/prepare-standalone.mjs",
     "dist:standalone": "node scripts/prepare-standalone.mjs && node scripts/prepare-mcp.mjs && electron-vite build && electron-builder --win",
     "test:mcp": "esbuild tests/mcp.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-mcp.cjs && node tests/.build/test-mcp.cjs",
-    "test": "npm run test:core && npm run test:mcp && npm run test:ext",
+    "test": "npm run test:core && npm run test:mcp && npm run test:ext && npm run test:storage && npm run test:safety",
     "prepare:mcp": "node scripts/prepare-mcp.mjs",
-    "test:ext": "esbuild tests/extensions.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-ext.cjs && node tests/.build/test-ext.cjs"
+    "test:ext": "esbuild tests/extensions.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-ext.cjs && node tests/.build/test-ext.cjs",
+    "test:storage": "esbuild tests/storage.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-storage.cjs && node tests/.build/test-storage.cjs",
+    "test:safety": "esbuild tests/safety.test.ts --bundle --platform=node --format=cjs --external:jsdom --outfile=tests/.build/test-safety.cjs && node tests/.build/test-safety.cjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
     "chokidar": "^3.6.0",
+    "electron-updater": "^6.8.9",
     "mammoth": "^1.12.0",
     "marked": "^12.0.2",
     "node-cron": "^3.0.3",
@@ -32,6 +35,7 @@
     "xlsx": "^0.18.5"
   },
   "devDependencies": {
+    "@types/jsdom": "^28.0.3",
     "@types/node": "^22.5.0",
     "@types/react": "^18.3.4",
     "@types/react-dom": "^18.3.0",
@@ -40,6 +44,7 @@
     "electron": "^33.0.0",
     "electron-builder": "^25.0.5",
     "electron-vite": "^2.3.0",
+    "jsdom": "^30.0.1",
     "lucide-react": "^0.436.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
@@ -78,6 +83,16 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
       "shortcutName": "Kira"
-    }
+    },
+    "artifactName": "Kira-Setup-${version}.${ext}",
+    "copyright": "Copyright © 2026 VirusAid (D3F0LT). Все права защищены.",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "VirusAid",
+        "repo": "Kira",
+        "releaseType": "release"
+      }
+    ]
   }
 }
