@@ -114,6 +114,18 @@ export function getSettings(): KiraSettings {
   return cached
 }
 
+/**
+ * Точечная правка настроек из main.
+ *
+ * Нужна там, где факт узнаёт именно main и знать его обязан весь остальной код:
+ * например, какая модель офлайн-разума реально скачалась. Раньше это делал
+ * интерфейс — и путь через онбординг тег не записывал вовсе, из-за чего запрос
+ * уходил на несуществующую модель, а Kira молча уезжала в облако.
+ */
+export function patchSettings(patch: Partial<KiraSettings>): KiraSettings {
+  return saveSettings({ ...getSettings(), ...patch })
+}
+
 export function saveSettings(next: KiraSettings): KiraSettings {
   cached = next
   const file = settingsFile()

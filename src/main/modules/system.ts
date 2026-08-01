@@ -14,7 +14,43 @@ import { logger } from './logger'
 import type { ActionResult, ProcessInfo, SystemStats } from '../../shared/types'
 
 /** Запуск PowerShell-команды с таймаутом. */
-export function runPowerShell(command: string, timeoutMs = 30_000): Promise<{ stdout: string; stderr: string; code: number }> {
+/*
+ * Сколько запусков PowerShell разрешено ОДНОВРЕМЕННО.
+ *
+ * Каждый вызов — это отдельный процесс powershell.exe: десятки мегабайт памяти
+ * и заметная доля секунды на старт. По одному это незаметно, а вот когда
+ * модель в одном ответе просит открыть окно, проверить процессы и почитать
+ * экран, плюс в это же время тикают проактивность и зрение — на слабой машине
+ * поднимается десяток процессов разом, и компьютер встаёт колом. Ровно на это
+ * и жаловались: «грузит систему на максимум».
+ *
+ * Ограничение НЕ теряет запросы: лишние ждут очереди. Четыре — чтобы обычная
+ * череда команд шла без задержки, но лавины не случалось.
+ */
+const PS_LIMIT = 4
+let psRunning = 0
+const psQueue: Array<() => void> = []
+
+function psSlot(): Promise<void> {
+  if (psRunning < PS_LIMIT) { psRunning++; return Promise.resolve() }
+  return new Promise<void>((resolve) => psQueue.push(() => { psRunning++; resolve() }))
+}
+
+function psRelease(): void {
+  psRunning--
+  psQueue.shift()?.()
+}
+
+export async function runPowerShell(command: string, timeoutMs = 30_000): Promise<{ stdout: string; stderr: string; code: number }> {
+  await psSlot()
+  try {
+    return await spawnPowerShell(command, timeoutMs)
+  } finally {
+    psRelease()
+  }
+}
+
+function spawnPowerShell(command: string, timeoutMs: number): Promise<{ stdout: string; stderr: string; code: number }> {
   return new Promise((resolve) => {
     // заставляем PowerShell выводить UTF-8 (иначе кириллица из вывода — заголовки
     // окон, распознанный OCR-текст — приходит в OEM-кодировке и бьётся)
@@ -282,6 +318,50 @@ export async function setBrightness(percent: number): Promise<ActionResult> {
     : { ok: false, message: 'Не удалось изменить яркость (внешние мониторы могут не поддерживаться)' }
 }
 
+// ─── Обои рабочего стола ────────────────────────────────────────────────────
+
+/** Прежние обои — чтобы «отмени» вернуло как было. */
+let previousWallpaper: string | null = null
+
+/** Путь к текущим обоям (реестр Windows). Пустая строка — не удалось узнать. */
+export async function currentWallpaper(): Promise<string> {
+  const r = await runPowerShell(`(Get-ItemProperty 'HKCU:\\Control Panel\\Desktop' -Name WallPaper).WallPaper`)
+  return r.code === 0 ? r.stdout.trim() : ''
+}
+
+/**
+ * Сменить обои. Файл ставится через SystemParametersInfo: правки одного лишь
+ * реестра рабочий стол не замечает до перезахода в систему.
+ */
+export async function setWallpaper(path: string): Promise<ActionResult> {
+  const file = path.trim().replace(/^["']|["']$/g, '')
+  if (!file) return { ok: false, message: 'Не указан файл с картинкой' }
+  if (!existsSync(file)) return { ok: false, message: `Не нашла картинку: ${file}` }
+  if (!/\.(jpe?g|png|bmp|gif)$/i.test(file)) {
+    return { ok: false, message: 'Обоями можно поставить картинку — jpg, png, bmp или gif' }
+  }
+  previousWallpaper = await currentWallpaper()
+  logger.action('system', `Обои: ${file}`)
+  const r = await runPowerShell(
+    `Add-Type -TypeDefinition 'using System.Runtime.InteropServices; public class KiraWall { ` +
+    `[DllImport("user32.dll", CharSet=CharSet.Auto)] public static extern int SystemParametersInfo(int a,int b,string c,int d); }' ; ` +
+    // 20 = SPI_SETDESKWALLPAPER, 1|2 = обновить и сохранить в профиле
+    `[KiraWall]::SystemParametersInfo(20, 0, ${ps(file)}, 3)`
+  )
+  return r.code === 0
+    ? { ok: true, message: 'Обои сменила' }
+    : { ok: false, message: `Не удалось сменить обои: ${r.stderr.slice(0, 160)}` }
+}
+
+/** Вернуть прежние обои (для «отмени»). */
+export async function restoreWallpaper(): Promise<ActionResult> {
+  if (!previousWallpaper) return { ok: false, message: 'Не помню прежние обои' }
+  const back = previousWallpaper
+  previousWallpaper = null
+  const r = await setWallpaper(back)
+  return r.ok ? { ok: true, message: 'Вернула прежние обои' } : r
+}
+
 // ─── Скриншоты ──────────────────────────────────────────────────────────────
 
 export async function takeScreenshot(): Promise<ActionResult> {
@@ -325,6 +405,28 @@ async function captureSources(width: number, height: number): Promise<Electron.D
  * Возвращает строку-отпечаток и грубую «непохожесть» на предыдущий (0..1).
  */
 let lastFingerprintBytes: Buffer | null = null
+
+/**
+ * Подобрать за собой снимки экрана, оставшиеся от прошлых запусков.
+ *
+ * Каждое распознавание текста кладёт во временную папку PNG целого экрана.
+ * Обычно он удаляется сразу, но если Kira была закрыта или убита в этот
+ * момент — файл остаётся навсегда. За недели «смотрю на экран» так набираются
+ * сотни мегабайт, которых никто не ищет.
+ */
+export async function sweepTempSnapshots(): Promise<void> {
+  try {
+    const dir = os.tmpdir()
+    const names = await fsp.readdir(dir)
+    const old = Date.now() - 60 * 60_000 // час: свежие могут принадлежать живой Kira
+    for (const name of names) {
+      if (!name.startsWith('kira-ocr-')) continue
+      const stamp = Number(name.slice(9).split('.')[0])
+      if (Number.isFinite(stamp) && stamp > old) continue
+      await fsp.unlink(join(dir, name)).catch(() => undefined)
+    }
+  } catch { /* временная папка недоступна — не беда */ }
+}
 export async function screenFingerprint(): Promise<{ hash: string; diff: number }> {
   const sources = await captureSources(160, 90)
   const src = sources.find((s) => !s.thumbnail.isEmpty()) ?? sources[0]
@@ -1145,9 +1247,15 @@ export async function ocrImageBase64(base64: string): Promise<ActionResult> {
     if (!base64) return { ok: false, message: 'Пустое изображение' }
     const file = join(os.tmpdir(), `kira-ocr-${Date.now()}.png`)
     await fsp.writeFile(file, Buffer.from(base64, 'base64'))
-    const res = await ocrImage(file)
-    fsp.unlink(file).catch(() => {})
-    return res
+    try {
+      return await ocrImage(file)
+    } finally {
+      // Убираем ВСЕГДА, а не только при удаче. Раньше удаление стояло после
+      // распознавания: стоило ему выбросить ошибку — и снимок целого экрана
+      // навсегда оставался во временной папке. При включённом «смотреть на
+      // экран» это происходит каждые несколько секунд.
+      fsp.unlink(file).catch(() => undefined)
+    }
   } catch (e) {
     return { ok: false, message: `OCR не удался: ${(e as Error).message}` }
   }

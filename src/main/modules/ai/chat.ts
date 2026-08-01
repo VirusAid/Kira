@@ -8,7 +8,7 @@
  */
 import { BrowserWindow } from 'electron'
 import { streamChat, candidateProviders, visionCandidateProviders, visionAvailable, type AIMessage, resolveEndpoint } from './client'
-import { buildSystemPrompt, parseActions, stripActions, executeAction, isDangerous, describeAction, type ParsedAction } from './kira'
+import { buildSystemPrompt, parseActions, stripActions, stripActionsInline, executeAction, isDangerous, describeAction, type ParsedAction } from './kira'
 import { logger } from '../logger'
 import { contentOf } from '../../core/types'
 import { getSettings } from '../settings'
@@ -69,8 +69,12 @@ function streamAttempt(
         if (partial !== -1 && pending.indexOf(']]', partial) === -1) safeLen = partial
       }
       if (safeLen <= 0) return
-      const chunk = pending.slice(0, safeLen)
+      let chunk = pending.slice(0, safeLen)
       pending = pending.slice(safeLen)
+      // Принудительная выдача — это конец потока, и придержанный «хвост» уходит
+      // человеку как есть. Именно так недописанный блок и оказывался в ответе,
+      // поэтому чистим ТОЙ ЖЕ функцией, что и итоговый текст.
+      if (force) chunk = stripActions(chunk)
       if (chunk) {
         emittedAny = true
         send(win, 'ai:chunk', { requestId: req.requestId, delta: chunk })
@@ -82,7 +86,9 @@ function streamAttempt(
       {
         onDelta: (delta) => {
           pending += delta
-          pending = pending.replace(/\[\[kira:[^\]]*\]\]/g, '')
+          // целые блоки убираем сразу; недописанный придержит flushSafe
+          const cleaned = stripActionsInline(pending)
+          if (cleaned !== pending) pending = cleaned
           flushSafe(false)
         },
         onDone: (full) => { flushSafe(true); resolve(full) },
@@ -107,6 +113,16 @@ function historyHasImage(history: AIMessage[]): boolean {
   return history.some((m) => Array.isArray(m.content) && m.content.some((c) => c.type === 'image_url'))
 }
 
+/** Почему офлайн-разум сейчас не отвечает — коротко и по-человечески. */
+async function localReason(): Promise<string> {
+  try {
+    const local = await import('./localLlm')
+    return await local.localBlocker()
+  } catch {
+    return ''
+  }
+}
+
 async function streamRound(
   win: BrowserWindow,
   req: AIRequest,
@@ -116,6 +132,17 @@ async function streamRound(
   // если в запросе есть изображение — сначала пробуем vision-модель (Gemini)
   const candidates = historyHasImage(history) ? visionCandidateProviders() : candidateProviders()
   let lastError = 'Нет доступного провайдера ИИ'
+
+  // Человек выбрал думать на своём компьютере — значит, дождёмся его. Раньше
+  // первый же запрос после запуска уходил в облако просто потому, что движок
+  // ещё поднимался: одна неудачная попытка — и «переключаюсь на glm».
+  if (candidates[0] === 'ollama' && getSettings().preferLocal) {
+    try {
+      const local = await import('./localLlm')
+      await local.ensureRunning()
+      await local.cachedModels() // заодно узнаём, какая модель реально есть
+    } catch { /* не поднялся — обычная отказоустойчивость ниже */ }
+  }
 
   for (let i = 0; i < candidates.length; i++) {
     const provider = candidates[i]
@@ -135,10 +162,16 @@ async function streamRound(
         // (занят, лимит, неверный ключ 400/401/403, не та модель 404 …),
         // чтобы одна кривая настройка не роняла весь ответ
         if (!isLast) {
+          // Уход с локального разума объясняем причиной, а не именем провайдера:
+          // «ollama недоступен» человеку ничего не говорит и выглядит как
+          // самоуправство. «Модель не загружена» — говорит.
+          const why = provider === 'ollama' ? await localReason() : ''
           logger.warn('chat', `«${provider}» недоступен (${e.message.slice(0, 70)}), переключаюсь на «${candidates[i + 1]}»`)
           send(win, 'ai:action', {
             requestId: req.requestId, name: 'fallback', ok: true,
-            message: `«${provider}» недоступен — пробую «${candidates[i + 1]}»`
+            message: why
+              ? `Разум на этом компьютере недоступен: ${why}. Пока отвечаю через облако`
+              : `«${provider}» недоступен — пробую «${candidates[i + 1]}»`
           })
           break // к следующему провайдеру
         }

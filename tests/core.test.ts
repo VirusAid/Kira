@@ -15,6 +15,9 @@ import { bindingToAction } from '../src/main/core/mcpActions'
 import { toExecResult } from '../src/main/modules/mcp/normalize'
 import { transcribeHint } from '../src/main/core/sttHint'
 import { nameMatches } from '../src/main/modules/telegramUser'
+import { stripActions, parseActions } from '../src/main/modules/ai/kira'
+import { resolveLocalModel } from '../src/main/modules/ai/localLlm'
+import { calculate, looksLikeMath } from '../src/main/modules/utilities'
 import * as fs from 'fs'
 import * as path from 'path'
 import * as os from 'os'
@@ -659,8 +662,19 @@ async function level2(): Promise<void> {
   const byAlias = await commandEngine.executeById('уведомление', { title: 'Тест' }, { source: 'agent' })
   t('executeById по алиасу', byAlias !== null && byAlias.ok === true)
 
+  /*
+   * «Громкость 400» — команда ядра с негодным значением, а не чужая фраза.
+   * Раньше такое молча уезжало в облако: сообщение валидатора не видел никто,
+   * ответ приходил через секунду, а без интернета не приходил вовсе. Теперь
+   * ядро отвечает само и по делу.
+   */
   const badVol = await commandEngine.tryHandle('громкость 400', { source: 'chat' })
-  t('громкость 400 -> в AI (валидатор)', badVol.handled === false)
+  t('громкость 400 -> ядро объясняет само',
+    badVol.handled === true && badVol.result?.ok === false && /0.{0,3}100/.test(badVol.result?.message ?? ''),
+    '-> ' + (badVol.reply ?? ''))
+  // а вот всеядная ловушка обязана по-прежнему пропускать чужое дальше
+  const notApp = await commandEngine.tryHandle('открой файл', { source: 'chat' })
+  t('«открой файл» -> не имя программы, уходит дальше', notApp.handled === false)
 
   const unknown = await commandEngine.executeById('no_such_action', {}, { source: 'agent' })
   t('неизвестный id -> null', unknown === null)
@@ -688,6 +702,172 @@ async function level2(): Promise<void> {
   // процессы: проверка конкретного (svchost точно есть в Windows)
   const svc = await commandEngine.tryHandle('запущен ли svchost', { source: 'chat' })
   t('процессы: «запущен ли svchost» -> да', !!(svc.result && svc.result.ok && String(svc.reply ?? '').includes('запущен')))
+
+  // ─── Английские имена: файлы, папки, программы ─────────────────────────────
+  /*
+   * Живой отчёт: «не открывает файлы и программы на английском языке».
+   * Корень был не в языке как таковом, а в том, что «report.pdf» по форме
+   * неотличим от домена — и «открыть сайт» перехватывал такие имена раньше
+   * «открыть файл». Русское «отчёт.pdf» под шаблон домена не подходило вовсе,
+   * поэтому ломалось ровно на английских именах.
+   */
+  const routes: Array<[string, string]> = [
+    ['открой report.pdf', 'open_file'],
+    ['открой Kira.exe', 'open_file'],
+    ['открой setup.msi', 'open_file'],
+    ['открой D:\\Games\\readme.md', 'open_file'],
+    ['открой C:\\Users\\Public\\notes.txt', 'open_file'],
+    // домены при этом остались доменами
+    ['открой youtube.com', 'open_url'],
+    ['зайди на github.com', 'open_url'],
+    // папки — по системным английским именам тоже
+    ['открой downloads', 'open_folder'],
+    ['открой desktop', 'open_folder'],
+    ['открой папку C:\\Projects', 'open_folder'],
+    // названия программ длиннее двух слов
+    ['открой Sublime Text 3', 'launch_app'],
+    ['запусти Adobe Photoshop 2024', 'launch_app'],
+    // и английские глаголы: имена программ и так пишутся латиницей
+    ['open discord', 'launch_app'],
+    ['launch steam', 'launch_app']
+  ]
+  for (const [phrase, want] of routes) {
+    const got = parseIntent(phrase, specs, vocab)
+    t(`английские имена: «${phrase}» → ${want}`,
+      got.kind === 'local' && got.actionId === want,
+      '-> ' + (got.kind === 'local' ? got.actionId : got.kind))
+  }
+
+  // Живые формулировки работают БЕЗ семантического сайдкара: поле phrases
+  // теперь сопоставляется дословно, иначе у большинства (сайдкар ставится
+  // отдельно) ядро понимало лишь узкие regex-формулировки.
+  for (const phrase of ['сделай потише', 'сфоткай экран', 'покажи запущенные программы']) {
+    const got = parseIntent(phrase, specs, vocab)
+    t(`живая речь без сайдкара: «${phrase}»`, got.kind === 'local',
+      '-> ' + (got.kind === 'local' ? got.actionId : got.kind))
+  }
+
+  // ─── Служебный протокол не должен попадать на глаза ───────────────────────
+  // Пользователь присылал скриншоты, где [[kira:see_screen|]] и
+  // [[kira:read_screen_text]] печатались прямо в ответе. Слабые модели
+  // регулярно промахиваются мимо формата, поэтому чистка обязана прощать
+  // кривизну — в отличие от ВЫПОЛНЕНИЯ, которое остаётся строгим.
+  const dirty: string[] = [
+    '[[kira:see_screen|]]',
+    '[[kira:see_screen|]]]',
+    '[[kira:read_screen_text]]',
+    '[[Kira:open_app|C:\\Program Files\\App\\app.exe]]',
+    '[[kira: focus_window|Visual Studio]]',
+    '[[kira:click_text|Выберите папку]',
+    'Готово. [[kira:open_app|steam]] Открываю.',
+    'Смотрю [[kira:see_screen'
+  ]
+  for (const raw of dirty) {
+    const left = stripActions(raw)
+    t(`протокол не виден: ${raw.slice(0, 34)}`, !/kira:/i.test(left) && !left.includes('[['),
+      '-> ' + JSON.stringify(left))
+  }
+  t('протокол: обычный текст не страдает',
+    stripActions('Открыла. Массив [1] и скобки [[тут]] остались') === 'Открыла. Массив [1] и скобки [[тут]] остались')
+  t('протокол: выполняются только строго оформленные блоки',
+    parseActions('[[kira:open_app|steam]] [[Kira:open_app|x]] [[kira: open_app|y]]').length === 1)
+
+  // ─── Офлайн-разум: настройка может расходиться с диском ───────────────────
+  /*
+   * Проверено на живой машине: preferLocal включён, в настройках «llama3.1»,
+   * а скачан qwen3:4b. Запрос уходил на несуществующий тег, Ollama отвечала
+   * 404 — и Kira «переключалась на glm», хотя разум на компьютере был готов.
+   * Правда о модели живёт на диске, а не в настройке.
+   */
+  t('офлайн-разум: скачанное важнее записанного',
+    resolveLocalModel('llama3.1', ['qwen3:4b']) === 'qwen3:4b')
+  t('офлайн-разум: записанное уважается, если оно есть',
+    resolveLocalModel('qwen3:8b', ['qwen3:4b', 'qwen3:8b']) === 'qwen3:8b')
+  t('офлайн-разум: неявный :latest — то же самое',
+    resolveLocalModel('qwen3:8b', ['qwen3:8b:latest', 'qwen3:8b']) === 'qwen3:8b')
+  t('офлайн-разум: из нескольких берём самую сильную знакомую',
+    resolveLocalModel('нет-такой', ['qwen3:1.7b', 'qwen3:8b']) === 'qwen3:8b')
+  t('офлайн-разум: ничего не скачано — не выдумываем',
+    resolveLocalModel('qwen3:8b', []) === 'qwen3:8b')
+
+  // ─── Что ядро научилось делать само ───────────────────────────────────────
+  /*
+   * Всё перечисленное модули Kira умели давно, но наружу выведено не было:
+   * каждая такая просьба уходила в облако вместе с содержимым — именем файла,
+   * текстом заметки, тем, о чём просят напомнить. Проверяем, что теперь это
+   * обычные локальные команды.
+   */
+  const nowLocal: Array<[string, string]> = [
+    ['сколько будет 15 умножить на 7', 'calculate'],
+    ['посчитай 20% от 350', 'calculate'],
+    ['переведи hello на русский', 'translate'],
+    ['запиши в заметки купить хлеб', 'note_add'],
+    ['покажи мои заметки', 'notes_list'],
+    ['напомни через час позвонить маме', 'remind'],
+    ['напомни позвонить врачу через 30 минут', 'remind'],
+    ['покажи напоминания', 'reminders_list'],
+    ['найди файл отчет', 'find_file'],
+    ['создай файл заметки.txt', 'create_file'],
+    ['смени обои', 'set_wallpaper'],
+    ['убей процесс chrome', 'kill_process']
+  ]
+  for (const [phrase, want] of nowLocal) {
+    const got = parseIntent(phrase, specs, vocab)
+    t(`ядро само: «${phrase}» → ${want}`,
+      got.kind === 'local' && got.actionId === want,
+      '-> ' + (got.kind === 'local' ? got.actionId : got.kind))
+  }
+
+  // Счёт: словами, знаками, процентами — и осторожность там, где это не счёт.
+  const math: Array<[string, string]> = [
+    ['сколько будет 15 умножить на 7', '105'],
+    ['2+2*3', '8'],
+    ['20% от 350', '70'],
+    ['100 разделить на 4', '25'],
+    ['2 в степени 10', '1024'],
+    ['корень из 144', '12'],
+    ['3,5 плюс 1,5', '5']
+  ]
+  for (const [expr, want] of math) {
+    const r = calculate(expr)
+    t(`счёт: «${expr}» = ${want}`, r.ok && r.message.endsWith('= ' + want), '-> ' + r.message)
+  }
+  t('счёт: на ноль делить нельзя', calculate('10 разделить на 0').ok === false)
+  t('счёт: «сколько будет стоить ремонт» — не выражение',
+    looksLikeMath('сколько будет стоить ремонт') === false)
+  // выражение приходит из голоса и чата, то есть снаружи: ничего, кроме чисел
+  // и четырёх действий, разбор принимать не должен
+  t('счёт: посторонний код не исполняется',
+    calculate('process.exit(1)').ok === false && calculate('2+2;alert(1)').ok === false)
+  const bigVol = await commandEngine.tryHandle('сколько будет 15 умножить на 7', { source: 'chat' })
+  t('счёт: ядро отвечает без облака',
+    !!(bigVol.handled && bigVol.result?.ok && (bigVol.reply ?? '').includes('105')), '-> ' + bigVol.reply)
+
+  /*
+   * Напоминания: время может стоять и до просьбы, и после, а само указание
+   * времени должно разбираться ЦЕЛИКОМ. Первый вариант шаблона откусывал
+   * только «завтра», и «завтра в 9» вставало на девять утра по умолчанию —
+   * совпало случайно, а «завтра в 18» встало бы на девять.
+   */
+  const whenCases: Array<[string, string, string]> = [
+    ['напомни через час позвонить маме', 'через час', 'позвонить маме'],
+    ['напомни завтра в 9 про встречу', 'завтра в 9', 'про встречу'],
+    ['напомни позвонить врачу через 30 минут', 'через 30 минут', 'позвонить врачу'],
+    ['напомни сегодня вечером полить цветы', 'сегодня вечером', 'полить цветы'],
+    ['напомни в 18:30 забрать посылку', 'в 18:30', 'забрать посылку']
+  ]
+  for (const [phrase, wantWhen, wantText] of whenCases) {
+    const got = parseIntent(phrase, specs, vocab)
+    const when = got.kind === 'local' ? (got.args.when || got.args.when2 || '') : ''
+    const text = got.kind === 'local' ? (got.args.text || got.args.text2 || '') : ''
+    t(`напоминание: «${phrase}»`,
+      when === wantWhen && text === wantText && parseWhen(when) !== null,
+      `-> когда=${JSON.stringify(when)} что=${JSON.stringify(text)}`)
+  }
+  // «вечером» без часа раньше не разбиралось вовсе — самая обиходная форма
+  const evening = parseWhen('сегодня вечером')
+  t('напоминание: «вечером» — это 19 часов',
+    evening !== null && new Date(evening).getHours() === 19)
 
   const hist = actionHistory.list(20)
   t('история фиксирует действия', hist.length >= 4, 'записей: ' + hist.length)

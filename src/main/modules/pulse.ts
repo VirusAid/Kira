@@ -22,6 +22,8 @@ let lastMeetingKey = ''
 let lastUnread = -1
 let lastBreak = Date.now()
 const startedAt = Date.now()
+/** У этого компьютера батареи нет — узнаём один раз и больше не спрашиваем. */
+let noBattery = false
 
 function stateFile(): string {
   return join(app.getPath('userData'), 'data', 'pulse.json')
@@ -143,11 +145,15 @@ async function checkMail(): Promise<void> {
 
 /** Низкий заряд батареи (ноутбук) — напоминание поставить на зарядку. */
 async function checkBattery(): Promise<void> {
+  // Батарея не появится у стационарного компьютера. Раньше проверка шла каждые
+  // четыре минуты вечно — каждый раз новый процесс PowerShell с запросом в WMI
+  // ради ответа «батареи нет». Спросили один раз и больше не спрашиваем.
+  if (noBattery) return
   try {
     const { batteryInfo } = await import('./system')
     const b = await batteryInfo()
     const data = b.data as { pct?: number; status?: number } | null
-    if (!data || typeof data.pct !== 'number') return
+    if (!data || typeof data.pct !== 'number') { noBattery = true; return }
     const charging = data.status === 2
     const key = `batt-${today()}-${Math.round(data.pct / 5)}`
     if (data.pct <= 20 && !charging && !notifiedToday.has(key)) {

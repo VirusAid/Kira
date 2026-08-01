@@ -206,13 +206,13 @@ Kira — **не обёртка над ChatGPT**, а самостоятельна
                               │
                               ▼
         ┌─────────────────────────────────────────────┐
-        │       ACTION API  ·  88 действий             │
+        │       ACTION API  ·  99 действий             │
         │   единый контракт: execute / undo / validate  │
         └─────────────────────────────────────────────┘
                               │
                               ▼
      CONTROLLERS · Browser · Application · Media · File · Power · Window ·
-              Input · Search · Clipboard · System · Notification · Git
+       Input · Search · Clipboard · System · Notification · Git · Reminder · Note
                               │
                               ▼
                           Windows

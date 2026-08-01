@@ -15,6 +15,7 @@ import { pipeline } from 'stream/promises'
 import { Readable, Transform } from 'stream'
 import os from 'os'
 import { logger } from '../logger'
+import { getSettings, patchSettings } from '../settings'
 
 const OLLAMA_URL = 'http://localhost:11434'
 
@@ -66,7 +67,19 @@ function managedExe(): string | null {
 }
 /** Движок под нашим контролем — сами задаём папку моделей (userData). */
 function managedEnv(): NodeJS.ProcessEnv {
-  return { ...process.env, OLLAMA_MODELS: modelsDir(), OLLAMA_HOST: '127.0.0.1:11434' }
+  return {
+    ...process.env,
+    OLLAMA_MODELS: modelsDir(),
+    OLLAMA_HOST: '127.0.0.1:11434',
+    // Выгружать модель после простоя. По умолчанию Ollama держит её в памяти
+    // пять минут, но Kira живёт в трее сутками: спросил утром — и несколько
+    // гигабайт заняты до вечера. Пять минут держим (подряд идущие фразы не
+    // ждут перезагрузки), дальше отпускаем.
+    OLLAMA_KEEP_ALIVE: '5m',
+    // одна модель в памяти за раз — иначе после смены модели в настройках
+    // рядом остаётся висеть прежняя
+    OLLAMA_MAX_LOADED_MODELS: '1'
+  }
 }
 
 export interface LocalModel {
@@ -281,6 +294,7 @@ export async function setupBrain(
   // → инференс падал 404. Ollama хранит теги как есть ('qwen3:8b'), плюс ':latest'.
   if (have.includes(model) || have.includes(model.includes(':') ? model : `${model}:latest`)) {
     onProgress(100, 'Модель уже загружена')
+    adoptModel(model)
     return { ok: true, message: `Офлайн-мозг готов: ${model}`, tag: model }
   }
   const pull = await pullModel(model, onProgress)
@@ -288,15 +302,87 @@ export async function setupBrain(
   return { ok: true, message: `Офлайн-мозг готов: ${model}`, tag: model }
 }
 
+/**
+ * Записать скачанную модель как рабочую — прямо здесь, а не в интерфейсе.
+ *
+ * Кто загрузил разум, тот и знает его имя. Пока это делал интерфейс, один из
+ * путей (онбординг) записать забывал, и настройка расходилась с диском.
+ */
+function adoptModel(tag: string): void {
+  try {
+    const s = getSettings()
+    if (!tag || s.providers.ollama.model === tag) return
+    patchSettings({
+      providers: { ...s.providers, ollama: { ...s.providers.ollama, model: tag } }
+    })
+    logger.info('local-llm', `Рабочая модель офлайн-разума: ${tag}`)
+  } catch { /* настройки недоступны — не мешаем загрузке */ }
+}
+
 /** Установленные локально модели. */
 export async function installedModels(): Promise<string[]> {
   try {
     const r = await fetch(`${OLLAMA_URL}/api/tags`, { signal: AbortSignal.timeout(5000) })
     const j = (await r.json()) as { models?: { name: string }[] }
-    return (j.models ?? []).map((m) => m.name)
+    const names = (j.models ?? []).map((m) => m.name)
+    knownModels = { at: Date.now(), names }
+    return names
   } catch {
     return []
   }
+}
+
+// ─── Какая модель на самом деле отвечает ─────────────────────────────────────
+/*
+ * Здесь чинится главный обман офлайн-режима: человек скачивал разум, видел
+ * «готово», а Kira всё равно уходила в облако. Причина была в том, что имя
+ * модели жило В НАСТРОЙКАХ, а модели — на диске, и эти два места расходились:
+ * автонастройка выбирала под железо «qwen3:4b», в настройках же оставалось
+ * «llama3.1» из умолчания. Запрос уходил на несуществующий тег, Ollama отвечала
+ * 404, отказоустойчивость честно переключалась на облако — и всё выглядело так,
+ * будто офлайн-мозг «не работает».
+ *
+ * Теперь правда одна: что реально лежит на диске. Настройка — лишь пожелание,
+ * и если оно не сбылось, берём то, что есть, а не падаем в облако.
+ */
+
+let knownModels: { at: number; names: string[] } | null = null
+/** Список моделей меняется редко — чаще раза в полминуты спрашивать незачем. */
+const MODELS_TTL_MS = 30_000
+
+/** Кэшированный список моделей; пустой, если сервер молчит. */
+export async function cachedModels(): Promise<string[]> {
+  if (knownModels && Date.now() - knownModels.at < MODELS_TTL_MS) return knownModels.names
+  return installedModels()
+}
+
+/** Синхронный снимок — для мест, где ждать нельзя (сборка endpoint). */
+export function knownModelsNow(): string[] {
+  return knownModels?.names ?? []
+}
+
+/** Сбросить кэш: после загрузки или удаления модели он уже неверен. */
+export function forgetModelCache(): void {
+  knownModels = null
+}
+
+/** Есть ли такой тег среди установленных (учитывая неявный «:latest»). */
+function haveTag(names: string[], tag: string): boolean {
+  if (!tag) return false
+  return names.includes(tag) || names.includes(tag.includes(':') ? tag : `${tag}:latest`)
+}
+
+/**
+ * Модель, которой реально можно отвечать: пожелание из настроек, если оно
+ * скачано, иначе — лучшая из установленных. «Лучшая» = первая по нашему
+ * курируемому списку (он отсортирован от умной к лёгкой), а если ни одна из
+ * знакомых не найдена — просто первая, что есть.
+ */
+export function resolveLocalModel(preferred: string, names: string[] = knownModelsNow()): string {
+  if (!names.length) return preferred
+  if (haveTag(names, preferred)) return preferred
+  for (const m of RECOMMENDED_MODELS) if (haveTag(names, m.tag)) return m.tag
+  return names[0]
 }
 
 /**
@@ -342,6 +428,8 @@ export async function pullModel(
       }
     }
     logger.info('local-llm', `Модель загружена: ${tag}`)
+    forgetModelCache()
+    adoptModel(tag)
     return { ok: true, message: 'Готово — Kira теперь думает на твоём компьютере' }
   } catch (e) {
     return { ok: false, message: `Загрузка прервалась: ${(e as Error).message}` }
@@ -384,10 +472,46 @@ export async function deleteModel(tag: string): Promise<boolean> {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ model: tag })
     })
+    if (r.ok) {
+      forgetModelCache()
+      // удалили ту, что была рабочей — переводим на любую оставшуюся, иначе
+      // настройка снова указывала бы в пустоту
+      const left = await installedModels()
+      if (left.length) adoptModel(resolveLocalModel('', left))
+    }
     return r.ok
   } catch {
     return false
   }
+}
+
+/**
+ * Почему офлайн-разум не может ответить прямо сейчас — человеческим языком.
+ * Пустая строка означает «может». Нужна, чтобы вместо глухого «ollama
+ * недоступен» сказать, чего именно не хватает: движка, модели или запуска.
+ */
+export async function localBlocker(): Promise<string> {
+  if (!managedExe() && !(await isInstalled())) {
+    return 'разум на этом компьютере ещё не установлен — загрузи его в Настройках'
+  }
+  if (!(await ensureRunning())) return 'не удалось запустить разум на этом компьютере'
+  const models = await installedModels()
+  if (!models.length) return 'ни одна модель не загружена — выбери её в Настройках'
+  return ''
+}
+
+/**
+ * Прибраться за собой: недокачанный архив движка занимает место и ничего не
+ * даёт. Прерванная загрузка (закрыли Kira, пропал интернет) оставляла его
+ * лежать навсегда — на проверяемой машине так и нашёлся кусок на 10 МБ.
+ */
+export function sweepLeftovers(): void {
+  // только на старте, до любой загрузки: иначе снесли бы архив, который прямо
+  // сейчас качается
+  try {
+    const zip = join(userDataDir(), 'ollama-win.zip')
+    if (existsSync(zip)) rmSync(zip, { force: true })
+  } catch { /* не смогли убрать — не повод падать */ }
 }
 
 /** Полный статус для UI и маршрутизации. */

@@ -167,9 +167,16 @@ if (!gotLock) {
     )
     void import('./modules/ai/wakeword').then((m) => m.wakeWord.setWindowGetter(() => mainWindow))
     void import('./modules/ai/worker').then((m) => m.workers.setWindowGetter(() => mainWindow))
-    // офлайн-мозг: если выбран как основной — заранее поднимаем сервер Ollama
+    // офлайн-мозг: если выбран как основной — заранее поднимаем сервер Ollama и
+    // сразу же узнаём, какая модель реально лежит на диске. Без этого первый
+    // запрос уходил на тег из настроек, которого могло не быть, получал 404 —
+    // и Kira «переключалась в облако», хотя разум на компьютере был готов.
     if (getSettings().preferLocal) {
-      void import('./modules/ai/localLlm').then((m) => m.ensureRunning()).catch(() => {})
+      void import('./modules/ai/localLlm').then(async (m) => {
+        m.sweepLeftovers()
+        await m.ensureRunning()
+        await m.cachedModels()
+      }).catch(() => {})
     }
     // офлайн-распознавание речи: если голос включён и нет ключа Groq (Whisper),
     // распознавание пойдёт через Vosk — прогреваем сайдкар заранее, чтобы первая
@@ -180,6 +187,9 @@ if (!gotLock) {
         void import('./modules/ai/voskStt').then((m) => m.voskStt.warmup()).catch(() => {})
       }
     }
+    // прибираем чужой мусор прошлых запусков: недокачанный движок и снимки
+    // экрана, оставшиеся от оборванного распознавания
+    void import('./modules/system').then((m) => m.sweepTempSnapshots()).catch(() => {})
     initAutomations()
     initReminders()
     initClipboardHistory()

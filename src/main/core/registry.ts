@@ -22,6 +22,42 @@ function actionPriority(a: KiraAction): number {
   return a.priority ?? 0
 }
 
+/**
+ * Живые формулировки действия — как ТОЧНЫЕ шаблоны, а не только для смысла.
+ *
+ * Поле `phrases` писалось человеком именно как «а ещё так говорят»: «сделай
+ * потише», «сфоткай экран», «покажи запущенные программы». До сих пор оно
+ * работало ТОЛЬКО через семантический слой — то есть через отдельный
+ * Python-процесс с моделью эмбеддингов. У кого его нет (а это большинство:
+ * ставится отдельно), тот получал ядро, знающее лишь узкие regex-формулировки,
+ * и всё остальное уезжало в облако. Отсюда и ощущение, что «без навыков ядро
+ * почти ничего не делает».
+ *
+ * Эти строки уже проверены и однозначны, поэтому сопоставлять их дословно
+ * безопасно и бесплатно. Но только для действий БЕЗ обязательных аргументов:
+ * фраза целиком — это команда, аргументу в ней взяться неоткуда.
+ */
+const spokenCache = new WeakMap<KiraAction, RegExp[]>()
+
+function spokenPatterns(a: KiraAction): RegExp[] {
+  const cached = spokenCache.get(a)
+  if (cached) return cached
+  let out: RegExp[] = []
+  if (!a.args.some((arg) => arg.required)) {
+    const seen = new Set<string>()
+    for (const p of a.phrases ?? []) {
+      // свёртка та же, что у парсера: нижний регистр и ё→е
+      const text = p.trim().toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ')
+      if (text.length < 3 || seen.has(text)) continue
+      seen.add(text)
+      out.push(new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`))
+    }
+  }
+  if (!out.length) out = []
+  spokenCache.set(a, out)
+  return out
+}
+
 class CommandRegistry {
   private byId = new Map<string, KiraAction>()
   private ordered: KiraAction[] = []
@@ -79,11 +115,14 @@ class CommandRegistry {
    */
   intentSpecs(): IntentSpec[] {
     return this.ordered
-      .filter((a) => a.patterns?.length)
+      .filter((a) => a.patterns?.length || spokenPatterns(a).length)
       .map((a, i) => ({ action: a, i, weight: actionPriority(a) }))
       // по убыванию приоритета; при равенстве — исходный порядок (стабильно)
       .sort((x, y) => y.weight - x.weight || x.i - y.i)
-      .map(({ action }) => ({ id: action.id, patterns: action.patterns! }))
+      .map(({ action }) => ({
+        id: action.id,
+        patterns: [...(action.patterns ?? []), ...spokenPatterns(action)]
+      }))
   }
 
   /**

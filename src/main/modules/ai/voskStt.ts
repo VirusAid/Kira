@@ -11,6 +11,7 @@
 import { spawn, ChildProcessWithoutNullStreams } from 'child_process'
 import { join } from 'path'
 import { logger } from '../logger'
+import { touchSidecar, beginSidecarWork, endSidecarWork, forgetSidecar, IDLE } from './idle'
 import { resourcesRoot, pyenvDir, pythonExe, resolveModelDir } from './wakeword'
 
 interface SttResponse {
@@ -108,22 +109,31 @@ class VoskSttManager {
 
   /** Распознать WAV (base64). Возвращает текст или ошибку. */
   async transcribe(wavBase64: string): Promise<SttResponse> {
-    const started = await this.ensureStarted()
-    if (!started || !this.proc) return { ok: false, text: '', error: 'Офлайн-распознавание недоступно' }
-    const id = ++this.seq
-    return new Promise<SttResponse>((resolve) => {
-      const timer = setTimeout(() => {
-        if (this.pending.has(id)) {
-          this.pending.delete(id)
-          resolve({ ok: false, text: '', error: 'Таймаут распознавания' })
-        }
-      }, 25_000)
-      this.pending.set(id, (r) => { clearTimeout(timer); resolve(r) })
-      this.proc!.stdin.write(JSON.stringify({ id, wav: wavBase64 }) + '\n')
-    })
+    // держим дольше остальных: распознавание зовут каждой фразой, и лишний
+    // перезапуск слышно — первое слово после паузы просто теряется
+    touchSidecar('распознавание речи', () => this.shutdown(), IDLE.stt)
+    beginSidecarWork('распознавание речи')
+    try {
+      const started = await this.ensureStarted()
+      if (!started || !this.proc) return { ok: false, text: '', error: 'Офлайн-распознавание недоступно' }
+      const id = ++this.seq
+      return await new Promise<SttResponse>((resolve) => {
+        const timer = setTimeout(() => {
+          if (this.pending.has(id)) {
+            this.pending.delete(id)
+            resolve({ ok: false, text: '', error: 'Таймаут распознавания' })
+          }
+        }, 25_000)
+        this.pending.set(id, (r) => { clearTimeout(timer); resolve(r) })
+        this.proc!.stdin.write(JSON.stringify({ id, wav: wavBase64 }) + '\n')
+      })
+    } finally {
+      endSidecarWork('распознавание речи')
+    }
   }
 
   shutdown(): void {
+    forgetSidecar('распознавание речи')
     try { this.proc?.kill() } catch { /* ignore */ }
     this.proc = null
     this.ready = false

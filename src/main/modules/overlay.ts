@@ -29,6 +29,14 @@ const EMBLEM_R = 56
  * Проверка — одно обращение к позиции курсора, это доли микросекунды.
  */
 const HOVER_TICK_MS = 40
+/**
+ * Как часто смотреть, когда курсор ДАЛЕКО. Постоянный частый опрос круглые
+ * сутки — плата ни за что: Kira висит в трее днями, а курсор почти всегда в
+ * другом конце экрана. За 200 мс он не успеет подкрасться незаметно.
+ */
+const HOVER_FAR_MS = 200
+/** Ближе этого переходим на частый опрос — клик может случиться вот-вот. */
+const HOVER_NEAR_R = 220
 /** Дольше этого эмблему не тащат — значит, отпускание потерялось. */
 const MAX_DRAG_MS = 30_000
 
@@ -154,21 +162,40 @@ function setInteractive(on: boolean): void {
   overlay.setIgnoreMouseEvents(!on, { forward: true })
 }
 
+/**
+ * Слежение за курсором — с шагом по расстоянию.
+ *
+ * Опрос позиции курсора это обращение к системе, и делать его двадцать пять раз
+ * в секунду круглые сутки незачем: Kira живёт в трее днями, а курсор почти
+ * всегда далеко от эмблемы. Частый опрос нужен ровно тогда, когда до эмблемы
+ * рукой подать — там важна каждая миллисекунда, чтобы клик не «провалился»
+ * сквозь окно. Далеко — редко: за 200 мс курсор физически не успеет пересечь
+ * несколько сотен пикселей незаметно.
+ */
+function scheduleHover(delay: number): void {
+  hoverTimer = setTimeout(() => {
+    let next = HOVER_FAR_MS
+    if (overlay && !overlay.isDestroyed() && overlay.isVisible() && !dragTimer) {
+      const pt = screen.getCursorScreenPoint()
+      const b = overlay.getBounds()
+      const dx = pt.x - (b.x + b.width / 2)
+      const dy = pt.y - (b.y + b.height / 2)
+      const dist2 = dx * dx + dy * dy
+      setInteractive(dist2 <= EMBLEM_R * EMBLEM_R)
+      next = dist2 <= HOVER_NEAR_R * HOVER_NEAR_R ? HOVER_TICK_MS : HOVER_FAR_MS
+    }
+    if (hoverTimer) scheduleHover(next)
+  }, delay)
+  hoverTimer.unref?.()
+}
+
 function startHoverWatch(): void {
   if (hoverTimer) return
-  hoverTimer = setInterval(() => {
-    if (!overlay || overlay.isDestroyed() || !overlay.isVisible()) return
-    if (dragTimer) return // тащим — перехват держим включённым
-    const pt = screen.getCursorScreenPoint()
-    const b = overlay.getBounds()
-    const dx = pt.x - (b.x + b.width / 2)
-    const dy = pt.y - (b.y + b.height / 2)
-    setInteractive(dx * dx + dy * dy <= EMBLEM_R * EMBLEM_R)
-  }, HOVER_TICK_MS)
+  scheduleHover(HOVER_TICK_MS)
 }
 
 function stopHoverWatch(): void {
-  if (hoverTimer) { clearInterval(hoverTimer); hoverTimer = null }
+  if (hoverTimer) { clearTimeout(hoverTimer); hoverTimer = null }
   setInteractive(false)
 }
 

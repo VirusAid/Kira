@@ -48,6 +48,20 @@ interface ChatState {
   setOnAssistantError: (cb: ((error: string) => void) | null) => void
 }
 
+/**
+ * Насколько «свежим» должен быть разговор, чтобы продолжить его после запуска.
+ * Полсуток: утром человек продолжает вчерашний вечер, а разговор недельной
+ * давности подхватывать уже странно.
+ */
+const RESUME_WINDOW_MS = 12 * 60 * 60 * 1000
+
+/**
+ * Сколько сообщений разговора уходит модели. Голосом человек говорит короткими
+ * репликами, и прежних шестнадцати хватало всего на восемь обменов — «помню
+ * только последнее» начиналось буквально через пару минут беседы.
+ */
+const HISTORY_TURNS = 30
+
 let currentRequestId: string | null = null
 let listenersBound = false
 let ttsCursor = 0 // сколько символов streamText уже отдано на озвучку
@@ -64,10 +78,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
   onAssistantSentence: null,
   onAssistantError: null,
 
+  /**
+   * Загрузка при старте — и ВОЗВРАТ в последний разговор.
+   *
+   * Раньше открытого диалога после запуска не было вовсе: activeChatId
+   * оставался пустым, пока человек не ткнёт в список руками. Голосом же в
+   * список не тычут — говорят из трея. Поэтому первая же команда заводила
+   * пустой диалог, и Kira честно не помнила ничего из сказанного до
+   * перезапуска: «после голосовой команды она уже не помнит прошлую».
+   *
+   * Продолжаем последний разговор, если он свежий; старый не воскрешаем —
+   * вчерашний контекст сегодня скорее мешает, чем помогает.
+   */
   loadChats: async () => {
     bindListeners()
     const chats = await kira.chats.list()
     set({ chats })
+    if (get().activeChatId) return
+    // самый свежий по времени, а не первый в списке: сверху могут быть
+    // закреплённые, а закреплён обычно как раз старый разговор
+    let recent: Chat | null = null
+    for (const c of chats) if (!recent || c.updatedAt > recent.updatedAt) recent = c
+    if (recent && Date.now() - recent.updatedAt < RESUME_WINDOW_MS) await get().openChat(recent.id)
   },
 
   openChat: async (chatId) => {
@@ -103,9 +135,23 @@ export const useChatStore = create<ChatState>((set, get) => ({
   },
 
   sendMessage: async (text, options) => {
-    const state = get()
-    if (state.streaming || !text.trim()) return
+    if (!text.trim()) return
+    /*
+     * Пришла новая просьба, пока Kira ещё договаривает предыдущую.
+     *
+     * Раньше такое сообщение просто ПРОПАДАЛО. В чате это незаметно (кнопка
+     * заблокирована), а голосом — постоянно: человек перебивает, голосовой
+     * режим обрывает генерацию и тут же шлёт распознанное, обрыв ещё не дошёл
+     * до состояния — и команда исчезала бесследно. Потерять сказанное хуже,
+     * чем прервать ответ на полуслове, поэтому обрываем и ждём.
+     */
+    if (get().streaming) {
+      get().stopGeneration()
+      for (let i = 0; i < 20 && get().streaming; i++) await new Promise((r) => setTimeout(r, 75))
+      if (get().streaming) return // обрыв не сработал — второй запрос всё смешает
+    }
 
+    const state = get()
     let chatId = state.activeChatId
     const isFirst = !chatId || state.messages.length === 0
     if (!chatId) chatId = await get().newChat()
@@ -133,7 +179,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
     const history = get().messages
       .filter((m) => !m.error)
-      .slice(-16)
+      .slice(-HISTORY_TURNS)
       .map((m) => ({ role: m.role, content: m.content }))
 
     currentRequestId = newLocalId()
@@ -186,7 +232,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
     const history = get().messages
       .filter((m) => !m.error)
-      .slice(-16)
+      .slice(-HISTORY_TURNS)
       .map((m) => ({ role: m.role, content: m.content }))
     if (!history.length) return
     ttsCursor = 0

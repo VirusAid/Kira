@@ -265,3 +265,181 @@ export async function speedTest(): Promise<ActionResult> {
     return { ok: false, message: `Не удалось замерить скорость: ${(e as Error).message}` }
   }
 }
+
+// ─── Счёт в уме ──────────────────────────────────────────────────────────────
+/*
+ * «Сколько будет 15 умножить на 7» — самая обычная просьба, и до сих пор она
+ * уходила в облако: ядро умело переводить мили в километры, но не складывать.
+ * Считаем сами — мгновенно, офлайн и без лимитов чужого API.
+ *
+ * eval здесь недопустим ни в каком виде: выражение приходит из голоса и чата,
+ * то есть снаружи. Поэтому разбираем сами — рекурсивным спуском по крошечной
+ * грамматике, где просто нет места ничему, кроме чисел и четырёх действий.
+ */
+
+/*
+ * Словами люди говорят чаще, чем знаками, — приводим к знакам.
+ *
+ * Границы слова заданы вручную, БЕЗ \b. В JavaScript \b считает буквой только
+ * латиницу с цифрами, поэтому «\bумножить\b» не совпадает ни с чем русским —
+ * весь разбор молча проваливался, а Kira отвечала «тут что-то кроме чисел».
+ *
+ * Порядок строк тоже значим: «разделить НА» должно разобраться раньше, чем
+ * одинокое «на» превратится в умножение, иначе «100 разделить на 4» станет
+ * «100 разделить * 4».
+ */
+const B = '(?<![а-яёa-z])' // начало слова
+const A = '(?![а-яёa-z])'  // конец слова
+const w = (...words: string[]): RegExp => new RegExp(`${B}(?:${words.join('|')})${A}`, 'g')
+
+const MATH_WORDS: Array<[RegExp, string]> = [
+  [w('скобка открывается', 'открыть скобку'), '('],
+  [w('скобка закрывается', 'закрыть скобку'), ')'],
+  [w('в степени', 'в квадрате'), '^'],
+  [w('корень из', 'квадратный корень из'), '√'],
+  [w('разделить на', 'поделить на', 'делённое на', 'деленное на', 'дели на'), '/'],
+  [w('умножить на', 'умноженное на', 'умножь на', 'помножить на'), '*'],
+  [w('плюс', 'прибавить', 'сложить'), '+'],
+  [w('минус', 'вычесть', 'отнять'), '-'],
+  // одинокое «на» между числами — тоже умножение («5 на 3»), но только после
+  // того, как разобраны явные словосочетания выше
+  [new RegExp(`${B}на${A}(?=\\s*\\d)`, 'g'), '*'],
+  [/(?<=\d)\s*[хx]\s*(?=\d)/g, '*'],
+  [/,(?=\d)/g, '.'] // «3,5» — десятичная запятая
+]
+
+/** Похоже ли на арифметику: есть число и хотя бы один знак действия. */
+export function looksLikeMath(raw: string): boolean {
+  const e = toExpression(raw)
+  return /\d/.test(e) && /[+\-*/^√]/.test(e) && !/[a-zа-яё]/i.test(e)
+}
+
+function toExpression(raw: string): string {
+  // ё НЕ сворачиваем: «делённое» и «деленное» перечислены отдельно, а свёртка
+  // сломала бы границы слов в уже написанных правилах
+  let s = raw.toLowerCase().trim()
+  s = s.replace(/^(?:сколько будет|посчитай|вычисли|сосчитай|реши)\s+/, '')
+  s = s.replace(/\s*[?.!]+\s*$/, '')
+  for (const [re, sign] of MATH_WORDS) s = s.replace(re, sign)
+  // «процентов от» → умножение на долю: «20 процентов от 350»
+  s = s.replace(/(\d+(?:\.\d+)?)\s*(?:%|процент(?:а|ов)?)\s*от\s*/g, '($1/100)*')
+  s = s.replace(/(\d+(?:\.\d+)?)\s*(?:%|процент(?:а|ов)?)/g, '($1/100)')
+  return s.replace(/\s+/g, '')
+}
+
+/** Разбор выражения: число, скобки, степень, умножение/деление, сложение. */
+function parseExpression(src: string): number {
+  let i = 0
+  const peek = (): string => src[i] ?? ''
+  const fail = (): never => { throw new Error('не понимаю выражение') }
+
+  const number = (): number => {
+    if (peek() === '(') {
+      i++
+      const v = sum()
+      if (peek() !== ')') fail()
+      i++
+      return v
+    }
+    if (peek() === '√') { i++; return Math.sqrt(number()) }
+    if (peek() === '-') { i++; return -number() }
+    if (peek() === '+') { i++; return number() }
+    const start = i
+    while (/[\d.]/.test(peek())) i++
+    if (i === start) fail()
+    const v = Number(src.slice(start, i))
+    if (!Number.isFinite(v)) fail()
+    return v
+  }
+  const power = (): number => {
+    let v = number()
+    while (peek() === '^') { i++; v = v ** number() }
+    return v
+  }
+  const product = (): number => {
+    let v = power()
+    for (;;) {
+      const op = peek()
+      if (op !== '*' && op !== '/') return v
+      i++
+      const rhs = power()
+      if (op === '/' && rhs === 0) throw new Error('на ноль делить нельзя')
+      v = op === '*' ? v * rhs : v / rhs
+    }
+  }
+  const sum = (): number => {
+    let v = product()
+    for (;;) {
+      const op = peek()
+      if (op !== '+' && op !== '-') return v
+      i++
+      v = op === '+' ? v + product() : v - product()
+    }
+  }
+  const result = sum()
+  if (i < src.length) fail() // остался хвост — значит, разобрали не всё
+  return result
+}
+
+export function calculate(raw: string): ActionResult {
+  const expr = toExpression(raw)
+  if (!expr) return { ok: false, message: 'Нечего считать' }
+  if (/[^\d.+\-*/^√()]/.test(expr)) {
+    return { ok: false, message: 'Тут есть что-то кроме чисел и действий — уточни выражение' }
+  }
+  try {
+    const value = parseExpression(expr)
+    if (!Number.isFinite(value)) return { ok: false, message: 'Получилось не число — проверь выражение' }
+    // длинные хвосты после запятой человеку не нужны
+    const pretty = Number.isInteger(value) ? String(value) : String(Math.round(value * 1e6) / 1e6)
+    return { ok: true, message: `${expr.replace(/\*/g, '×').replace(/\//g, '÷')} = ${pretty}`, data: value }
+  } catch (e) {
+    return { ok: false, message: (e as Error).message === 'на ноль делить нельзя'
+      ? 'На ноль делить нельзя' : 'Не разобрала выражение — скажи попроще, например «15 умножить на 7»' }
+  }
+}
+
+// ─── Перевод ─────────────────────────────────────────────────────────────────
+/*
+ * Перевод без ключей и без облачной модели: MyMemory отдаёт результат по
+ * обычному GET. Это не замена большой модели, но «переведи hello на русский»
+ * должно работать мгновенно и у того, кто вообще не подключал провайдера.
+ */
+const LANGS: Record<string, string> = {
+  'русский': 'ru', 'русском': 'ru', 'ru': 'ru', 'рус': 'ru',
+  'английский': 'en', 'английском': 'en', 'англ': 'en', 'en': 'en',
+  'немецкий': 'de', 'немецком': 'de', 'de': 'de',
+  'французский': 'fr', 'французском': 'fr', 'fr': 'fr',
+  'испанский': 'es', 'испанском': 'es', 'es': 'es',
+  'итальянский': 'it', 'итальянском': 'it', 'it': 'it',
+  'китайский': 'zh', 'китайском': 'zh', 'zh': 'zh',
+  'японский': 'ja', 'японском': 'ja', 'ja': 'ja',
+  'турецкий': 'tr', 'турецком': 'tr', 'tr': 'tr',
+  'польский': 'pl', 'польском': 'pl', 'pl': 'pl',
+  'украинский': 'uk', 'украинском': 'uk', 'uk': 'uk'
+}
+
+/** Язык текста на глаз: кириллица → ru, иначе en. Хватает для выбора пары. */
+function guessLang(text: string): string {
+  return /[а-яё]/i.test(text) ? 'ru' : 'en'
+}
+
+export async function translateText(text: string, toRaw?: string): Promise<ActionResult> {
+  const body = text.trim()
+  if (!body) return { ok: false, message: 'Нечего переводить' }
+  const from = guessLang(body)
+  // язык не назвали — переводим «в другую сторону» от того, что видим
+  const to = LANGS[(toRaw ?? '').trim().toLowerCase()] ?? (from === 'ru' ? 'en' : 'ru')
+  if (from === to) return { ok: true, message: body, content: body }
+  try {
+    const url = `https://api.mymemory.translated.net/get?q=${encodeURIComponent(body.slice(0, 480))}&langpair=${from}|${to}`
+    const r = await fetch(url, { signal: AbortSignal.timeout(12_000) })
+    if (!r.ok) return { ok: false, message: `Переводчик не ответил (${r.status})` }
+    const j = (await r.json()) as { responseData?: { translatedText?: string } }
+    const out = (j.responseData?.translatedText ?? '').trim()
+    if (!out) return { ok: false, message: 'Перевод не получился — попробуй короче' }
+    return { ok: true, message: out, content: out, data: out }
+  } catch (e) {
+    return { ok: false, message: `Не удалось перевести: ${(e as Error).message}` }
+  }
+}

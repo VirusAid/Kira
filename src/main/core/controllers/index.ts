@@ -116,20 +116,95 @@ export const UtilityController = {
   timer: (ms: number, label?: string): ExecResult => util.startTimer(ms, label),
   timers: (): ExecResult => util.listTimers(),
   cancelTimers: (): ExecResult => util.cancelTimers(),
-  speedTest: (): Promise<ExecResult> => util.speedTest()
+  speedTest: (): Promise<ExecResult> => util.speedTest(),
+  looksLikeMath: (raw: string): boolean => util.looksLikeMath(raw),
+  calculate: (raw: string): ExecResult => util.calculate(raw),
+  translate: (text: string, to?: string): Promise<ExecResult> => util.translateText(text, to)
+}
+
+/**
+ * Напоминания. Модуль умел их с самого начала, но наружу были выведены только
+ * таймеры — «напомни завтра в 9» приходилось разбирать нейросети, хотя разбор
+ * времени полностью локальный.
+ */
+export const ReminderController = {
+  add: async (text: string, when: string): Promise<ExecResult> => {
+    const m = await import('../../modules/reminders')
+    return m.addReminder(text, when)
+  },
+  list: async (): Promise<ExecResult> => {
+    const m = await import('../../modules/reminders')
+    const items = m.listReminders()
+    if (!items.length) return { ok: true, message: 'Напоминаний нет' }
+    const lines = items.map((r) => {
+      const when = new Date(r.fireAt).toLocaleString('ru-RU', { dateStyle: 'short', timeStyle: 'short' })
+      return `${when} — ${r.text}`
+    })
+    return { ok: true, message: `Напоминаний: ${items.length}`, content: lines.join('\n') }
+  }
+}
+
+/**
+ * Заметки — поверх собственной памяти Kira, а не поверх Obsidian.
+ *
+ * Заметки уже были, но только у того, кто подключил внешнее хранилище. «Запиши
+ * в заметки купить хлеб» без Obsidian уходило в облако и терялось. Своя память
+ * есть у всех и работает офлайн — пишем туда, в категорию «note».
+ */
+export const NoteController = {
+  add: async (text: string): Promise<ExecResult> => {
+    const body = text.trim()
+    if (!body) return { ok: false, message: 'Что записать?' }
+    const { db } = await import('../../modules/db')
+    const { newId } = await import('../../modules/ids')
+    // заголовок — первые слова: по нему заметку потом видно в списке
+    const title = body.split(/[\n.!?]/)[0].slice(0, 60).trim() || 'Заметка'
+    db().memory.put({
+      id: newId(), category: 'note', title, content: body,
+      createdAt: Date.now(), updatedAt: Date.now(), source: 'kira'
+    })
+    return { ok: true, message: `Записала: ${title}` }
+  },
+  list: async (): Promise<ExecResult> => {
+    const { db } = await import('../../modules/db')
+    const notes = db().memory.all()
+      .filter((m) => m.category === 'note')
+      .sort((a, b) => b.updatedAt - a.updatedAt)
+    if (!notes.length) return { ok: true, message: 'Заметок пока нет' }
+    const lines = notes.slice(0, 40).map((n) =>
+      `${new Date(n.createdAt).toLocaleDateString('ru-RU')} — ${n.content.slice(0, 120)}`)
+    return { ok: true, message: `Заметок: ${notes.length}`, content: lines.join('\n') }
+  }
 }
 
 /** Известные пользовательские папки — чтобы «в загрузках» решалось локально. */
 export function knownFolder(nameOrPath: string): string {
   const n = nameOrPath.toLowerCase().trim()
+  // Английские имена — не «на всякий случай», а потому что так эти папки
+  // называются в самой Windows: человек говорит «открой downloads», видя
+  // именно это слово в Проводнике. Без них Kira отвечала «не нашла папку» на
+  // собственное системное название.
   const map: Record<string, string> = {
     'рабочий стол': app.getPath('desktop'),
+    'рабочем столе': app.getPath('desktop'),
+    'desktop': app.getPath('desktop'),
     'загрузки': app.getPath('downloads'),
+    'downloads': app.getPath('downloads'),
+    'download': app.getPath('downloads'),
     'документы': app.getPath('documents'),
+    'documents': app.getPath('documents'),
+    'docs': app.getPath('documents'),
     'домашняя': app.getPath('home'),
+    'home': app.getPath('home'),
     'картинки': app.getPath('pictures'),
+    'изображения': app.getPath('pictures'),
+    'pictures': app.getPath('pictures'),
+    'images': app.getPath('pictures'),
     'музыка': app.getPath('music'),
-    'видео': app.getPath('videos')
+    'music': app.getPath('music'),
+    'видео': app.getPath('videos'),
+    'videos': app.getPath('videos'),
+    'video': app.getPath('videos')
   }
   return map[n] ?? nameOrPath
 }
@@ -151,6 +226,37 @@ export const FileController = {
   },
   createFolder: (path: string): Promise<ExecResult> => fs.createFolder(path),
   deleteToTrash: (path: string): Promise<ExecResult> => fs.deleteToTrash(path),
+
+  /*
+   * Поиск, чтение и создание файлов были доступны ТОЛЬКО нейросети: модуль
+   * files всё это умел, но ни одного действия ядра поверх него не было.
+   * «Найди файл отчёт» уходило в облако вместе с именем файла — при том что
+   * ищется он локально и мгновенно.
+   */
+  find: async (query: string): Promise<ExecResult> => {
+    const q = query.trim()
+    if (q.length < 2) return { ok: false, message: 'Скажи хотя бы часть названия' }
+    const found = await fs.searchUserFiles(q, 40)
+    if (!found.length) return { ok: true, message: `Ничего не нашла по «${q}»` }
+    const lines = found.slice(0, 30).map((f) => (f.isDirectory ? `[папка] ${f.path}` : f.path))
+    const more = found.length > 30 ? `\n…и ещё ${found.length - 30}` : ''
+    return { ok: true, message: `Нашла: ${found.length}`, content: lines.join('\n') + more }
+  },
+  readFile: async (path: string): Promise<ExecResult> => {
+    const file = knownFolder(path.trim())
+    try {
+      // документы (PDF/Word/Excel) читаются отдельным разборщиком
+      const text = fs.isReadableDocument(file)
+        ? await fs.readDocument(file)
+        : await fs.readTextFile(file)
+      const body = String(text ?? '').trim()
+      if (!body) return { ok: true, message: `Файл «${file}» пуст` }
+      return { ok: true, message: `Прочитала «${file}»`, content: body.slice(0, 8000) }
+    } catch (e) {
+      return { ok: false, message: `Не удалось прочитать: ${(e as Error).message}` }
+    }
+  },
+  writeFile: (path: string, text: string): Promise<ExecResult> => fs.writeTextFile(path, text),
   move: (from: string, to: string): Promise<ExecResult> => fs.moveFile(from, to),
   copy: (from: string, to: string): Promise<ExecResult> => fs.copyFile(from, to),
   rename: (path: string, name: string): Promise<ExecResult> => fs.renameFile(path, name),
@@ -192,6 +298,9 @@ export const SystemController = {
   screenshot: (): Promise<ExecResult> => sys.takeScreenshot(),
   setBrightness: (percent: number): Promise<ExecResult> => sys.setBrightness(percent),
   processes: (filter?: string): Promise<ExecResult> => sys.processReport(filter),
+  killProcess: (pidOrName: string): Promise<ExecResult> => sys.killProcess(pidOrName),
+  setWallpaper: (path: string): Promise<ExecResult> => sys.setWallpaper(path),
+  restoreWallpaper: (): Promise<ExecResult> => sys.restoreWallpaper(),
   diskInfo: (): Promise<ExecResult> => sys.diskInfo(),
   batteryInfo: (): Promise<ExecResult> => sys.batteryInfo(),
   networkInfo: (): ExecResult => sys.networkInfo(),

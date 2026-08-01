@@ -10,6 +10,7 @@ import { spawn, ChildProcessWithoutNullStreams, execFile } from 'child_process'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { logger } from '../logger'
+import { touchSidecar, beginSidecarWork, endSidecarWork, forgetSidecar, IDLE } from './idle'
 
 export const SILERO_SPEAKERS = [
   { id: 'xenia', label: 'Ксения — мягкий женский', gender: 'female' },
@@ -192,24 +193,32 @@ class SileroManager {
 
   /** Синтез речи. Возвращает WAV в base64 (24 kHz mono). */
   async synthesize(text: string, speaker: string): Promise<string> {
-    await this.start()
-    if (!this.proc || !this.ready) throw new Error(this.lastError || 'Свой голос недоступен')
-    const id = ++this.reqId
-    return new Promise<string>((resolve, reject) => {
-      this.pending.set(id, { resolve, reject })
-      this.proc!.stdin.write(JSON.stringify({ id, text, speaker }) + '\n')
-      setTimeout(() => {
-        if (this.pending.has(id)) {
-          this.pending.delete(id)
-          reject(new Error('Голос не успел ответить'))
-        }
-      }, 30_000)
-    })
+    // молчали полчаса — незачем держать модель голоса в памяти
+    touchSidecar('голос', () => this.kill(), IDLE.tts)
+    beginSidecarWork('голос')
+    try {
+      await this.start()
+      if (!this.proc || !this.ready) throw new Error(this.lastError || 'Свой голос недоступен')
+      const id = ++this.reqId
+      return await new Promise<string>((resolve, reject) => {
+        this.pending.set(id, { resolve, reject })
+        this.proc!.stdin.write(JSON.stringify({ id, text, speaker }) + '\n')
+        setTimeout(() => {
+          if (this.pending.has(id)) {
+            this.pending.delete(id)
+            reject(new Error('Голос не успел ответить'))
+          }
+        }, 30_000)
+      })
+    } finally {
+      endSidecarWork('голос')
+    }
   }
 
   kill(): void {
     this.ready = false
     this.starting = null
+    forgetSidecar('голос')
     if (this.proc) {
       try { this.proc.kill() } catch { /* ignore */ }
       this.proc = null

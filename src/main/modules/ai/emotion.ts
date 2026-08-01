@@ -7,6 +7,7 @@ import { spawn, ChildProcessWithoutNullStreams, execFile } from 'child_process'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { logger } from '../logger'
+import { touchSidecar, beginSidecarWork, endSidecarWork, forgetSidecar, IDLE } from './idle'
 
 function resourcesRoot(): string {
   return app.isPackaged ? process.resourcesPath : join(__dirname, '../../resources')
@@ -81,6 +82,9 @@ class EmotionManager {
   }
 
   async analyze(pcmBase64: string): Promise<EmotionResult | null> {
+    // ещё одна модель в отдельном процессе — отпускаем её так же, как остальные
+    touchSidecar('распознавание эмоций', () => this.kill(), IDLE.speaker)
+    beginSidecarWork('распознавание эмоций')
     try {
       await this.start()
       return await new Promise<EmotionResult>((resolve, reject) => {
@@ -91,11 +95,14 @@ class EmotionManager {
       })
     } catch {
       return null
+    } finally {
+      endSidecarWork('распознавание эмоций')
     }
   }
 
   /** Погасить python-сайдкар при выходе (иначе процесс осиротеет). */
   kill(): void {
+    forgetSidecar('распознавание эмоций')
     if (this.proc) { try { this.proc.kill() } catch { /* ignore */ } this.proc = null }
     this.ready = false
     this.starting = null

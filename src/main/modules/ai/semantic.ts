@@ -9,6 +9,7 @@ import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { createHash } from 'crypto'
 import { logger } from '../logger'
+import { touchSidecar, beginSidecarWork, endSidecarWork, forgetSidecar, IDLE } from './idle'
 
 function resourcesRoot(): string {
   return app.isPackaged ? process.resourcesPath : join(__dirname, '../../resources')
@@ -23,6 +24,9 @@ function pythonExe(): string {
 }
 
 const hash = (s: string): string => createHash('sha1').update(s).digest('hex').slice(0, 16)
+
+/** Сколько векторов держим — и в файле, и в памяти. Один вектор ≈ 384 числа. */
+const CACHE_LIMIT = 4000
 
 class SemanticManager {
   private proc: ChildProcessWithoutNullStreams | null = null
@@ -52,9 +56,17 @@ class SemanticManager {
 
   private saveCache(): void {
     try {
-      // ограничиваем размер кэша
-      const entries = [...this.cache.entries()].slice(-4000)
-      writeFileSync(this.cacheFile(), JSON.stringify(Object.fromEntries(entries)))
+      /*
+       * Предел был только у ФАЙЛА, а карта в памяти росла без конца: на диск
+       * ложились последние 4000 векторов, но всё, что накопилось за сеанс,
+       * продолжало занимать память — а один вектор это 384 числа, то есть
+       * несколько килобайт. Обрезаем и память тоже, тем же правилом.
+       */
+      if (this.cache.size > CACHE_LIMIT) {
+        const keep = [...this.cache.entries()].slice(-CACHE_LIMIT)
+        this.cache = new Map(keep)
+      }
+      writeFileSync(this.cacheFile(), JSON.stringify(Object.fromEntries(this.cache)))
     } catch { /* ignore */ }
   }
 
@@ -107,12 +119,16 @@ class SemanticManager {
   }
 
   private embed(texts: string[]): Promise<number[][]> {
+    // модель эмбеддингов весит сотни мегабайт и зовут её редко — отпускаем
+    // память, если к ней давно не обращались
+    touchSidecar('смысловой поиск', () => this.kill(), IDLE.embed)
+    beginSidecarWork('смысловой поиск')
     return this.start().then(() => new Promise<number[][]>((resolve, reject) => {
       const id = ++this.reqId
       this.pending.set(id, { resolve, reject })
       this.proc!.stdin.write(JSON.stringify({ id, texts }) + '\n')
       setTimeout(() => { if (this.pending.has(id)) { this.pending.delete(id); reject(new Error('Таймаут эмбеддинга')) } }, 60_000)
-    }))
+    })).finally(() => endSidecarWork('смысловой поиск'))
   }
 
   /** Получить вектор с кэшированием. */
@@ -181,6 +197,7 @@ class SemanticManager {
   kill(): void {
     this.ready = false
     this.starting = null
+    forgetSidecar('смысловой поиск')
     if (this.proc) { try { this.proc.kill() } catch { /* ignore */ } this.proc = null }
   }
 }

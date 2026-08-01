@@ -346,9 +346,29 @@ class CommandEngine {
         }
       }
     }
+    /*
+     * Проверка аргументов служит ДВУМ разным целям, и раньше они были свалены
+     * в одну: любая неудача молча уводила запрос в облако, а написанное в
+     * validate сообщение не видел никто.
+     *
+     *  • «это вообще не ко мне» — так работают всеядные ловушки вроде «открой
+     *    что угодно»: «открой сайт» не имя программы, и пусть решает модель.
+     *    Такие действия помечены softFail — им пропуск дальше и нужен.
+     *
+     *  • «ко мне, но значение неверное» — «громкость 300». Отправлять это в
+     *    облако бессмысленно: там ответят то же самое, только через секунду и
+     *    только при наличии интернета. Отвечаем сами и по делу.
+     */
     let invalid: string | null = null
     try { invalid = action.validate?.(args) ?? null } catch { invalid = 'ошибка валидации' }
-    if (invalid) return { handled: false, intent: 'ai' }
+    if (invalid) {
+      if (action.softFail) return { handled: false, intent: 'ai' }
+      return {
+        handled: true, intent: 'local', actionId: action.id,
+        result: { ok: false, message: invalid },
+        reply: livelyReply(invalid, { failed: true })
+      }
+    }
 
     // подтверждение опасного
     if (action.dangerous) {

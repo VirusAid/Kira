@@ -14,6 +14,8 @@ import * as system from '../system'
 import * as files from '../files'
 import { runProtocolByName } from '../protocols'
 import { runAbilityByName, saveAbility, activeAbilities, abilitiesPromptBlock } from '../abilities'
+import { screenContextForPrompt } from '../vision'
+import { listServers as listMcpServers, statusOf as mcpStatusOf } from '../mcp/manager'
 import type { ActionResult, MemoryCategory } from '../../../shared/types'
 
 // ─── Системный промпт ───────────────────────────────────────────────────────
@@ -27,6 +29,7 @@ create_folder|путь · move_file|откуда|куда · copy_file|отку�
 read_file|путь · read_document|путь(PDF/Word/Excel) · list_dir|путь · search_files|папка|запрос · find_files|запрос · search_content|запрос
 set_volume|0-100 · mute|on/off · set_brightness|0-100 · media|playpause/next/prev/volup/voldown · screenshot · focus_window|имя · minimize_all
 clipboard_write|текст · clipboard_read · read_selection(прочитать ВЫДЕЛЕННЫЙ текст в активном окне — для «переведи/объясни/перепиши это») · type_text|текст · notify|заголовок|текст · remind|текст|когда(«через 30 минут»/«завтра в 9»)
+calculate|выражение(посчитать — локально, без интернета) · translate|текст(перевести) · set_wallpaper|путь к картинке
 run_command|PowerShell(опасное) · kill_process|имя(опасное) · processes|фильтр(список запущенных процессов; с фильтром — «запущен ли X») · shutdown/restart(опасное) · sleep · lock
 calendar(события на сегодня — Google) · gmail_check(непрочитанные письма) · gmail_search|запрос · gmail_send|кому@почта|тема|текст · discord_send|текст(сообщение в Discord) · telegram_send|текст(написать пользователю в Telegram) · telegram_dm|кому|текст(написать от имени пользователя в Telegram — личный аккаунт; «кому» можно указать просто именем из переписок, @username или id) · telegram_who|имя(найти собеседника в Telegram — используй, если не уверена, кого он имеет в виду)
 note_search|запрос · note_read|имя · note_write|имя|текст(заметки Obsidian) · notion_search|запрос · notion_create|заголовок|текст
@@ -64,9 +67,7 @@ const ADDRESS_MAP: Record<string, string> = {
  */
 function screenBlock(): string {
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const v = require('../vision') as typeof import('../vision')
-    return v.screenContextForPrompt()
+    return screenContextForPrompt()
   } catch {
     return ''
   }
@@ -133,12 +134,18 @@ export function buildSystemPrompt(options?: { withTools?: boolean; extraContext?
    * которое ей сейчас понадобилось.
    *
    * Блока нет вовсе, пока расширений нет: платить за них нечем.
+   *
+   * ВАЖНО про импорт. И этот список, и контекст экрана раньше подтягивались
+   * через require() по ОТНОСИТЕЛЬНОМУ пути. В разработке это работает, а в
+   * собранном приложении весь main — один файл, и такого пути там нет:
+   * require бросал исключение, catch его глотал, и оба блока оказывались
+   * пустыми У ВСЕХ, кто пользуется установщиком. То есть модель в выпущенной
+   * версии вообще не знала, что расширения существуют, и никогда не получала
+   * контекст экрана. Только статический импорт.
    */
   let extensionsBlock = ''
   try {
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const mcp = require('../mcp/manager') as typeof import('../mcp/manager')
-    const ready = mcp.listServers().filter((x) => x.enabled && mcp.statusOf(x.id).state === 'ready')
+    const ready = listMcpServers().filter((x) => x.enabled && mcpStatusOf(x.id).state === 'ready')
     if (ready.length) {
       extensionsBlock =
         'РАСШИРЕНИЯ (внешние программы, подключённые пользователем): ' +
@@ -251,6 +258,27 @@ export interface ParsedAction {
 
 const ACTION_RE = /\[\[kira:([a-z_]+)((?:\|[^\]|]*)*)\]\]/g
 
+/**
+ * Что СЧИТАТЬ протоколом при вычистке текста — намеренно шире, чем ACTION_RE.
+ *
+ * Выполняем только строго оформленные блоки (ACTION_RE): ошибиться и запустить
+ * не то — хуже, чем не запустить. А вот показывать человеку служебную разметку
+ * нельзя НИКОГДА, даже кривую. Слабые модели регулярно промахиваются мимо
+ * формата: пишут «[[Kira:...]]», ставят пробел после двоеточия, забывают одну
+ * скобку, дописывают лишнюю. Всё это уже приезжало в ответ на глазах у
+ * пользователя, поэтому чистка прощает:
+ *  • любой регистр имени и пробелы вокруг двоеточия и вертикальных черт;
+ *  • одну или две закрывающие скобки и лишние сверху;
+ *  • НЕЗАКРЫТЫЙ блок в самом конце — поток мог оборваться на середине.
+ */
+const ACTION_DIRT_RE = /\[\s*\[\s*kira\s*:\s*[a-zA-Zа-яА-Я_][^\]\n]*?\]{2,3}/gi
+/**
+ * Добитый вариант для ИТОГОВОГО текста: одна скобка вместо двух, обрыв на
+ * середине строки, конец ответа посреди блока. В потоке так чистить нельзя —
+ * там незакрытый блок просто ещё не дописан.
+ */
+const ACTION_RUINED_RE = /\[\s*\[\s*kira\s*:[^\n]*?(?:\]{1,3}|$)/gim
+
 export function parseActions(text: string): ParsedAction[] {
   const actions: ParsedAction[] = []
   for (const match of text.matchAll(ACTION_RE)) {
@@ -260,8 +288,26 @@ export function parseActions(text: string): ParsedAction[] {
   return actions
 }
 
+/**
+ * Текст без служебной разметки — ЕДИНСТВЕННОЕ место, где решается, что увидит
+ * человек. И потоковая выдача, и итоговый ответ зовут именно её: раньше это были
+ * два разных выражения, и то, что фильтровал один, спокойно проходило у другого.
+ */
 export function stripActions(text: string): string {
-  return text.replace(ACTION_RE, '').replace(/\n{3,}/g, '\n\n').trim()
+  return text
+    .replace(ACTION_DIRT_RE, '')
+    .replace(ACTION_RUINED_RE, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+}
+
+/**
+ * То же для ПОТОКА: вычищает завершённые блоки, но не трогает ни отступы, ни
+ * оборванный хвост. Хвост дописывается следующей порцией — вырезать его прямо
+ * сейчас значило бы съесть начало обычного текста в квадратных скобках.
+ */
+export function stripActionsInline(text: string): string {
+  return text.replace(ACTION_DIRT_RE, '')
 }
 
 const DANGEROUS = new Set(['shutdown', 'restart', 'kill_process', 'run_command', 'delete_file', 'gmail_send', 'discord_send', 'telegram_dm',

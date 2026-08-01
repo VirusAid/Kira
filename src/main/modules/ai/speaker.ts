@@ -7,6 +7,7 @@ import { spawn, ChildProcessWithoutNullStreams, execFile } from 'child_process'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { logger } from '../logger'
+import { touchSidecar, beginSidecarWork, endSidecarWork, forgetSidecar, IDLE } from './idle'
 
 function resourcesRoot(): string {
   return app.isPackaged ? process.resourcesPath : join(__dirname, '../../resources')
@@ -125,12 +126,16 @@ class SpeakerManager {
   async verify(pcmBase64: string, threshold = 0.72): Promise<{ isOwner: boolean; score: number }> {
     this.loadRef()
     if (!this.reference) return { isOwner: true, score: 1 } // не обучено — пропускаем всех
+    touchSidecar('узнавание голоса', () => this.kill(), IDLE.speaker)
+    beginSidecarWork('узнавание голоса')
     try {
       const v = await this.embed(pcmBase64)
       const score = cosine(v, this.reference)
       return { isOwner: score >= threshold, score }
     } catch {
       return { isOwner: true, score: 1 } // при сбое не блокируем
+    } finally {
+      endSidecarWork('узнавание голоса')
     }
   }
 
@@ -141,6 +146,7 @@ class SpeakerManager {
 
   /** Погасить python-сайдкар при выходе (иначе процесс осиротеет). */
   kill(): void {
+    forgetSidecar('узнавание голоса')
     if (this.proc) { try { this.proc.kill() } catch { /* ignore */ } this.proc = null }
     this.ready = false
     this.starting = null

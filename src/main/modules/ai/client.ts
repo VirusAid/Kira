@@ -9,6 +9,7 @@
  */
 import Anthropic from '@anthropic-ai/sdk'
 import { getSettings } from '../settings'
+import { resolveLocalModel } from './localLlm'
 import type { AIProviderId, ChatRole } from '../../../shared/types'
 
 export interface AIMessage {
@@ -22,6 +23,17 @@ interface ProviderEndpoint {
   model: string
 }
 
+/**
+ * Имя локальной модели с поправкой на реальность.
+ *
+ * Синхронно и без сети: берём последний известный список скачанного (его
+ * обновляет сам модуль офлайн-разума при каждой проверке статуса). Если список
+ * ещё не собран — доверяем настройке, хуже не будет.
+ */
+function localModelName(preferred: string): string {
+  return resolveLocalModel(preferred) || preferred || 'qwen3:4b'
+}
+
 export function resolveEndpoint(providerId?: AIProviderId): ProviderEndpoint {
   const s = getSettings()
   const id = providerId ?? s.provider
@@ -32,7 +44,12 @@ export function resolveEndpoint(providerId?: AIProviderId): ProviderEndpoint {
       return {
         url: `${(cfg.baseUrl || 'http://localhost:11434').replace(/\/$/, '')}/v1/chat/completions`,
         headers: {},
-        model: cfg.model || 'llama3.1'
+        // Правда о модели — на диске, а не в настройке. Настройка может отстать
+        // от реальности (автоподбор скачал одно, в файле осталось другое), и
+        // тогда запрос уходил на несуществующий тег: Ollama отвечала 404, а
+        // Kira «честно» переключалась в облако. Спрашиваем, что есть на самом
+        // деле, и берём его.
+        model: localModelName(cfg.model || '')
       }
     case 'groq':
       return {
@@ -231,7 +248,7 @@ export function visionAvailable(): boolean {
   if (s.providers.gemini.apiKey?.trim() || s.providers.claude.apiKey?.trim() || s.providers.openrouter.apiKey?.trim()) {
     return true
   }
-  return isVisionModel(s.providers.ollama.model || '')
+  return isVisionModel(localModelName(s.providers.ollama.model || ''))
 }
 
 /** Провайдеры с поддержкой зрения (изображений). Gemini надёжнее всего. */
@@ -239,7 +256,7 @@ export function visionCandidateProviders(): AIProviderId[] {
   const s = getSettings()
   const order: AIProviderId[] = []
   // офлайн-first: если локальная модель умеет видеть — она первая (приватно)
-  if (s.preferLocal && isVisionModel(s.providers.ollama.model || '')) order.push('ollama')
+  if (s.preferLocal && isVisionModel(localModelName(s.providers.ollama.model || ''))) order.push('ollama')
   if (s.providers.gemini.apiKey?.trim()) order.push('gemini')
   if (s.providers.claude.apiKey?.trim()) order.push('claude')
   if (s.providers.openrouter.apiKey?.trim()) order.push('openrouter')

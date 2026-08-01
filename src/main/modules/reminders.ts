@@ -86,10 +86,27 @@ export function parseWhen(spec: string): number | null {
     }
   }
 
-  // «завтра» без времени → завтра 9:00
-  if (s.includes('завтра')) {
+  /*
+   * Время суток словами: «сегодня вечером», «завтра утром». Раньше такое не
+   * разбиралось вовсе, и человек получал «не поняла, когда напомнить» на самую
+   * обиходную формулировку. Часы выбраны так, как их понимают в разговоре.
+   */
+  const partOfDay = s.match(/(утром|днем|днём|вечером|ночью)/)
+  if (partOfDay) {
+    const hour = { 'утром': 9, 'днем': 14, 'днём': 14, 'вечером': 19, 'ночью': 23 }[partOfDay[1]] ?? 9
     const d = new Date()
-    d.setDate(d.getDate() + 1)
+    if (s.includes('послезавтра')) d.setDate(d.getDate() + 2)
+    else if (s.includes('завтра')) d.setDate(d.getDate() + 1)
+    d.setHours(hour, 0, 0, 0)
+    // «вечером», когда вечер уже прошёл, — это завтрашний вечер
+    if (d.getTime() <= now) d.setDate(d.getDate() + 1)
+    return d.getTime()
+  }
+
+  // «послезавтра»/«завтра» без времени → 9:00 того дня
+  if (s.includes('послезавтра') || s.includes('завтра')) {
+    const d = new Date()
+    d.setDate(d.getDate() + (s.includes('послезавтра') ? 2 : 1))
     d.setHours(9, 0, 0, 0)
     return d.getTime()
   }
