@@ -18,6 +18,8 @@ import { initKiraCore, coreFlushSync } from './core'
 import { flushAllSync } from './modules/db'
 import { flushAllCollectionsSync } from './modules/storage'
 import { logger } from './modules/logger'
+import { reportFault, clearFault } from './modules/faults'
+import { setStorageReporter } from './modules/storage'
 import { getSettings, secureSecretsAtRest } from './modules/settings'
 import { extractAiFile, extractFileText } from './modules/shellIntegration'
 import { isMcpServerMode, startMcpServer } from './modules/mcp/server'
@@ -127,13 +129,15 @@ function createWindow(): void {
    * ни ответов, и человеку не за что зацепиться. Перезагрузка возвращает всё.
    */
   mainWindow.webContents.on('render-process-gone', (_e, details) => {
-    logger.error('kira', `Окно упало (${details.reason}) — поднимаю заново`)
     if (details.reason === 'clean-exit') return
+    // окно уносит с собой голос целиком — это отказ, а не мелочь
+    reportFault('интерфейс', `Окно упало (${details.reason}) — поднимаю заново`)
     try { mainWindow?.webContents.reload() } catch { /* окно уже уничтожено */ }
   })
   mainWindow.webContents.on('unresponsive', () => {
-    logger.warn('kira', 'Окно перестало отвечать')
+    reportFault('интерфейс', 'Окно перестало отвечать')
   })
+  mainWindow.webContents.on('responsive', () => clearFault('интерфейс'))
 
   if (process.env['ELECTRON_RENDERER_URL']) {
     void mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
@@ -147,13 +151,26 @@ function createWindow(): void {
   })
 }
 
-// Защитная сетка: единичный сбой модуля (сеть, сайдкар, интеграция) не должен
-// ронять всё приложение — фиксируем в журнал и продолжаем работать.
+/*
+ * Защитная сетка: единичный сбой модуля (сеть, сайдкар, интеграция) не должен
+ * ронять всё приложение.
+ *
+ * Идёт в реестр отказов, а не только в журнал. Разница существенная: журнал
+ * человек открывает, когда уже заподозрил неладное, а отметка об отказе
+ * появляется у него на глазах сама. Ассистент, работающий наполовину, иначе
+ * выглядит просто отупевшим — и винят в этом его, а не сломанный модуль.
+ */
 process.on('uncaughtException', (err) => {
-  try { logger.error('kira', `Неперехваченная ошибка: ${err.message}`) } catch { /* журнал недоступен */ }
+  try {
+    reportFault('ядро', `Неперехваченная ошибка: ${err.message}`.slice(0, 300),
+      'Если повторяется — перезапусти Kira и загляни в журнал')
+  } catch { /* журнал и реестр недоступны — падать тут нельзя ни при каких условиях */ }
 })
 process.on('unhandledRejection', (reason) => {
-  try { logger.error('kira', `Необработанный промис: ${String((reason as Error)?.message ?? reason).slice(0, 200)}`) } catch { /* ignore */ }
+  try {
+    reportFault('ядро', `Необработанный промис: ${String((reason as Error)?.message ?? reason).slice(0, 200)}`,
+      'Если повторяется — перезапусти Kira и загляни в журнал')
+  } catch { /* см. выше */ }
 })
 
 /*
@@ -182,6 +199,19 @@ if (!gotLock) {
     }
     const filePath = extractAiFile(argv)
     if (filePath) void openAiFile(filePath)
+  })
+
+  /*
+   * Подставляем хранилищу докладчика. Само оно позвать журнал не может —
+   * журнал пишет через него же, и вышло бы кольцо, — поэтому связь наводим
+   * снаружи, отсюда, где видны оба.
+   *
+   * Делаем это ДО whenReady: беды при загрузке коллекций случаются раньше, чем
+   * приложение готово, и как раз их пропустить обиднее всего.
+   */
+  setStorageReporter((message, fatal) => {
+    if (fatal) reportFault('ядро', `Хранилище: ${message}`, 'Проверь место на диске и права на папку данных')
+    else logger.warn('хранилище', message)
   })
 
   app.whenReady().then(() => {

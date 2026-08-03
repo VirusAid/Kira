@@ -254,7 +254,7 @@ export async function listPeers(query: string): Promise<ActionResult> {
 export async function logoutTelegramUser(): Promise<{ ok: boolean }> {
   try {
     if (client) { await client.disconnect() }
-  } catch { /* ignore */ }
+  } catch { /* связь и так оборвана — выходим из учётной записи дальше */ }
   client = null
   saveSettings({ ...getSettings(), telegramSession: '', telegramUserMonitor: false })
   logger.info('telegram-user', 'Выход из личного аккаунта')
@@ -277,6 +277,6 @@ export async function initTelegramUser(getWindow: () => BrowserWindow | null): P
 }
 
 export async function shutdownTelegramUser(): Promise<void> {
-  try { await client?.disconnect() } catch { /* ignore */ }
+  try { await client?.disconnect() } catch { /* приложение закрывается — соединение всё равно умрёт */ }
   client = null
 }

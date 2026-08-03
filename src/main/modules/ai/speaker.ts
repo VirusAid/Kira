@@ -7,6 +7,7 @@ import { spawn, ChildProcessWithoutNullStreams, execFile } from 'child_process'
 import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import { logger } from '../logger'
+import { reportFault } from '../faults'
 import { touchSidecar, beginSidecarWork, endSidecarWork, forgetSidecar, IDLE } from './idle'
 
 function resourcesRoot(): string {
@@ -41,7 +42,12 @@ class SpeakerManager {
     this.refLoaded = true
     try {
       if (existsSync(this.refFile())) this.reference = JSON.parse(readFileSync(this.refFile(), 'utf-8'))
-    } catch { /* ignore */ }
+    } catch (e) {
+      // без образца голоса проверка хозяина не работает — а человек её включил
+      // и считает, что защита есть
+      reportFault('голос', `Образец голоса хозяина не прочитан: ${(e as Error).message}`,
+        'Запиши образец заново в настройках голоса')
+    }
   }
 
   isEnrolled(): boolean {
@@ -141,13 +147,19 @@ class SpeakerManager {
 
   clearEnrollment(): void {
     this.reference = null
-    try { if (existsSync(this.refFile())) writeFileSync(this.refFile(), 'null') } catch { /* ignore */ }
+    try {
+      if (existsSync(this.refFile())) writeFileSync(this.refFile(), 'null')
+    } catch (e) {
+      // человек попросил забыть его голос, а файл остался на диске — это уже
+      // про доверие, молчать нельзя
+      logger.warn('голос', `Образец голоса не стёрт с диска: ${(e as Error).message}`)
+    }
   }
 
   /** Погасить python-сайдкар при выходе (иначе процесс осиротеет). */
   kill(): void {
     forgetSidecar('узнавание голоса')
-    if (this.proc) { try { this.proc.kill() } catch { /* ignore */ } this.proc = null }
+    if (this.proc) { try { this.proc.kill() } catch { /* уже мёртв — убивать нечего */ } this.proc = null }
     this.ready = false
     this.starting = null
   }

@@ -141,7 +141,7 @@ function synthesizeWith(
       if (settled) return
       settled = true
       clearTimeout(timer)
-      try { ws.close() } catch { /* ignore */ }
+      try { ws.close() } catch { /* сокет уже закрыт — этого и добивались */ }
       if (err) reject(err)
       else resolve(audio!)
     }

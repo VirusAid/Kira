@@ -134,7 +134,7 @@ class VoskSttManager {
 
   shutdown(): void {
     forgetSidecar('распознавание речи')
-    try { this.proc?.kill() } catch { /* ignore */ }
+    try { this.proc?.kill() } catch { /* уже мёртв — убивать нечего */ }
     this.proc = null
     this.ready = false
   }

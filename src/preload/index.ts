@@ -20,7 +20,14 @@ const api = {
 
   app: {
     /** Открыть ссылку в СИСТЕМНОМ браузере (main проверит схему). */
-    openExternal: (url: string) => invoke('app:open-external', url)
+    openExternal: (url: string) => invoke('app:open-external', url),
+    openNotices: () => invoke('app:open-notices'),
+    reportUiError: (message: string) => invoke('app:report-ui-error', message)
+  },
+  faults: {
+    list: () => invoke('faults:list'),
+    clear: (subsystem: string) => invoke('faults:clear', subsystem),
+    onChanged: (cb: (list: unknown[]) => void) => on('faults:changed', (...a: unknown[]) => cb(a[0] as unknown[]))
   },
 
   update: {

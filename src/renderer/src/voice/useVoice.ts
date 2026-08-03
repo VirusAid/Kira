@@ -10,6 +10,7 @@ import { kira } from '@/api'
 import { useAppStore } from '@/state/appStore'
 import { useChatStore } from '@/state/chatStore'
 import { float32ToBase64, encodeWavBase64, normalizeLoudness } from './audioUtils'
+import { reportUiError } from '@/errors'
 import { openMicStream } from './mic'
 
 export type VoiceState = 'off' | 'listening' | 'recording' | 'transcribing' | 'thinking' | 'speaking'
@@ -166,7 +167,11 @@ export function useVoice() {
         }
         await playChunk(result.audio, result.format)
       }
-    } catch { /* пропускаем сбойную фразу */ }
+    } catch (e) {
+      // Kira просто замолкает посреди ответа — со стороны выглядит так, будто
+      // она передумала говорить. Без записи причину не найти никогда
+      reportUiError('Синтез речи оборвался', e)
+    }
 
     ttsPlayingRef.current = false
     if (token === ttsTokenRef.current && currentState() === 'speaking' && !ttsQueueRef.current.length) {
@@ -228,7 +233,11 @@ export function useVoice() {
           const v = await kira.speaker.verify(pcmB64)
           if (currentState() === 'off') return
           if (!v.isOwner) { setVoiceState('listening'); return }
-        } catch { /* не блокируем при сбое */ }
+        } catch (e) {
+          // намеренно НЕ блокируем: отказ проверки голоса не должен запирать
+          // хозяина снаружи. Но тогда она молча пускает любого — надо знать
+          reportUiError('Проверка голоса хозяина не сработала', e)
+        }
       }
 
       // распознавание: отдаём чистый WAV 16 кГц (без потерь начала), выровняв
@@ -387,7 +396,11 @@ export function useVoice() {
       if (cfg?.speakerVerify) {
         try {
           verifyVoiceRef.current = (await kira.speaker.enrolled()) && (await kira.speaker.available())
-        } catch { /* недоступно */ }
+        } catch (e) {
+          // человек включил проверку голоса в настройках, а она не поднялась —
+          // он уверен, что защита работает, хотя её нет
+          reportUiError('Проверка голоса включена, но недоступна', e)
+        }
       }
 
       // офлайн слово-активатор «Кира» через Vosk (если установлен и включён)
@@ -477,7 +490,7 @@ export function useVoice() {
     }
     if (scriptNodeRef.current) {
       scriptNodeRef.current.onaudioprocess = null
-      try { scriptNodeRef.current.disconnect() } catch { /* ignore */ }
+      try { scriptNodeRef.current.disconnect() } catch { /* узел уже отсоединён — это и требовалось */ }
       scriptNodeRef.current = null
     }
     if (wakeOffRef.current) { wakeOffRef.current(); wakeOffRef.current = null }

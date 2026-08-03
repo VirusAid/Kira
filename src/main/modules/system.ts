@@ -961,7 +961,8 @@ function decodeHtml(s: string): string {
 
 function unwrapDdgUrl(href: string): string {
   const m = href.match(/[?&]uddg=([^&]+)/)
-  if (m) { try { return decodeURIComponent(m[1]) } catch { /* ignore */ } }
+  // битую последовательность %-кодов вернём как есть — ссылка хуже не станет
+  if (m) { try { return decodeURIComponent(m[1]) } catch { /* оставляем исходную */ } }
   return href.startsWith('//') ? 'https:' + href : href
 }
 

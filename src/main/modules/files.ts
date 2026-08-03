@@ -4,7 +4,8 @@
  */
 import { app, shell } from 'electron'
 import { promises as fsp, existsSync } from 'fs'
-import { join, extname, basename, dirname } from 'path'
+import { homedir } from 'os'
+import { join, extname, basename, dirname, resolve } from 'path'
 import { logger } from './logger'
 import { pushUndo } from './undo'
 import type { ActionResult, FileItem } from '../../shared/types'
@@ -260,7 +261,68 @@ export async function createFolder(path: string): Promise<ActionResult> {
   return { ok: true, message: `Папка создана: ${path}` }
 }
 
+/**
+ * Места, которые Kira не удаляет НИКОГДА — даже с подтверждением.
+ *
+ * Подтверждение тут не защита: окно говорит «Удалить в корзину: C:\», человек
+ * читает начало фразы и жмёт «да». А корень диска, системные папки и корень
+ * профиля — это не «файл, который попросили убрать», это отказ компьютера
+ * загрузиться. Ни одна разумная просьба сюда не попадает, поэтому дешевле
+ * запретить целиком, чем надеяться на внимательность в конце длинного дня.
+ */
+function refuseToDelete(target: string): string | null {
+  const raw = String(target ?? '').trim()
+  if (!raw) return 'пустой путь'
+  const p = resolve(raw).replace(/[\\/]+$/, '')
+  const low = p.toLowerCase()
+
+  // корень диска: «C:», «\\сервер\общая»
+  if (/^[a-z]:$/i.test(p) || /^\\\\[^\\]+\\[^\\]+$/.test(p)) return 'это корень диска'
+
+  /*
+   * Домашнюю папку берём у ОПЕРАЦИОННОЙ СИСТЕМЫ, а не у Electron.
+   *
+   * Раньше здесь стоял `app.getPath('home')`. В бою он верен, но в тестах его
+   * подменяет заглушка — и защита, проверенная только тестом, оказывалась
+   * проверенной в единственной среде, где она заведомо не срабатывает. Ровно
+   * из-за этого 2026-08-01 тест снёс живую домашнюю папку. `os.homedir()`
+   * возвращает одно и то же везде, поэтому доверять ему можно.
+   */
+  const roots = new Set<string>()
+  const add = (d?: string | null): void => {
+    if (d) roots.add(resolve(d).toLowerCase().replace(/[\\/]+$/, ''))
+  }
+  add(homedir())
+  add(process.env.SystemRoot)
+  add(process.env.windir)
+  add(process.env.ProgramFiles)
+  add(process.env['ProgramFiles(x86)'])
+  add(process.env.ProgramData)
+  add(process.env.APPDATA)
+  add(process.env.LOCALAPPDATA)
+  add(process.env.USERPROFILE)
+  add(process.env.PUBLIC)
+
+  if (roots.has(low)) {
+    return low === resolve(homedir()).toLowerCase().replace(/[\\/]+$/, '') ||
+      low === resolve(process.env.USERPROFILE ?? homedir()).toLowerCase().replace(/[\\/]+$/, '')
+      ? 'это твоя домашняя папка целиком'
+      : 'это системная папка'
+  }
+
+  // подстраховка на случай нестандартных переменных окружения
+  if (/^[a-z]:[\\/](windows|program files|program files \(x86\)|programdata|users)$/i.test(p)) {
+    return 'это системная папка'
+  }
+  return null
+}
+
 export async function deleteToTrash(path: string): Promise<ActionResult> {
+  const refuse = refuseToDelete(path)
+  if (refuse) {
+    logger.warn('files', `Отказ удалять «${path}»: ${refuse}`)
+    return { ok: false, message: `Не буду удалять «${path}» — ${refuse}.` }
+  }
   if (!existsSync(path)) return { ok: false, message: 'Файл не найден' }
   await shell.trashItem(path)
   logger.action('files', `Удалено в корзину: ${path}`)
@@ -273,29 +335,83 @@ export async function deleteToTrash(path: string): Promise<ActionResult> {
 }
 
 export async function moveFile(from: string, to: string): Promise<ActionResult> {
-  const dest = await resolveDestination(from, to)
-  await fsp.mkdir(dirname(dest), { recursive: true })
-  await fsp.rename(from, dest)
-  logger.action('files', `Перемещено: ${from} → ${dest}`)
-  pushUndo(`перемещение ${basename(from)}`, async () => { await fsp.rename(dest, from) })
-  return { ok: true, message: `Перемещено в ${dest}` }
+  if (!existsSync(from)) return { ok: false, message: `Не нашла: ${from}` }
+  try {
+    const dest = await freeDestination(await resolveDestination(from, to))
+    await fsp.mkdir(dirname(dest), { recursive: true })
+    await fsp.rename(from, dest)
+    logger.action('files', `Перемещено: ${from} → ${dest}`)
+    pushUndo(`перемещение ${basename(from)}`, async () => { await fsp.rename(dest, from) })
+    return { ok: true, message: `Перемещено в ${dest}` }
+  } catch (e) {
+    return { ok: false, message: `Не удалось переместить: ${(e as Error).message}` }
+  }
 }
 
 export async function copyFile(from: string, to: string): Promise<ActionResult> {
-  const dest = await resolveDestination(from, to)
-  await fsp.mkdir(dirname(dest), { recursive: true })
-  await fsp.cp(from, dest, { recursive: true })
-  logger.action('files', `Скопировано: ${from} → ${dest}`)
-  pushUndo(`копирование ${basename(from)}`, async () => { await shell.trashItem(dest) })
-  return { ok: true, message: `Скопировано в ${dest}` }
+  if (!existsSync(from)) return { ok: false, message: `Не нашла: ${from}` }
+  try {
+    const dest = await freeDestination(await resolveDestination(from, to))
+    await fsp.mkdir(dirname(dest), { recursive: true })
+    await fsp.cp(from, dest, { recursive: true })
+    logger.action('files', `Скопировано: ${from} → ${dest}`)
+    // отменяем только то, что создали сами: имя свободное, значит чужого там нет
+    pushUndo(`копирование ${basename(from)}`, async () => { await shell.trashItem(dest) })
+    return { ok: true, message: `Скопировано в ${dest}` }
+  } catch (e) {
+    return { ok: false, message: `Не удалось скопировать: ${(e as Error).message}` }
+  }
 }
 
 export async function renameFile(path: string, newName: string): Promise<ActionResult> {
-  const dest = join(dirname(path), newName)
-  await fsp.rename(path, dest)
-  logger.action('files', `Переименовано: ${basename(path)} → ${newName}`)
-  pushUndo(`переименование в ${newName}`, async () => { await fsp.rename(dest, path) })
-  return { ok: true, message: `Переименовано в ${newName}` }
+  /*
+   * Новое имя — именно ИМЯ, а не путь.
+   *
+   * Диктует его модель, а `join(dirname(path), newName)` послушно склеит любой
+   * «../../» и уведёт файл в другое место, отчитавшись об успехе. Проверено:
+   * «переименуй в ..\..\сбежал.txt» файл покидал папку, и Kira говорила
+   * «Переименовано». Разделители и переходы вверх отвергаем сразу.
+   */
+  const bad = /[\\/]|^\.\.?$|^[a-zA-Z]:/.test(newName) || newName.includes('..')
+  if (!newName.trim() || bad) {
+    return { ok: false, message: 'Новое имя не должно содержать путь — только название файла' }
+  }
+  if (!existsSync(path)) return { ok: false, message: `Не нашла: ${path}` }
+  try {
+    const dest = await freeDestination(join(dirname(path), newName))
+    await fsp.rename(path, dest)
+    logger.action('files', `Переименовано: ${basename(path)} → ${basename(dest)}`)
+    pushUndo(`переименование в ${basename(dest)}`, async () => { await fsp.rename(dest, path) })
+    return { ok: true, message: `Переименовано в ${basename(dest)}` }
+  } catch (e) {
+    return { ok: false, message: `Не удалось переименовать: ${(e as Error).message}` }
+  }
+}
+
+/**
+ * Свободное имя рядом с занятым: «отчёт.pdf» → «отчёт (2).pdf».
+ *
+ * Раньше перемещение и копирование ЗАТИРАЛИ файл, который уже лежал по этому
+ * пути, — молча и без корзины. Проверено на живых файлах: после «перемести
+ * a.txt в b.txt» содержимое b.txt исчезало навсегда, а «отмени» возвращало
+ * только a.txt, потому что вернуть уже нечего.
+ *
+ * Так себя ведёт любой файловый менеджер, и это ожидаемо: человек просил
+ * положить файл, а не стереть чужой. Если он действительно хочет заменить —
+ * пусть сначала удалит, это отдельное действие и с подтверждением.
+ */
+async function freeDestination(dest: string): Promise<string> {
+  if (!existsSync(dest)) return dest
+  const dir = dirname(dest)
+  const name = basename(dest)
+  const dot = name.lastIndexOf('.')
+  const stem = dot > 0 ? name.slice(0, dot) : name
+  const ext = dot > 0 ? name.slice(dot) : ''
+  for (let n = 2; n < 1000; n++) {
+    const candidate = join(dir, `${stem} (${n})${ext}`)
+    if (!existsSync(candidate)) return candidate
+  }
+  throw new Error('в этой папке слишком много файлов с таким именем')
 }
 
 /** Если to — существующая папка, кладём файл внутрь с исходным именем. */

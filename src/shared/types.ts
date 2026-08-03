@@ -467,3 +467,17 @@ export interface UpdateState {
   /** человеческое пояснение, в том числе причина сбоя */
   message?: string
 }
+
+/**
+ * Отказ подсистемы — что сломано ПРЯМО СЕЙЧАС (в отличие от журнала, который
+ * помнит и уже починенное). Живёт, пока подсистема не заработает снова.
+ */
+export interface Fault {
+  subsystem: string
+  message: string
+  /** Что делать человеку. Пусто — если починка не в его руках. */
+  fix?: string
+  count: number
+  firstAt: number
+  lastAt: number
+}

@@ -15,6 +15,7 @@ import { pipeline } from 'stream/promises'
 import { Readable, Transform } from 'stream'
 import os from 'os'
 import { logger } from '../logger'
+import { reportFault } from '../faults'
 import { getSettings, patchSettings } from '../settings'
 
 const OLLAMA_URL = 'http://localhost:11434'
@@ -256,12 +257,12 @@ export async function downloadOllama(
     onProgress(100, 'Распаковываю движок…')
     execFileSync('powershell', ['-NoProfile', '-Command',
       `Expand-Archive -Force '${zip}' '${dir}'`], { stdio: 'ignore', windowsHide: true })
-    try { rmSync(zip, { force: true }) } catch { /* временный файл */ }
+    try { rmSync(zip, { force: true }) } catch { /* архив уже распакован, остаток не помеха */ }
     if (!hasPortable()) return { ok: false, message: 'ollama.exe не найден после распаковки' }
     logger.info('local-llm', 'Основа локального разума установлена')
     return { ok: true, message: 'Движок Ollama установлен' }
   } catch (e) {
-    try { rmSync(zip, { force: true }) } catch { /* недокачанный архив */ }
+    try { rmSync(zip, { force: true }) } catch { /* недокачанное само перезапишется при следующей попытке */ }
     return { ok: false, message: `Ошибка установки движка: ${(e as Error).message}` }
   }
 }
@@ -316,7 +317,15 @@ function adoptModel(tag: string): void {
       providers: { ...s.providers, ollama: { ...s.providers.ollama, model: tag } }
     })
     logger.info('local-llm', `Рабочая модель офлайн-разума: ${tag}`)
-  } catch { /* настройки недоступны — не мешаем загрузке */ }
+  } catch (e) {
+    /*
+     * Модель скачали — это гигабайты и минуты ожидания, — но в настройки она
+     * не попала, а значит рабочей не стала. Человек уверен, что офлайн-разум
+     * готов, и не понимает, почему Kira по-прежнему ходит в облако.
+     */
+    reportFault('офлайн-разум', `Модель скачана, но не выбрана рабочей: ${(e as Error).message}`,
+      'Выбери модель вручную в настройках офлайн-разума')
+  }
 }
 
 /** Установленные локально модели. */
@@ -424,7 +433,7 @@ export async function pullModel(
             ? `Загружаю: ${gb(m.completed)} / ${gb(m.total)} ГБ (${pct}%)`
             : humanStatus(m.status)
           onProgress(pct, label)
-        } catch { /* неполная строка */ }
+        } catch { /* поток отдаёт JSON построчно, хвост приходит обрезанным — норма */ }
       }
     }
     logger.info('local-llm', `Модель загружена: ${tag}`)
@@ -511,7 +520,7 @@ export function sweepLeftovers(): void {
   try {
     const zip = join(userDataDir(), 'ollama-win.zip')
     if (existsSync(zip)) rmSync(zip, { force: true })
-  } catch { /* не смогли убрать — не повод падать */ }
+  } catch { /* временный архив мешает только месту на диске — не повод падать */ }
 }
 
 /** Полный статус для UI и маршрутизации. */

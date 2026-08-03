@@ -32,12 +32,20 @@ function stateFile(): string {
 function loadState(): { lastBriefing?: string } {
   try {
     if (existsSync(stateFile())) return JSON.parse(readFileSync(stateFile(), 'utf-8'))
-  } catch { /* ignore */ }
+  } catch (e) {
+    // потеряли отметку о последней сводке — Kira поздоровается второй раз за
+    // утро. Мелочь, но если файл битый навсегда, это будет каждый день
+    logger.warn('pulse', `Состояние не прочитано: ${(e as Error).message}`)
+  }
   return {}
 }
 
 function saveState(s: { lastBriefing?: string }): void {
-  try { writeFileSync(stateFile(), JSON.stringify(s)) } catch { /* ignore */ }
+  try {
+    writeFileSync(stateFile(), JSON.stringify(s))
+  } catch (e) {
+    logger.warn('pulse', `Состояние не сохранено: ${(e as Error).message}`)
+  }
 }
 
 function today(): string {
@@ -64,7 +72,7 @@ async function buildBriefing(): Promise<string> {
     const { getWeather } = await import('./system')
     const w = await getWeather()
     if (w.ok) parts.push(`За окном${w.city ? ' в ' + w.city : ''} ${w.temp}°, ${w.desc}.`)
-  } catch { /* без погоды */ }
+  } catch { /* сводка обойдётся без погоды — интернета может не быть */ }
 
   const reminders = listReminders().filter((r) => {
     const d = new Date(r.fireAt)
@@ -93,7 +101,7 @@ async function checkDisk(): Promise<void> {
       say(`Заканчивается место на диске — свободно всего ${freeGB.toFixed(1)} ГБ. Может, почистить загрузки или корзину?`)
       logger.warn('pulse', `Мало места на диске: ${freeGB.toFixed(1)} ГБ`)
     }
-  } catch { /* statfs недоступен — пропускаем */ }
+  } catch { /* на сетевых и виртуальных дисках statfs не отвечает — не беда */ }
 }
 
 function checkMemory(): void {
@@ -126,7 +134,7 @@ async function checkMeeting(): Promise<void> {
     lastMeetingKey = key
     const when = ev.minutes <= 1 ? 'прямо сейчас' : `через ${ev.minutes} минут`
     say(`Встреча ${when}: «${ev.title}». Подготовиться?`)
-  } catch { /* календарь недоступен */ }
+  } catch { /* календарь не подключён или токен протух — напоминание пропустим */ }
 }
 
 /** Новые письма (если Gmail подключён) — тихо, когда их стало больше. */
@@ -140,7 +148,7 @@ async function checkMail(): Promise<void> {
       say(`${diff === 1 ? 'Пришло новое письмо' : `Пришло ${diff} новых писем`}. Показать выжимку?`, false)
     }
     lastUnread = n
-  } catch { /* почта недоступна */ }
+  } catch { /* почта не подключена или токен протух — молча пропускаем проверку */ }
 }
 
 /** Низкий заряд батареи (ноутбук) — напоминание поставить на зарядку. */
@@ -160,7 +168,7 @@ async function checkBattery(): Promise<void> {
       notifiedToday.add(key)
       say(`Батарея ${data.pct}% и не заряжается — поставь на зарядку, чтобы не выключился.`)
     }
-  } catch { /* нет батареи */ }
+  } catch { /* стационарный компьютер — батареи просто нет */ }
 }
 
 /** Долгая непрерывная работа — мягко предложить перерыв (не чаще раза в ~90 мин). */
@@ -181,7 +189,7 @@ async function checkRoutine(): Promise<void> {
     const { suggestRoutine } = await import('./routines')
     const s = suggestRoutine()
     if (s) { notifiedToday.add(key); say(s.text, false) }
-  } catch { /* модуль привычек недоступен */ }
+  } catch { /* подсказка про привычки необязательна — тишина лучше ошибки */ }
 }
 
 /** Заботливый чек-ин днём (раз в сутки) — компаньон интересуется, как ты. */

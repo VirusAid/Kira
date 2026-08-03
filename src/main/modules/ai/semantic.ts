@@ -51,7 +51,11 @@ class SemanticManager {
         const obj = JSON.parse(readFileSync(this.cacheFile(), 'utf-8')) as Record<string, number[]>
         for (const [k, v] of Object.entries(obj)) this.cache.set(k, v)
       }
-    } catch { /* ignore */ }
+    } catch (e) {
+      // не отказ: без кэша поиск просто считает эмбеддинги заново. Но битый
+      // файл будет мешать при каждом запуске, а молча это не выяснить
+      logger.warn('смысл', `Кэш эмбеддингов не прочитан, считаю заново: ${(e as Error).message}`)
+    }
   }
 
   private saveCache(): void {
@@ -67,7 +71,11 @@ class SemanticManager {
         this.cache = new Map(keep)
       }
       writeFileSync(this.cacheFile(), JSON.stringify(Object.fromEntries(this.cache)))
-    } catch { /* ignore */ }
+    } catch (e) {
+      // тоже не отказ, но если запись падает всегда (нет прав, кончилось
+      // место) — поиск вечно медленный, и причина должна быть видна
+      logger.warn('смысл', `Кэш эмбеддингов не сохранён: ${(e as Error).message}`)
+    }
   }
 
   isAvailable(): Promise<boolean> {
@@ -198,7 +206,7 @@ class SemanticManager {
     this.ready = false
     this.starting = null
     forgetSidecar('смысловой поиск')
-    if (this.proc) { try { this.proc.kill() } catch { /* ignore */ } this.proc = null }
+    if (this.proc) { try { this.proc.kill() } catch { /* уже мёртв — убивать нечего */ } this.proc = null }
   }
 }
 

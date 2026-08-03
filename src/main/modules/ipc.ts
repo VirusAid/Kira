@@ -2,10 +2,12 @@
  * IPC — регистрация всех каналов связи main ↔ renderer.
  * Каждый домен (чат, память, проекты…) — своя группа обработчиков.
  */
-import { BrowserWindow, ipcMain, dialog, shell } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, shell } from 'electron'
+import { join } from 'path'
 import { db } from './db'
 import { newId } from './ids'
 import { logger } from './logger'
+import { reportFault, clearFault, listFaults } from './faults'
 import { getSettings, saveSettings } from './settings'
 import { handleChatRequest, abortRequest, confirmAction, generateChatTitle } from './ai/chat'
 import { testProvider, completeChat, listProviderModels } from './ai/client'
@@ -61,6 +63,34 @@ function isWhisperHallucination(text: string): boolean {
 }
 
 export function registerIpc(getWindow: () => BrowserWindow | null): void {
+  /*
+   * Ошибка из окна. Приходит из window.onerror / unhandledrejection — то есть
+   * оттуда, где раньше всё пропадало. Считаем это отказом интерфейса: у окна
+   * живёт голос, и его падение человек ощущает как «Kira не слышит».
+   */
+  ipcMain.handle('app:report-ui-error', (_e, message: unknown) => {
+    reportFault('интерфейс', String(message ?? '').slice(0, 500),
+      'Перезагрузи интерфейс — данные не потеряются')
+  })
+  ipcMain.handle('faults:list', () => listFaults())
+  ipcMain.handle('faults:clear', (_e, subsystem: unknown) => clearFault(subsystem as never))
+
+  /*
+   * Показать уведомления о стороннем ПО.
+   *
+   * Лицензии MIT, Apache и BSD разрешают продавать продукт с их кодом, но
+   * ТРЕБУЮТ довести до пользователя текст лицензии и авторство. Файл, лежащий
+   * в папке установки, этому требованию отвечает лишь формально — поэтому на
+   * него есть кнопка в настройках.
+   */
+  ipcMain.handle('app:open-notices', async () => {
+    const file = app.isPackaged
+      ? join(process.resourcesPath, 'THIRD-PARTY-NOTICES.md')
+      : join(app.getAppPath(), '..', '..', 'THIRD-PARTY-NOTICES.md')
+    const err = await shell.openPath(file)
+    return err ? { ok: false, message: `Не удалось открыть: ${err}` } : { ok: true, message: '' }
+  })
+
   /*
    * Открыть ссылку снаружи. Схему проверяем ЗДЕСЬ, а не в интерфейсе.
    *

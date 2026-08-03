@@ -53,10 +53,48 @@ async function atomicWrite(file: string, content: string): Promise<void> {
  */
 const registry = new Set<{ flushSync: () => void; name: string }>()
 
+/*
+ * Куда сообщать о бедах хранилища.
+ *
+ * Напрямую позвать logger отсюда НЕЛЬЗЯ: он сам пишет через это хранилище
+ * (storage → logger → db → storage), и получилось бы кольцо импортов. Хуже
+ * того, отказ записи попытался бы записать сообщение об отказе записи — и так
+ * до переполнения стека.
+ *
+ * Поэтому наружу торчит только эта дырка: кто умеет докладывать, тот сам себя
+ * и подставит на старте. Пока не подставили, беды уходят в stderr — в
+ * собранном приложении он попадает в системный журнал.
+ */
+type Reporter = (message: string, fatal: boolean) => void
+let report: Reporter = (message) => console.error(`[хранилище] ${message}`)
+let reporting = false
+
+export function setStorageReporter(fn: Reporter): void {
+  report = fn
+}
+
+/** Доложить о беде, не позволяя докладу вызвать новую беду по кругу. */
+function tell(message: string, fatal = false): void {
+  if (reporting) return
+  reporting = true
+  try { report(message, fatal) } catch { /* докладчик сломан — молчим, иначе рекурсия */ }
+  finally { reporting = false }
+}
+
 /** Сбросить на диск все несохранённые коллекции (вызывается при выходе). */
 export function flushAllCollectionsSync(): void {
   for (const c of registry) {
-    try { c.flushSync() } catch { /* одна битая коллекция не мешает остальным */ }
+    try {
+      c.flushSync()
+    } catch (e) {
+      /*
+       * Одна битая коллекция не мешает остальным — но это ПОСЛЕДНЯЯ запись
+       * перед выходом. Что не сохранилось сейчас, потеряно навсегда, и
+       * человек обнаружит пропажу при следующем запуске, без единой подсказки
+       * почему.
+       */
+      tell(`Не сохранил при выходе: ${(e as Error).message}`, true)
+    }
   }
 }
 
@@ -78,7 +116,7 @@ export async function sweepTempFiles(): Promise<void> {
         if (pid === process.pid) continue
         await fsp.unlink(join(dir, name)).catch(() => undefined)
       }
-    } catch { /* папки может не быть */ }
+    } catch { /* папки может не быть — при первом запуске это норма */ }
   }
 }
 
@@ -102,7 +140,13 @@ export class Collection<T extends { id: string }> {
       for (const item of raw) this.items.set(item.id, item)
     } catch {
       // повреждённый файл переименовываем, не теряя данные безвозвратно
-      try { renameSync(this.file, this.file + '.corrupt.' + Date.now()) } catch { /* ignore */ }
+      try {
+        renameSync(this.file, this.file + '.corrupt.' + Date.now())
+      } catch (e) {
+        // не отложили битый файл — значит он останется на месте и будет
+        // ломать загрузку при каждом запуске, молча и бесконечно
+        tell(`Битый файл ${this.file} не удалось отложить: ${(e as Error).message}`, true)
+      }
     }
   }
 
@@ -204,7 +248,11 @@ export class MessageStore<M extends { id: string; chatId: string }> {
           // Битый файл одной переписки не должен ронять всё остальное: раньше
           // исключение отсюда уходило наверх и обрывало открытие чата целиком.
           // Сохраняем испорченное рядом — вдруг пригодится, — и начинаем чисто.
-          try { renameSync(file, file + '.corrupt.' + Date.now()) } catch { /* ignore */ }
+          try {
+            renameSync(file, file + '.corrupt.' + Date.now())
+          } catch (e) {
+            tell(`Битую переписку не удалось отложить: ${(e as Error).message}`, true)
+          }
         }
       }
       this.cache.set(chatId, msgs)
@@ -269,7 +317,12 @@ export class MessageStore<M extends { id: string; chatId: string }> {
       try {
         await atomicWrite(this.fileFor(chatId), JSON.stringify(msgs))
         this.dirtyChats.delete(chatId) // только после удачной записи
-      } catch { /* попробуем при следующей правке или при выходе */ }
+      } catch (e) {
+        // отметка «не сохранено» остаётся, попробуем позже. Но если запись
+        // падает всегда — нет прав, кончилось место — переписка не ляжет на
+        // диск никогда, а выяснится это только после перезапуска
+        tell(`Переписка не записана, попробую позже: ${(e as Error).message}`)
+      }
     }
     this.forgetColdChats()
   }
@@ -296,7 +349,11 @@ export class MessageStore<M extends { id: string; chatId: string }> {
       try {
         if (msgs) atomicWriteSync(this.fileFor(chatId), JSON.stringify(msgs))
         this.dirtyChats.delete(chatId)
-      } catch { /* не записалось — пусть остаётся помеченной */ }
+      } catch (e) {
+        // выход из программы: следующей попытки НЕ БУДЕТ. Это последний шанс
+        // сохранить переписку, и его потеря должна быть записана
+        tell(`Переписка потеряна при выходе: ${(e as Error).message}`, true)
+      }
     }
   }
 }

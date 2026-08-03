@@ -1112,6 +1112,15 @@ function UpdateCard() {
         Kira сама смотрит, не вышла ли новая версия, но ничего не скачивает без твоего согласия.
         Обновление ставится при перезапуске — работа не прервётся посреди дела.
       </p>
+      <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+        <button className="btn btn-ghost press" style={{ fontSize: 12 }}
+          onClick={() => void kira.app.openNotices()}>
+          Стороннее ПО и лицензии
+        </button>
+        <span className="muted" style={{ fontSize: 11, marginLeft: 8 }}>
+          открытый код и модели других авторов в составе Kira
+        </span>
+      </div>
     </div>
   )
 }

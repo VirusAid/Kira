@@ -119,5 +119,6 @@ export function initClipboardHistory(): void {
 export function shutdownClipboardHistory(): void {
   if (timer) clearInterval(timer)
   timer = null
-  try { col().flushSync() } catch { /* ignore */ }
+  // выход из программы: не записали — историю буфера потеряли
+  try { col().flushSync() } catch (e) { console.error('[буфер] не сохранил при выходе:', (e as Error).message) }
 }

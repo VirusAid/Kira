@@ -9,6 +9,23 @@ import { execFile } from 'child_process'
 import { getSettings } from './settings'
 import type { ActionResult } from '../../shared/types'
 
+/**
+ * Проверка, которую не удалось выполнить.
+ *
+ * Раньше здесь стоял молчаливый catch, и упавшая проверка просто исчезала из
+ * отчёта. Человек спрашивал «почему не работает голос?» — и не видел про голос
+ * вообще НИЧЕГО, будто такой подсистемы нет. Молчание хуже плохой новости:
+ * плохую новость хотя бы видно.
+ */
+function checkFailed(name: string, e: unknown): DiagCheck {
+  return {
+    name,
+    ok: false,
+    detail: `проверить не удалось: ${(e as Error)?.message ?? String(e)}`.slice(0, 200),
+    fix: 'Загляни в журнал — модуль не отвечает'
+  }
+}
+
 export interface DiagCheck {
   name: string
   ok: boolean
@@ -59,7 +76,7 @@ export async function diagnose(topicText?: string): Promise<{ checks: DiagCheck[
           fix: localReady ? undefined : (!st.installed ? 'Установи Ollama и скачай модель в Настройки → Модели ИИ → Офлайн-мозг' : 'Скачай модель (кнопка «Скачать» в карточке офлайн-мозга)')
         })
       }
-    } catch { /* модуль недоступен */ }
+    } catch (e) { checks.push(checkFailed('Офлайн-мозг (Ollama)', e)) }
     checks.push({
       name: 'Мозг Kira (ИИ)',
       ok: hasKey || localReady || s.provider === 'ollama',
@@ -86,19 +103,19 @@ export async function diagnose(topicText?: string): Promise<{ checks: DiagCheck[
       const { silero } = await import('./ai/silero')
       const ok = await silero.isAvailable()
       checks.push({ name: 'Голос Silero (озвучка)', ok, detail: ok ? 'готов' : 'не установлен', fix: ok ? undefined : 'Настройки → Голос → «Установить локальный голос» (или используется Edge/системный)' })
-    } catch { /* ignore */ }
+    } catch (e) { checks.push(checkFailed('Голос Silero (озвучка)', e)) }
     try {
       const { wakeWord } = await import('./ai/wakeword')
       const ok = await wakeWord.isAvailable()
       checks.push({ name: 'Слово-активатор «Кира» (Vosk)', ok, detail: ok ? 'готов' : 'не установлен', fix: ok ? undefined : 'Настройки → Поведение → установить слово-активатор' })
-    } catch { /* ignore */ }
+    } catch (e) { checks.push(checkFailed('Слово-активатор «Кира» (Vosk)', e)) }
     {
       const hasGroq = !!s.providers.groq.apiKey?.trim()
       let hasOfflineStt = false
       try {
         const { voskStt } = await import('./ai/voskStt')
         hasOfflineStt = voskStt.available()
-      } catch { /* ignore */ }
+      } catch { /* офлайн-распознавание не установлено — ниже честно скажем, что его нет */ }
       checks.push({
         name: 'Голосовой ввод (распознавание речи)',
         ok: hasOfflineStt || hasGroq,
@@ -120,7 +137,7 @@ export async function diagnose(topicText?: string): Promise<{ checks: DiagCheck[
           : 'офлайн: читаю ТЕКСТ экрана (OCR). Картинки не описываю — нужен облачный ИИ или локальная vision-модель',
         fix: canSee ? undefined : 'Для описания изображений: ключ Gemini (Настройки → Модели) или скачай vision-модель в Ollama (напр. qwen2.5-vl)'
       })
-    } catch { /* ignore */ }
+    } catch (e) { checks.push(checkFailed('Зрение (снимок экрана)', e)) }
   }
 
   // ─── Семантика / память / документы ───
@@ -129,7 +146,7 @@ export async function diagnose(topicText?: string): Promise<{ checks: DiagCheck[
       const { semantic } = await import('./ai/semantic')
       const ok = await semantic.isAvailable()
       checks.push({ name: 'Семантическая память и поиск по документам', ok, detail: ok ? 'готова (fastembed)' : 'не установлена', fix: ok ? undefined : 'Настройки → установить движок эмбеддингов (fastembed)' })
-    } catch { /* ignore */ }
+    } catch (e) { checks.push(checkFailed('Семантическая память и поиск по документам', e)) }
 
     // Личное обучение: всё выученное лежит в профиле ЭТОГО пользователя
     // Windows и ни с кем не делится. Показываем это прямо, чтобы вопрос «а моё
@@ -146,7 +163,7 @@ export async function diagnose(topicText?: string): Promise<{ checks: DiagCheck[
           ? `в работе ${active}, ждут повтора ${waiting}. Хранится только в твоём профиле: ${app.getPath('userData')}`
           : `пока ничего не выучила — учусь по ходу дела. Хранится только в твоём профиле: ${app.getPath('userData')}`
       })
-    } catch { /* ignore */ }
+    } catch (e) { checks.push(checkFailed('Личное обучение (твои формулировки)', e)) }
   }
 
   // ─── Диск ───
@@ -156,7 +173,7 @@ export async function diagnose(topicText?: string): Promise<{ checks: DiagCheck[
       const freeGB = (st.bavail * st.bsize) / 1024 ** 3
       const ok = freeGB > 3
       checks.push({ name: 'Свободное место на диске', ok, detail: `${freeGB.toFixed(1)} ГБ свободно`, fix: ok ? undefined : 'Мало места — почисти загрузки/корзину или скажи «почисти временные файлы»' })
-    } catch { /* ignore */ }
+    } catch (e) { checks.push(checkFailed('Свободное место на диске', e)) }
   }
 
   // ─── Интеграции ───

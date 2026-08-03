@@ -10,6 +10,7 @@ import { spawn, ChildProcessWithoutNullStreams, execFile, execFileSync } from 'c
 import { existsSync, readdirSync } from 'fs'
 import { join } from 'path'
 import { logger } from '../logger'
+import { reportFault } from '../faults'
 import { getSettings } from '../settings'
 
 export function resourcesRoot(): string {
@@ -53,7 +54,12 @@ export function resolveModelDir(): string | null {
       execFileSync('powershell', ['-NoProfile', '-Command', `Expand-Archive -Force '${zip}' '${dir}'`], { timeout: 60_000, windowsHide: true })
       const sub = findModelSub(dir)
       if (sub) return sub
-    } catch { /* ignore */ }
+    } catch (e) {
+      // без модели слово пробуждения не работает вовсе — человек зовёт Kira,
+      // а она молчит, и причину узнать неоткуда
+      reportFault('пробуждение', `Не удалось распаковать модель: ${(e as Error).message}`,
+        'Проверь место на диске и переустанови Kira')
+    }
   }
   // вшитая в установщик модель (только чтение — Vosk её лишь читает)
   return findModelSub(join(resourcesRoot(), 'vosk-model'))
@@ -152,14 +158,26 @@ class WakeWordManager {
     if (!this.proc || !this.ready) return
     const header = Buffer.alloc(4)
     header.writeUInt32LE(pcm.length, 0)
-    try { this.proc.stdin.write(header); this.proc.stdin.write(pcm) } catch { /* ignore */ }
+    try {
+      this.proc.stdin.write(header)
+      this.proc.stdin.write(pcm)
+    } catch (e) {
+      /*
+       * Горячий путь: сюда приходит звук десятки раз в секунду. Сообщаем ОДИН
+       * раз — сбрасываем готовность, и следующие пакеты уходят по `!this.ready`
+       * в начале метода, не доходя до записи. Иначе один обрыв трубы породил
+       * бы поток одинаковых сообщений.
+       */
+      this.ready = false
+      reportFault('пробуждение', `Оборвалась связь с распознавателем: ${(e as Error).message}`)
+    }
   }
 
   stop(): void {
     this.stopped = true // штатная остановка — авто-перезапуск не нужен
     this.ready = false
     this.starting = false
-    if (this.proc) { try { this.proc.kill() } catch { /* ignore */ } this.proc = null }
+    if (this.proc) { try { this.proc.kill() } catch { /* уже мёртв — убивать нечего */ } this.proc = null }
   }
 
   get running(): boolean {

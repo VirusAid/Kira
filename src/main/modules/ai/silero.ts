@@ -220,7 +220,7 @@ class SileroManager {
     this.starting = null
     forgetSidecar('голос')
     if (this.proc) {
-      try { this.proc.kill() } catch { /* ignore */ }
+      try { this.proc.kill() } catch { /* уже мёртв — убивать нечего */ }
       this.proc = null
     }
   }

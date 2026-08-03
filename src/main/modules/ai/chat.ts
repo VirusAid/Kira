@@ -10,6 +10,7 @@ import { BrowserWindow } from 'electron'
 import { streamChat, candidateProviders, visionCandidateProviders, visionAvailable, type AIMessage, resolveEndpoint } from './client'
 import { buildSystemPrompt, parseActions, stripActions, stripActionsInline, executeAction, isDangerous, describeAction, type ParsedAction } from './kira'
 import { logger } from '../logger'
+import { reportFault, clearFault } from '../faults'
 import { contentOf } from '../../core/types'
 import { getSettings } from '../settings'
 import type { AIProviderId, AIRequest, ChatRole } from '../../../shared/types'
@@ -141,7 +142,16 @@ async function streamRound(
       const local = await import('./localLlm')
       await local.ensureRunning()
       await local.cachedModels() // заодно узнаём, какая модель реально есть
-    } catch { /* не поднялся — обычная отказоустойчивость ниже */ }
+      clearFault('офлайн-разум')
+    } catch (e) {
+      /*
+       * Отказоустойчивость ниже подхватит и уйдёт в облако — но человек-то
+       * ВЫБРАЛ офлайн. Он думает, что разговор не покидает компьютер, а тот
+       * молча уходит на чужой сервер. Умолчать об этом нельзя.
+       */
+      reportFault('офлайн-разум', `Не поднялся, ухожу в облако: ${(e as Error).message}`.slice(0, 300),
+        'Проверь офлайн-разум в настройках — пока отвечает облачный ИИ')
+    }
   }
 
   for (let i = 0; i < candidates.length; i++) {
@@ -322,7 +332,11 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
             ? `\n\n[Офлайн-модель не видит изображения. Распознанный на нём текст]:\n${text.slice(0, 4000)}`
             : '\n\n[Офлайн-модель не видит изображения, а текста на нём не распознано. Скажи пользователю: для описания картинок нужен облачный ИИ (Gemini) или локальная vision-модель.]'
           history[history.length - 1] = { role: 'user', content: last.content + note }
-        } catch { /* оставляем как есть */ }
+        } catch (e) {
+          // не критично: картинка уйдёт без распознанного текста. Но если OCR
+          // сломан насовсем, модель будет вечно «слепой» — это должно быть видно
+          logger.warn('ai', `OCR для офлайн-модели не сработал: ${(e as Error).message}`)
+        }
       }
     }
   }
@@ -468,7 +482,7 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
             const text = contentOf(r) // содержимое действия, а не статус
             if (r.ok && text) results.push(`[после действий — текст на экране, OCR]:\n${text.slice(0, 3000)}`)
           }
-        } catch { /* экран недоступен */ }
+        } catch { /* экран мог закрыться между действием и снимком — не отказ */ }
       }
 
       const followupText =
@@ -530,7 +544,11 @@ export async function handleChatRequest(win: BrowserWindow, req: AIRequest): Pro
           // вместе с аргументами: «открой мою почту» без адреса — пустая форма
           noteMiss(missedPhrase, only.name, only.args)
         }
-      } catch { /* обучение не должно влиять на ответ */ }
+      } catch (e) {
+        // на ответ действительно влиять не должно, но молчаливый отказ здесь
+        // означает, что Kira ПЕРЕСТАЛА УЧИТЬСЯ и никто этого не заметит
+        logger.warn('обучение', `Не записал промах: ${(e as Error).message}`)
+      }
     }
   } catch (err) {
     const message = (err as Error).message

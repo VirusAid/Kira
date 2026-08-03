@@ -2,6 +2,7 @@
 import { useEffect, useRef } from 'react'
 import { TitleBar } from '@/components/TitleBar'
 import { Sidebar } from '@/components/Sidebar'
+import { FaultBanner } from './components/FaultBanner'
 import { RightPanel } from '@/components/RightPanel'
 import { GlobalSearch } from '@/components/GlobalSearch'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
@@ -172,6 +173,7 @@ export default function App() {
         <span className="tl" /><span className="tr" /><span className="bl" /><span className="br" />
       </div>
       <TitleBar />
+      <FaultBanner />
       <div className="app-body">
         <Sidebar
           voiceState={voice.state}

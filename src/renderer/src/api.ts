@@ -1,8 +1,7 @@
 /** Типизированный доступ к мосту window.kira (preload). */
 import type {
   ActionResult, AIRequest, UpdateState, Automation, Chat, ChatMessage, FileItem, KiraSettings,
-  LogEntry, MemoryEntry, ProcessInfo, Project, Protocol, Ability, SearchResult, SystemStats
-} from '@shared/types'
+  LogEntry, MemoryEntry, ProcessInfo, Project, Protocol, Ability, SearchResult, SystemStats, Fault } from '@shared/types'
 import type {
   McpBinding, McpServerConfig, McpStatus, McpTool
 } from '@shared/types'
@@ -29,6 +28,13 @@ interface KiraBridge {
   on: (channel: string, listener: (...args: unknown[]) => void) => () => void
   app: {
     openExternal: (url: string) => Promise<{ ok: boolean; message: string }>
+    openNotices: () => Promise<{ ok: boolean; message: string }>
+    reportUiError: (message: string) => Promise<void>
+  }
+  faults: {
+    list: () => Promise<Fault[]>
+    clear: (subsystem: string) => Promise<void>
+    onChanged: (cb: (list: Fault[]) => void) => () => void
   }
   update: {
     state: () => Promise<UpdateState>

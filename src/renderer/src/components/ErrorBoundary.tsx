@@ -4,6 +4,7 @@
  * Main-процесс (голос, ядро, автоматизации) при этом продолжает работать.
  */
 import React from 'react'
+import { reportUiError } from '../errors'
 
 interface State {
   error: Error | null
@@ -17,7 +18,9 @@ export class ErrorBoundary extends React.Component<{ children: React.ReactNode }
   }
 
   componentDidCatch(error: Error): void {
-    console.error('Kira UI error:', error)
+    // console.error видит только тот, кто открыл инструменты разработчика;
+    // до журнала Kira падение интерфейса раньше не доходило вообще
+    reportUiError('Падение интерфейса', error)
   }
 
   render(): React.ReactNode {

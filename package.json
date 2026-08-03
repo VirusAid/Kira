@@ -1,6 +1,6 @@
 {
   "name": "kira",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "Kira — персональный ИИ-ассистент нового поколения для Windows",
   "main": "./out/main/index.js",
   "author": "VirusAid (D3F0LT)",
@@ -11,16 +11,20 @@
     "build": "electron-vite build",
     "start": "electron-vite preview",
     "postinstall": "electron-builder install-app-deps",
-    "dist": "node scripts/prepare-mcp.mjs && electron-vite build && electron-builder --win",
+    "dist": "node scripts/licenses.mjs && node scripts/prepare-mcp.mjs && electron-vite build && electron-builder --win",
     "test:core": "esbuild tests/core.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-core.cjs && node tests/.build/test-core.cjs",
     "prepare:standalone": "node scripts/prepare-standalone.mjs",
     "dist:standalone": "node scripts/prepare-standalone.mjs && node scripts/prepare-mcp.mjs && electron-vite build && electron-builder --win",
     "test:mcp": "esbuild tests/mcp.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-mcp.cjs && node tests/.build/test-mcp.cjs",
-    "test": "npm run test:core && npm run test:mcp && npm run test:ext && npm run test:storage && npm run test:safety",
+    "test": "npm run test:core && npm run test:mcp && npm run test:ext && npm run test:storage && npm run test:safety && npm run test:files && npm run test:faults && npm run test:uierrors",
     "prepare:mcp": "node scripts/prepare-mcp.mjs",
     "test:ext": "esbuild tests/extensions.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-ext.cjs && node tests/.build/test-ext.cjs",
     "test:storage": "esbuild tests/storage.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-storage.cjs && node tests/.build/test-storage.cjs",
-    "test:safety": "esbuild tests/safety.test.ts --bundle --platform=node --format=cjs --external:jsdom --outfile=tests/.build/test-safety.cjs && node tests/.build/test-safety.cjs"
+    "test:safety": "esbuild tests/safety.test.ts --bundle --platform=node --format=cjs --external:jsdom --outfile=tests/.build/test-safety.cjs && node tests/.build/test-safety.cjs",
+    "test:files": "esbuild tests/files.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-files.cjs && node tests/.build/test-files.cjs",
+    "licenses": "node scripts/licenses.mjs",
+    "test:faults": "esbuild tests/faults.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-faults.cjs && node tests/.build/test-faults.cjs",
+    "test:uierrors": "esbuild tests/uierrors.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-uierrors.cjs && node tests/.build/test-uierrors.cjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",
@@ -67,6 +71,14 @@
       {
         "from": "resources",
         "to": "."
+      },
+      {
+        "from": "THIRD-PARTY-NOTICES.md",
+        "to": "THIRD-PARTY-NOTICES.md"
+      },
+      {
+        "from": "LICENSE",
+        "to": "LICENSE.txt"
       }
     ],
     "win": {
@@ -82,7 +94,8 @@
       "installerHeaderIcon": "build/icon.ico",
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Kira"
+      "shortcutName": "Kira",
+      "include": "build/installer.nsh"
     },
     "artifactName": "Kira-Setup-${version}.${ext}",
     "copyright": "Copyright © 2026 VirusAid (D3F0LT). Все права защищены.",
