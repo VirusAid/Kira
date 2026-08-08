@@ -8,7 +8,7 @@ Kira включает открытый код и обученные модели
 открытым не является. Перечисленное ниже к нему не относится.
 
 Файл собирается автоматически: `node scripts/licenses.mjs`.
-Дата сборки: 2026-08-01.
+Дата сборки: 2026-08-08.
 
 ---
 
@@ -173,7 +173,7 @@ Chromium: https://chromium.googlesource.com/chromium/src/+/main/LICENSE
 | gopd | 1.2.0 | MIT |
 | has-symbols | 1.1.0 | MIT |
 | hasown | 2.0.4 | MIT |
-| hono | 4.12.33 | MIT |
+| hono | 4.12.34 | MIT |
 | http-errors | 2.0.1 | MIT |
 | iconv-lite | 0.7.3 | MIT |
 | inherits | 2.0.4 | ISC |
