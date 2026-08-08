@@ -10,7 +10,7 @@ import { logger } from './logger'
 import { reportFault, clearFault, listFaults } from './faults'
 import { getSettings, saveSettings } from './settings'
 import { handleChatRequest, abortRequest, confirmAction, generateChatTitle } from './ai/chat'
-import { testProvider, completeChat, listProviderModels } from './ai/client'
+import { testProvider, completeChat, listProviderModels, keyProblem } from './ai/client'
 import { synthesize, EDGE_VOICES } from './ai/tts'
 import { silero, SILERO_SPEAKERS } from './ai/silero'
 import { wakeWord } from './ai/wakeword'
@@ -592,6 +592,23 @@ export function registerIpc(getWindow: () => BrowserWindow | null): void {
   ipcMain.handle('settings:get', () => getSettings())
   ipcMain.handle('settings:save', (_e, next: KiraSettings) => {
     const saved = saveSettings(next)
+
+    /*
+     * Негодный ключ отмечаем СРАЗУ при сохранении, а не при первом вопросе к
+     * модели. Иначе человек закрывает настройки в уверенности, что всё
+     * подключил, и узнаёт правду когда-нибудь потом — уже не связывая одно с
+     * другим.
+     *
+     * Пустой ключ не трогаем: провайдер может быть просто не настроен, и это
+     * не поломка.
+     */
+    for (const [id, cfg] of Object.entries(saved.providers ?? {})) {
+      const key = (cfg as { apiKey?: string })?.apiKey ?? ''
+      if (!key) continue
+      const problem = keyProblem(key.trim())
+      if (problem) reportFault('провайдер ИИ', `Ключ «${id}»: ${problem}`, 'Открой Настройки и введи ключ заново')
+      else if (id === saved.provider) clearFault('провайдер ИИ')
+    }
     registerHotkey()
     refreshVisibility()
     restartDiscordMonitor()

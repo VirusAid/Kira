@@ -112,7 +112,7 @@ Chromium: https://chromium.googlesource.com/chromium/src/+/main/LICENSE
 
 | Компонент | Версия | Лицензия |
 |---|---|---|
-| @hono/node-server | 2.0.12 | MIT |
+| @hono/node-server | 2.1.0 | MIT |
 | @isaacs/cliui | 8.0.2 | ISC |
 | @modelcontextprotocol/sdk | 1.30.0 | MIT |
 | @modelcontextprotocol/server-filesystem | 2026.7.10 | MIT |
@@ -159,7 +159,7 @@ Chromium: https://chromium.googlesource.com/chromium/src/+/main/LICENSE
 | eventsource | 3.0.7 | MIT |
 | eventsource-parser | 3.1.0 | MIT |
 | express | 5.2.1 | MIT |
-| express-rate-limit | 8.6.1 | MIT |
+| express-rate-limit | 8.6.2 | MIT |
 | fast-deep-equal | 3.1.3 | MIT |
 | fast-uri | 3.1.5 | BSD-3-Clause |
 | finalhandler | 2.1.1 | MIT |
@@ -173,7 +173,7 @@ Chromium: https://chromium.googlesource.com/chromium/src/+/main/LICENSE
 | gopd | 1.2.0 | MIT |
 | has-symbols | 1.1.0 | MIT |
 | hasown | 2.0.4 | MIT |
-| hono | 4.12.34 | MIT |
+| hono | 4.13.1 | MIT |
 | http-errors | 2.0.1 | MIT |
 | iconv-lite | 0.7.3 | MIT |
 | inherits | 2.0.4 | ISC |
@@ -183,7 +183,7 @@ Chromium: https://chromium.googlesource.com/chromium/src/+/main/LICENSE
 | is-promise | 4.0.0 | MIT |
 | isexe | 2.0.0 | ISC |
 | jackspeak | 3.4.3 | BlueOak-1.0.0 |
-| jose | 6.2.7 | MIT |
+| jose | 6.2.8 | MIT |
 | json-schema-traverse | 1.0.0 | MIT |
 | json-schema-typed | 8.0.2 | BSD-2-Clause |
 | lru-cache | 10.4.3 | ISC |

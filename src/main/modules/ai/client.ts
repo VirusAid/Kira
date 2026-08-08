@@ -34,6 +34,51 @@ function localModelName(preferred: string): string {
   return resolveLocalModel(preferred) || preferred || 'qwen3:4b'
 }
 
+/**
+ * Годится ли ключ для HTTP-заголовка. Возвращает объяснение беды или null.
+ *
+ * Ключ уезжает в `Authorization: Bearer …`, а заголовки HTTP держат только
+ * latin-1. Кириллица, кавычки-ёлочки и переводы строки роняют сам fetch
+ * изнутри, и наружу вылезало «Cannot convert argument to a ByteString because
+ * the character at index 11 has a value of 1058». Человек читал это вместо
+ * «ключ введён неверно» и не понимал, что от него хотят.
+ *
+ * Ловится живьём: в поле ключа оказывался русский текст — надиктованный
+ * голосом или вставленный вместе с подписью со страницы провайдера.
+ */
+export function keyProblem(key: string): string | null {
+  if (!key) return 'ключ не задан'
+  if (/[\r\n\t]/.test(key)) return 'в ключе есть перевод строки — скопировался лишний текст'
+  if (/\s/.test(key.trim())) return 'в ключе есть пробел — похоже, скопировалось лишнее'
+  /*
+   * Требуем ПЕЧАТНЫЙ ASCII, а не просто «влезает в байт».
+   *
+   * Порога в 255 мало: «ёлочка» имеет код 171 и в заголовок проходит, хотя в
+   * настоящем ключе её быть не может — она попадает туда только копипастой со
+   * страницы провайдера. Ключи всех поддерживаемых сервисов состоят из букв,
+   * цифр и `-_.`, поэтому строгость здесь ничего не ломает, а лишнее ловит
+   * раньше, чем его отвергнет сервер невнятным «unauthorized».
+   */
+  const bad = [...key].find((ch) => {
+    const c = ch.charCodeAt(0)
+    return c < 0x21 || c > 0x7e
+  })
+  if (bad) {
+    return /[а-яёА-ЯЁ]/.test(bad)
+      ? `в ключе русские буквы («${bad}») — вставлен не ключ, а текст`
+      : `в ключе недопустимый символ «${bad}»`
+  }
+  return null
+}
+
+/** Ключ, пригодный для заголовка: обрезан по краям и проверен. */
+function headerKey(raw: string | undefined, provider: string): string {
+  const key = (raw ?? '').trim()
+  const problem = keyProblem(key)
+  if (problem) throw new Error(`Ключ провайдера «${provider}» не подходит: ${problem}`)
+  return key
+}
+
 export function resolveEndpoint(providerId?: AIProviderId): ProviderEndpoint {
   const s = getSettings()
   const id = providerId ?? s.provider
@@ -54,14 +99,14 @@ export function resolveEndpoint(providerId?: AIProviderId): ProviderEndpoint {
     case 'groq':
       return {
         url: 'https://api.groq.com/openai/v1/chat/completions',
-        headers: { Authorization: `Bearer ${cfg.apiKey ?? ''}` },
+        headers: { Authorization: `Bearer ${headerKey(cfg.apiKey, id)}` },
         model: cfg.model || 'llama-3.3-70b-versatile'
       }
     case 'openrouter':
       return {
         url: 'https://openrouter.ai/api/v1/chat/completions',
         headers: {
-          Authorization: `Bearer ${cfg.apiKey ?? ''}`,
+          Authorization: `Bearer ${headerKey(cfg.apiKey, id)}`,
           'HTTP-Referer': 'https://kira.local',
           'X-Title': 'Kira Assistant'
         },
@@ -70,20 +115,20 @@ export function resolveEndpoint(providerId?: AIProviderId): ProviderEndpoint {
     case 'gemini':
       return {
         url: 'https://generativelanguage.googleapis.com/v1beta/openai/chat/completions',
-        headers: { Authorization: `Bearer ${cfg.apiKey ?? ''}` },
+        headers: { Authorization: `Bearer ${headerKey(cfg.apiKey, id)}` },
         model: cfg.model || 'gemini-3.5-flash'
       }
     case 'deepseek':
       return {
         url: 'https://api.deepseek.com/v1/chat/completions',
-        headers: { Authorization: `Bearer ${cfg.apiKey ?? ''}` },
+        headers: { Authorization: `Bearer ${headerKey(cfg.apiKey, id)}` },
         model: cfg.model || 'deepseek-chat'
       }
     case 'glm':
       // Z.ai (Zhipu GLM) — OpenAI-совместимый международный endpoint
       return {
         url: 'https://api.z.ai/api/paas/v4/chat/completions',
-        headers: { Authorization: `Bearer ${cfg.apiKey ?? ''}` },
+        headers: { Authorization: `Bearer ${headerKey(cfg.apiKey, id)}` },
         model: cfg.model || 'glm-5.2'
       }
     case 'claude':
@@ -386,7 +431,22 @@ export function streamChat(
   options?: { temperature?: number; providerId?: AIProviderId }
 ): StreamHandle {
   const controller = new AbortController()
-  const endpoint = resolveEndpoint(options?.providerId)
+
+  /*
+   * Разбор настроек — до всякой сети, и он может отказать: негодный ключ мы
+   * теперь отвергаем здесь, а не даём fetch споткнуться внутри.
+   *
+   * Ловим ОБЯЗАТЕЛЬНО: функция синхронная, и брошенное отсюда исключение
+   * прошло бы мимо обработчика ответа. Для человека это выглядело бы как
+   * вечное «Kira думает…» — окно ждёт потока, которого никогда не будет.
+   */
+  let endpoint: ProviderEndpoint
+  try {
+    endpoint = resolveEndpoint(options?.providerId)
+  } catch (e) {
+    callbacks.onError(connectionError(e as Error, options?.providerId), false)
+    return { abort: () => {} }
+  }
   const providerId = options?.providerId ?? getSettings().provider
 
   // Claude — не OpenAI-формат: уходит через официальный SDK Anthropic
@@ -559,6 +619,21 @@ function humanizeApiError(status: number, body: string, providerId?: AIProviderI
 
 function connectionError(err: Error, providerId?: AIProviderId): string {
   const provider = providerId ?? getSettings().provider
+
+  /*
+   * Негодный ключ — не «ошибка соединения», а неверная настройка, и говорить
+   * о ней надо соответственно. Проверка перед запросом бросает готовое
+   * объяснение; пропускаем его как есть, не заворачивая.
+   *
+   * Отдельно ловим случай, когда до проверки не дошло: fetch спотыкается сам
+   * и выдаёт «Cannot convert argument to a ByteString because the character
+   * at index 11 has a value of 1058». Читать такое человеку незачем.
+   */
+  if (/Ключ провайдера/.test(err.message)) return err.message
+  if (/ByteString|greater than 255/i.test(err.message)) {
+    return `Ключ провайдера «${provider}» содержит недопустимые символы — открой Настройки и введи его заново.`
+  }
+
   if (provider === 'ollama') {
     return 'Не удалось подключиться к Ollama. Убедись, что Ollama запущена (ollama serve) и модель скачана (ollama pull llama3.1).'
   }

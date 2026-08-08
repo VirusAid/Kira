@@ -1,6 +1,6 @@
 {
   "name": "kira",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "Kira — персональный ИИ-ассистент нового поколения для Windows",
   "main": "./out/main/index.js",
   "author": "VirusAid (D3F0LT)",
@@ -16,7 +16,7 @@
     "prepare:standalone": "node scripts/prepare-standalone.mjs",
     "dist:standalone": "node scripts/prepare-standalone.mjs && node scripts/prepare-mcp.mjs && electron-vite build && electron-builder --win",
     "test:mcp": "esbuild tests/mcp.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-mcp.cjs && node tests/.build/test-mcp.cjs",
-    "test": "npm run test:core && npm run test:mcp && npm run test:ext && npm run test:storage && npm run test:safety && npm run test:files && npm run test:faults && npm run test:uierrors && npm run test:prompt",
+    "test": "npm run test:core && npm run test:mcp && npm run test:ext && npm run test:storage && npm run test:safety && npm run test:files && npm run test:faults && npm run test:uierrors && npm run test:prompt && npm run test:actions && npm run test:appnames && npm run test:apikey",
     "prepare:mcp": "node scripts/prepare-mcp.mjs",
     "test:ext": "esbuild tests/extensions.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-ext.cjs && node tests/.build/test-ext.cjs",
     "test:storage": "esbuild tests/storage.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-storage.cjs && node tests/.build/test-storage.cjs",
@@ -25,7 +25,10 @@
     "licenses": "node scripts/licenses.mjs",
     "test:faults": "esbuild tests/faults.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-faults.cjs && node tests/.build/test-faults.cjs",
     "test:uierrors": "esbuild tests/uierrors.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-uierrors.cjs && node tests/.build/test-uierrors.cjs",
-    "test:prompt": "esbuild tests/prompt.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-prompt.cjs && node tests/.build/test-prompt.cjs"
+    "test:prompt": "esbuild tests/prompt.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-prompt.cjs && node tests/.build/test-prompt.cjs",
+    "test:actions": "esbuild tests/actions.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-actions.cjs && node tests/.build/test-actions.cjs",
+    "test:appnames": "esbuild tests/appnames.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-appnames.cjs && node tests/.build/test-appnames.cjs",
+    "test:apikey": "esbuild tests/apikey.test.ts --bundle --platform=node --format=cjs --alias:electron=./tests/electron-stub.js --outfile=tests/.build/test-apikey.cjs && node tests/.build/test-apikey.cjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.112.3",

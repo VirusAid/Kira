@@ -79,6 +79,22 @@ const ps = (s: string) => `'${s.replace(/'/g, "''")}'`
 // ─── Программы и файлы ──────────────────────────────────────────────────────
 
 /** Известные приложения: имя → команда запуска. */
+/**
+ * Особая пометка в таблице приложений: путь ищется, а не задан жёстко.
+ */
+const TELEGRAM = '@telegram'
+
+/** Где Windows держит Telegram — по убыванию частоты установки. */
+function telegramPath(): string | null {
+  const candidates = [
+    join(process.env.APPDATA ?? '', 'Telegram Desktop', 'Telegram.exe'),
+    join(process.env.LOCALAPPDATA ?? '', 'Programs', 'Telegram Desktop', 'Telegram.exe'),
+    join(process.env.ProgramFiles ?? '', 'Telegram Desktop', 'Telegram.exe'),
+    join(process.env['ProgramFiles(x86)'] ?? '', 'Telegram Desktop', 'Telegram.exe')
+  ]
+  return candidates.find((p) => p.length > 20 && existsSync(p)) ?? null
+}
+
 const KNOWN_APPS: Record<string, string> = {
   'браузер': 'start microsoft-edge:',
   'edge': 'start microsoft-edge:',
@@ -103,14 +119,61 @@ const KNOWN_APPS: Record<string, string> = {
   'steam': 'start steam:',
   'стим': 'start steam:',
   'spotify': 'start spotify:',
-  'telegram': `start "" "$env:APPDATA\\Telegram Desktop\\Telegram.exe"`,
-  'телеграм': `start "" "$env:APPDATA\\Telegram Desktop\\Telegram.exe"`,
+  /*
+   * Telegram запускаем ПОИСКОМ по местам установки, а не жёсткой строкой.
+   *
+   * Здесь стояло `start "" "$env:APPDATA\Telegram Desktop\Telegram.exe"`, и
+   * ломалось это дважды. Во-первых, команда уходила в cmd, а исполнялась
+   * через PowerShell — тот съедал пустые кавычки, и до cmd доезжало
+   * `start  "C:\...\Telegram.exe"`. Для start единственный кавыченный
+   * аргумент — это ЗАГОЛОВОК ОКНА, поэтому он честно открывал пустую консоль
+   * с длинным заголовком вместо мессенджера — ровно то, что видел
+   * тестировщик. Во-вторых, путь угадан: Telegram ставится и в Program
+   * Files, и из магазина Windows.
+   */
+  'telegram': TELEGRAM,
+  'телеграм': TELEGRAM,
+  'телега': TELEGRAM,
   'vscode': 'start code',
   'visual studio code': 'start code',
   'paint': 'mspaint',
   'word': 'start winword',
   'excel': 'start excel'
 }
+
+/**
+ * Свести написание к сравнимому виду.
+ *
+ * Таблица приложений сверялась ТОЧНЫМ совпадением, и любая вольность в
+ * написании давала промах. Тестировщик написал «телеграмм» с двумя «м» —
+ * Kira ответила «не нашла программу», хотя «телеграм» в таблице был. Дописать
+ * ещё один ключ значило бы чинить симптом: по-русски пишут и «телеграмма», и
+ * «вотсап», и «фотошоп», и так для каждой программы.
+ *
+ * Поэтому убираем то, что на смысл не влияет: регистр, пробелы, дефисы, точки
+ * и УДВОЕННЫЕ буквы. «телеграмм», «теле грам», «Telegram» и «телеграм»
+ * сходятся в одно.
+ */
+export function normalizeAppName(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[\s\-_.'"«»]/g, '')
+    .replace(/(.)\1+/g, '$1')   // «телеграмм» → «телеграм»
+    .trim()
+}
+
+/**
+ * Тот же список, но по сведённым ключам. Строим один раз: таблица постоянна.
+ * Первое вхождение выигрывает — записи выше в таблице считаем основными.
+ */
+const NORMALIZED_APPS: Record<string, string> = (() => {
+  const map: Record<string, string> = {}
+  for (const [k, v] of Object.entries(KNOWN_APPS)) {
+    const n = normalizeAppName(k)
+    if (!(n in map)) map[n] = v
+  }
+  return map
+})()
 
 export async function openApp(nameOrPath: string, args?: string): Promise<ActionResult> {
   const key = nameOrPath.trim().toLowerCase()
@@ -122,8 +185,24 @@ export async function openApp(nameOrPath: string, args?: string): Promise<Action
     return { ok: true, message: 'Открываю браузер' }
   }
 
-  // 1. известное приложение
-  const known = KNOWN_APPS[key]
+  // 1. известное приложение — сначала точно, затем по сведённому написанию
+  const known = KNOWN_APPS[key] ?? NORMALIZED_APPS[normalizeAppName(key)]
+
+  if (known === TELEGRAM) {
+    const exe = telegramPath()
+    if (exe) {
+      const err = await shell.openPath(exe)
+      return err ? { ok: false, message: `Не удалось открыть Telegram: ${err}` }
+                 : { ok: true, message: 'Открываю Telegram' }
+    }
+    // из магазина Windows Telegram ставится без привычного .exe — пробуем
+    // зарегистрированную схему
+    const r = await runPowerShell('Start-Process tg://')
+    return r.code === 0
+      ? { ok: true, message: 'Открываю Telegram' }
+      : { ok: false, message: 'Не нашла Telegram на компьютере — он установлен?' }
+  }
+
   if (known) {
     const r = await runPowerShell(known.startsWith('start') || known.includes('$env') ? `cmd /c ${known}` : `Start-Process ${ps(known)}`)
     return r.code === 0
